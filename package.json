@@ -8,7 +8,7 @@
     "server": "npm run dev --prefix backend",
     "client": "npm run dev --prefix frontend",
     "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
-    "build": "npm run build --prefix frontend && node move-dist.js",
+    "build": "npm run build --prefix frontend",
     "postinstall": "npm install --prefix frontend",
     "simulate": "node backend/utils/simulate-order.js",
     "pm2:start": "pm2 start ecosystem.config.js",
