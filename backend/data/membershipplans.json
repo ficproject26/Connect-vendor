@@ -1,0 +1,44 @@
+[
+  {
+    "_id": "xmzwi2rm9mqg7nhxz",
+    "createdAt": "2026-06-16T05:37:43.319Z",
+    "updatedAt": "2026-06-16T05:37:43.319Z",
+    "name": "Silver",
+    "price": 500,
+    "discountPercent": 10,
+    "validityDays": 30,
+    "benefits": [
+      "10% Discount",
+      "Basic Support"
+    ]
+  },
+  {
+    "_id": "jq2j7c75tmqg7nhy1",
+    "createdAt": "2026-06-16T05:37:43.321Z",
+    "updatedAt": "2026-06-16T05:37:43.321Z",
+    "name": "Gold",
+    "price": 1000,
+    "discountPercent": 15,
+    "validityDays": 90,
+    "benefits": [
+      "15% Discount",
+      "Priority Support",
+      "Featured Listing"
+    ]
+  },
+  {
+    "_id": "ur4vocw2bmqg7nhy3",
+    "createdAt": "2026-06-16T05:37:43.323Z",
+    "updatedAt": "2026-06-16T05:37:43.323Z",
+    "name": "Diamond",
+    "price": 2000,
+    "discountPercent": 20,
+    "validityDays": 365,
+    "benefits": [
+      "20% Discount",
+      "Premium Support",
+      "Featured Listing",
+      "Exclusive Promotions"
+    ]
+  }
+]

@@ -1,0 +1,46 @@
+[
+  {
+    "_id": "jy8sf2fo7mqgkvc9h",
+    "createdAt": "2026-06-16T11:47:44.213Z",
+    "updatedAt": "2026-06-16T11:58:58.319Z",
+    "userId": "qzu8rq1jimqga4pdj",
+    "planName": "Silver",
+    "amount": 500,
+    "purchaseDate": "2026-06-16T11:47:44.209Z",
+    "expiresAt": "2026-07-16T11:47:44.146Z",
+    "status": "Upgraded"
+  },
+  {
+    "_id": "q64rpvvs9mqgl9seo",
+    "createdAt": "2026-06-16T11:58:58.320Z",
+    "updatedAt": "2026-06-16T11:58:59.591Z",
+    "userId": "qzu8rq1jimqga4pdj",
+    "planName": "Gold",
+    "amount": 1000,
+    "purchaseDate": "2026-06-16T11:58:58.317Z",
+    "expiresAt": "2026-09-14T11:58:58.297Z",
+    "status": "Upgraded"
+  },
+  {
+    "_id": "jbm5yodawmqgl9te1",
+    "createdAt": "2026-06-16T11:58:59.593Z",
+    "updatedAt": "2026-06-16T11:58:59.593Z",
+    "userId": "qzu8rq1jimqga4pdj",
+    "planName": "Gold",
+    "amount": 1000,
+    "purchaseDate": "2026-06-16T11:58:59.588Z",
+    "expiresAt": "2026-09-14T11:58:59.574Z",
+    "status": "Active"
+  },
+  {
+    "_id": "2bvb2hkrqmqhm4b4j",
+    "createdAt": "2026-06-17T05:10:28.435Z",
+    "updatedAt": "2026-06-17T05:10:28.435Z",
+    "userId": "2l64elf7emqhm2o0m",
+    "planName": "Silver",
+    "amount": 500,
+    "purchaseDate": "2026-06-17T05:10:28.430Z",
+    "expiresAt": "2026-07-17T05:10:28.351Z",
+    "status": "Active"
+  }
+]

@@ -1,0 +1,12 @@
+[
+  {
+    "_id": "2amzffih6mqhq0hdg",
+    "createdAt": "2026-06-17T06:59:28.372Z",
+    "updatedAt": "2026-06-17T06:59:28.373Z",
+    "commissionRate": 0,
+    "collectionMethod": "Admin Receives Full Payment",
+    "deductionMethod": "Commission Deducted Before Settlement",
+    "vendorPayout": "Remaining Balance Transferred to Vendor",
+    "settlementCycle": "Weekly"
+  }
+]

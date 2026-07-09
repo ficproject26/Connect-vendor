@@ -1,0 +1,26 @@
+[
+  {
+    "_id": "k0v417oebmqkqubh9",
+    "createdAt": "2026-06-19T09:45:58.941Z",
+    "updatedAt": "2026-06-19T09:45:58.941Z",
+    "vendorId": "2l64elf7emqhm2o0m",
+    "memberId": "slv8pkeksmqg7nhy5",
+    "memberName": "John Doe",
+    "type": "Appointment",
+    "items": [
+      {
+        "productId": "ceutovhirmqkqubgv",
+        "name": "Dr. Alice Watson",
+        "price": 1500,
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 1500,
+    "discountApplied": 225,
+    "finalAmount": 1275,
+    "status": "Pending",
+    "appointmentDate": "2026-06-20",
+    "appointmentTimeSlot": "02:00 PM - 03:00 PM",
+    "doctorName": "Dr. Alice Watson"
+  }
+]

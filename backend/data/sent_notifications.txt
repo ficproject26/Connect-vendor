@@ -1,0 +1,54 @@
+[2026-06-19T07:50:29.457Z] [SMS] [Type: Appointment Confirmed] [To: John Doe (9876543211)]
+Message: Hello John Doe, your appointment (ID: APT-TEST-001) for General Consultation has been CONFIRMED for 2026-06-22 at 9:00 AM – 9:30 AM. We look forward to seeing you.
+------------------------------------------------------------
+[2026-06-19T07:50:29.457Z] [Email] [Type: Appointment Confirmed] [To: John Doe (john@example.com)]
+Message: Hello John Doe, your appointment (ID: APT-TEST-001) for General Consultation has been CONFIRMED for 2026-06-22 at 9:00 AM – 9:30 AM. We look forward to seeing you.
+------------------------------------------------------------
+[2026-06-19T07:50:29.457Z] [Push] [Type: Appointment Confirmed] [To: John Doe (DeviceToken)]
+Message: Hello John Doe, your appointment (ID: APT-TEST-001) for General Consultation has been CONFIRMED for 2026-06-22 at 9:00 AM – 9:30 AM. We look forward to seeing you.
+------------------------------------------------------------
+[2026-06-19T07:50:29.515Z] [SMS] [Type: Appointment Created] [To: Alice Smith (9876543212)]
+Message: Hello Alice Smith, your appointment for General Consultation with Dr./Staff Medical Staff on 2026-06-22 at 9:00 AM – 9:30 AM has been successfully created. Appointment ID: APT-TEST-002. Status: Waitlisted.
+------------------------------------------------------------
+[2026-06-19T07:50:29.515Z] [Email] [Type: Appointment Created] [To: Alice Smith (alice@example.com)]
+Message: Hello Alice Smith, your appointment for General Consultation with Dr./Staff Medical Staff on 2026-06-22 at 9:00 AM – 9:30 AM has been successfully created. Appointment ID: APT-TEST-002. Status: Waitlisted.
+------------------------------------------------------------
+[2026-06-19T07:50:29.515Z] [Push] [Type: Appointment Created] [To: Alice Smith (DeviceToken)]
+Message: Hello Alice Smith, your appointment for General Consultation with Dr./Staff Medical Staff on 2026-06-22 at 9:00 AM – 9:30 AM has been successfully created. Appointment ID: APT-TEST-002. Status: Waitlisted.
+------------------------------------------------------------
+[2026-06-19T07:50:29.547Z] [SMS] [Type: Appointment Cancelled] [To: John Doe (9876543211)]
+Message: Hello John Doe, your appointment (ID: APT-TEST-001) for General Consultation on 2026-06-22 has been CANCELLED.
+------------------------------------------------------------
+[2026-06-19T07:50:29.547Z] [Email] [Type: Appointment Cancelled] [To: John Doe (john@example.com)]
+Message: Hello John Doe, your appointment (ID: APT-TEST-001) for General Consultation on 2026-06-22 has been CANCELLED.
+------------------------------------------------------------
+[2026-06-19T07:50:29.547Z] [Push] [Type: Appointment Cancelled] [To: John Doe (DeviceToken)]
+Message: Hello John Doe, your appointment (ID: APT-TEST-001) for General Consultation on 2026-06-22 has been CANCELLED.
+------------------------------------------------------------
+[2026-06-19T07:50:29.606Z] [SMS] [Type: Appointment Confirmed] [To: Alice Smith (9876543212)]
+Message: Hello Alice Smith, your appointment (ID: APT-TEST-002) for General Consultation has been CONFIRMED for 2026-06-22 at 9:00 AM – 9:30 AM. We look forward to seeing you.
+------------------------------------------------------------
+[2026-06-19T07:50:29.606Z] [Email] [Type: Appointment Confirmed] [To: Alice Smith (alice@example.com)]
+Message: Hello Alice Smith, your appointment (ID: APT-TEST-002) for General Consultation has been CONFIRMED for 2026-06-22 at 9:00 AM – 9:30 AM. We look forward to seeing you.
+------------------------------------------------------------
+[2026-06-19T07:50:29.606Z] [Push] [Type: Appointment Confirmed] [To: Alice Smith (DeviceToken)]
+Message: Hello Alice Smith, your appointment (ID: APT-TEST-002) for General Consultation has been CONFIRMED for 2026-06-22 at 9:00 AM – 9:30 AM. We look forward to seeing you.
+------------------------------------------------------------
+[2026-06-19T07:57:48.210Z] [SMS] [Type: Appointment Created] [To: dhanu (9876543212)]
+Message: Hello dhanu, your appointment for Dr.Robert with Dr./Staff Dr.Robert on 2026-06-19 at 10:00 AM – 10:30 AM has been successfully created. Appointment ID: APT-868055-7561. Status: Confirmed.
+------------------------------------------------------------
+[2026-06-19T07:57:48.210Z] [Email] [Type: Appointment Created] [To: dhanu (dhanushiyasri192004@gmail.com)]
+Message: Hello dhanu, your appointment for Dr.Robert with Dr./Staff Dr.Robert on 2026-06-19 at 10:00 AM – 10:30 AM has been successfully created. Appointment ID: APT-868055-7561. Status: Confirmed.
+------------------------------------------------------------
+[2026-06-19T07:57:48.210Z] [Push] [Type: Appointment Created] [To: dhanu (DeviceToken)]
+Message: Hello dhanu, your appointment for Dr.Robert with Dr./Staff Dr.Robert on 2026-06-19 at 10:00 AM – 10:30 AM has been successfully created. Appointment ID: APT-868055-7561. Status: Confirmed.
+------------------------------------------------------------
+[2026-06-19T07:57:48.226Z] [SMS] [Type: Appointment Confirmed] [To: dhanu (9876543212)]
+Message: Hello dhanu, your appointment (ID: APT-868055-7561) for Dr.Robert has been CONFIRMED for 2026-06-19 at 10:00 AM – 10:30 AM. We look forward to seeing you.
+------------------------------------------------------------
+[2026-06-19T07:57:48.226Z] [Email] [Type: Appointment Confirmed] [To: dhanu (dhanushiyasri192004@gmail.com)]
+Message: Hello dhanu, your appointment (ID: APT-868055-7561) for Dr.Robert has been CONFIRMED for 2026-06-19 at 10:00 AM – 10:30 AM. We look forward to seeing you.
+------------------------------------------------------------
+[2026-06-19T07:57:48.226Z] [Push] [Type: Appointment Confirmed] [To: dhanu (DeviceToken)]
+Message: Hello dhanu, your appointment (ID: APT-868055-7561) for Dr.Robert has been CONFIRMED for 2026-06-19 at 10:00 AM – 10:30 AM. We look forward to seeing you.
+------------------------------------------------------------
