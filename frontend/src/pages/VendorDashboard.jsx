@@ -3188,9 +3188,7 @@ const VendorDashboard = () => {
                     ) : (
                       (() => {
                         const filteredCatalog = catalog.filter(item => {
-                          const matchesCategory = catalogCategoryFilter === 'All'
-                            ? (vendorType.startsWith('Grocery') ? terms.categories.includes(item.category) : true)
-                            : item.category === catalogCategoryFilter;
+                          const matchesCategory = catalogCategoryFilter === 'All' || item.category === catalogCategoryFilter;
                           const matchesStatus = catalogStatusFilter === 'All' || item.status === catalogStatusFilter;
                           const matchesFoodType = catalogFoodTypeFilter === 'All' || item.foodType === catalogFoodTypeFilter;
                           const matchesSearch = item.name.toLowerCase().includes(catalogSearchQuery.toLowerCase()) || 
