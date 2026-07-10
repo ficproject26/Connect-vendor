@@ -6,13 +6,31 @@ const router = express.Router();
 
 const getItemMainCategory = (itemCategory) => {
   if (!itemCategory) return '';
-  for (const mainCat of Object.keys(COMPLETE_CAT_TAXONOMY)) {
-    for (const subCat of Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])) {
-      if (COMPLETE_CAT_TAXONOMY[mainCat][subCat].includes(itemCategory)) {
-        return mainCat;
+  
+  // 1. Search in specific target categories first to prevent misclassification as generic Services/Products
+  const priorityCats = ["Daily Needs", "Food", "Stay", "Travel", "Jobs"];
+  for (const mainCat of priorityCats) {
+    if (COMPLETE_CAT_TAXONOMY[mainCat]) {
+      for (const subCat of Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])) {
+        if (COMPLETE_CAT_TAXONOMY[mainCat][subCat].includes(itemCategory)) {
+          return mainCat;
+        }
       }
     }
   }
+  
+  // 2. Fallback to generic Services, Products, or others
+  const fallbackCats = ["Services", "Products", "Membership"];
+  for (const mainCat of fallbackCats) {
+    if (COMPLETE_CAT_TAXONOMY[mainCat]) {
+      for (const subCat of Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])) {
+        if (COMPLETE_CAT_TAXONOMY[mainCat][subCat].includes(itemCategory)) {
+          return mainCat;
+        }
+      }
+    }
+  }
+  
   return '';
 };
 

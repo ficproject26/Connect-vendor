@@ -38,3 +38,19 @@ axios.interceptors.request.use(
     return Promise.reject(error);
   }
 );
+
+// Set up Axios response interceptor to handle auth errors (e.g. user deleted or token expired)
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && (error.response.status === 401 || error.response.data?.message === 'Not authorized, user not found')) {
+      console.warn('Session expired or user deleted, clearing storage and logging out...');
+      localStorage.removeItem('vendor_user');
+      localStorage.removeItem('vendor_token');
+      localStorage.removeItem('vendor_card');
+      localStorage.removeItem('active_business_id');
+      window.location.href = '/';
+    }
+    return Promise.reject(error);
+  }
+);
