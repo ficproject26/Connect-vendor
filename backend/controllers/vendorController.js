@@ -274,7 +274,13 @@ const getOrders = async (req, res) => {
       });
     }
 
-    const orders = await Order.find({ vendorId: { $in: businessIds } });
+    // Fetch orders matching vendor businessIds OR any order synced from customer app (type: 'Order')
+    const orders = await Order.find({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { type: 'Order' }
+      ]
+    }).sort({ createdAt: -1 });
     res.status(200).json({ success: true, data: orders });
   } catch (error) {
     console.error('Get Orders Error:', error);
