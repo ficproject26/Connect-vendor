@@ -16,25 +16,46 @@ const cleanDatabase = async () => {
     await connectDB();
     console.log('🧹 Connected to MongoDB. Starting database cleanup...');
 
-    // 1. Delete all mock products, orders, delivery partners, customers, and history
-    console.log('🗑️ Clearing catalog, orders, delivery partners, and transaction histories...');
-    const productsDeleted = await Product.deleteMany({});
-    const ordersDeleted = await Order.deleteMany({});
-    const deliveryDeleted = await DeliveryPartner.deleteMany({});
-    const customersDeleted = await Customer.deleteMany({});
-    const historyDeleted = await MembershipHistory.deleteMany({});
-    const cardsDeleted = await MembershipCard.deleteMany({});
+    // 1. Find mock users to delete
+    const mockUsers = await User.find({
+      $and: [
+        { email: { $ne: 'admin@vendor.com' } },
+        { 
+          $or: [
+            { email: /@vendor\.com$/i },
+            { email: /@example\.com$/i }
+          ]
+        }
+      ]
+    });
+    
+    const mockUserIds = mockUsers.map(u => u._id.toString());
+    const mockUserEmails = mockUsers.map(u => u.email);
 
-    console.log(`- Deleted ${productsDeleted.deletedCount} products`);
-    console.log(`- Deleted ${ordersDeleted.deletedCount} orders`);
-    console.log(`- Deleted ${deliveryDeleted.deletedCount} delivery partners`);
-    console.log(`- Deleted ${customersDeleted.deletedCount} customer profiles`);
-    console.log(`- Deleted ${historyDeleted.deletedCount} membership history entries`);
-    console.log(`- Deleted ${cardsDeleted.deletedCount} membership cards`);
+    console.log(`🔍 Found ${mockUsers.length} mock users to clear:`, mockUserEmails);
 
-    // 2. Delete all users except Admin
-    console.log('👥 Clearing mock users (vendors & members)...');
-    const usersDeleted = await User.deleteMany({ email: { $ne: 'admin@vendor.com' } });
+    // 2. Delete products, orders, delivery partners, and cards belonging to mock users
+    console.log('🗑️ Clearing catalog, orders, delivery partners, and cards for mock users...');
+    const productsDeleted = await Product.deleteMany({ vendorId: { $in: mockUserIds } });
+    const ordersDeleted = await Order.deleteMany({
+      $or: [
+        { vendorId: { $in: mockUserIds } },
+        { memberId: { $in: mockUserIds } }
+      ]
+    });
+    const deliveryDeleted = await DeliveryPartner.deleteMany({ vendor_id: { $in: mockUserIds } });
+    const historyDeleted = await MembershipHistory.deleteMany({ userId: { $in: mockUserIds } });
+    const cardsDeleted = await MembershipCard.deleteMany({ userId: { $in: mockUserIds } });
+
+    console.log(`- Deleted ${productsDeleted.deletedCount} mock products`);
+    console.log(`- Deleted ${ordersDeleted.deletedCount} mock orders`);
+    console.log(`- Deleted ${deliveryDeleted.deletedCount} mock delivery partners`);
+    console.log(`- Deleted ${historyDeleted.deletedCount} mock membership history entries`);
+    console.log(`- Deleted ${cardsDeleted.deletedCount} mock membership cards`);
+
+    // 3. Delete the mock users themselves
+    console.log('👥 Clearing mock user accounts...');
+    const usersDeleted = await User.deleteMany({ _id: { $in: mockUserIds } });
     console.log(`- Deleted ${usersDeleted.deletedCount} mock user accounts`);
 
     // 3. Ensure Admin exists
