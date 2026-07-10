@@ -465,6 +465,28 @@ const deleteDeliveryPartner = async (req, res) => {
 };
 
 // --- PROFILE SETTINGS ---
+// @desc    Get Vendor Profile
+// @route   GET /api/vendor/profile
+// @access  Private (Vendor)
+const getProfile = async (req, res) => {
+  try {
+    const vendorId = req.user.parentUserId || req.user._id;
+    const user = await User.findById(vendorId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const userResponse = user.toObject();
+    delete userResponse.password;
+    userResponse.id = user._id;
+
+    res.status(200).json({ success: true, user: userResponse });
+  } catch (error) {
+    console.error('Get Profile Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving profile' });
+  }
+};
+
 // @desc    Update Vendor Profile
 // @route   PUT /api/vendor/profile
 // @access  Private (Vendor)
@@ -945,6 +967,7 @@ module.exports = {
   updateDeliveryPartner,
   deleteDeliveryPartner,
   updateProfile,
+  getProfile,
   changePassword,
   forgotPasswordOTP,
   resetPasswordOTP,

@@ -635,6 +635,23 @@ const VendorDashboard = () => {
   // Redux Dispatch
   const dispatch = useDispatch();
 
+  // Sync profile on mount to get latest user categories/businesses from DB
+  useEffect(() => {
+    const syncProfile = async () => {
+      try {
+        const res = await axios.get(`http://${window.location.hostname}:8000/api/vendor/profile`, getAxiosConfig());
+        if (res.data.success) {
+          dispatch(updateUser(res.data.user));
+        }
+      } catch (err) {
+        console.error('Failed to sync profile on mount:', err);
+      }
+    };
+    if (token) {
+      syncProfile();
+    }
+  }, [dispatch, token]);
+
   // Sidebar Controls and UI States
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [notifications, setNotifications] = useState([]);

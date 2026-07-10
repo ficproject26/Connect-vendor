@@ -17,6 +17,7 @@ const {
   updateDeliveryPartner,
   deleteDeliveryPartner,
   updateProfile,
+  getProfile,
   changePassword,
   forgotPasswordOTP,
   resetPasswordOTP,
@@ -112,6 +113,7 @@ router.put('/delivery-partners/:id', updateDeliveryPartner);
 router.delete('/delivery-partners/:id', deleteDeliveryPartner);
 
 // Profile Settings
+router.get('/profile', getProfile);
 router.put('/profile', updateProfile);
 router.put('/change-password', changePassword);
 router.post('/forgot-password-otp', forgotPasswordOTP);
