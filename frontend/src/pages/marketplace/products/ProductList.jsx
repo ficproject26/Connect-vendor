@@ -176,7 +176,7 @@ const ProductList = () => {
 
   return (
     <>
-      ' && (
+      {(activeTab === 'catalog' || activeTab === 'Products') && (
           (() => {
             const registeredSub = user?.subcategory || (user?.vendorType && user.vendorType.includes(':') ? user.vendorType.split(':')[1].trim() : '');
             const uniqueCatalogCategories = [...new Set([
@@ -456,8 +456,6 @@ const ProductList = () => {
             );
           })()
         )}
-
-        {/* Orders T
     </>
   );
 };

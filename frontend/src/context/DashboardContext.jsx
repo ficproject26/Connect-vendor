@@ -451,7 +451,7 @@ export const DashboardProvider = ({ children }) => {
     }
     if (role === 'Vendor') {
       const allowed = ['dashboard', 'catalog', 'orders', 'customers', 'payments', 'card', 'profile', 'business'];
-      if (!['Hotel Vendor', 'Education Vendor', 'Job Vendor'].includes(vType)) {
+      if (!['Education Vendor', 'Job Vendor'].includes(vType)) {
         allowed.push('delivery');
       }
       return allowed.includes(tab);

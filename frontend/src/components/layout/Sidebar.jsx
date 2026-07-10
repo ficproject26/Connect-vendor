@@ -16,6 +16,32 @@ const Sidebar = () => {
     return { id: 'dashboard', name: 'Overview', icon: LayoutDashboard };
   };
 
+  const getPartnerLabel = () => {
+    const rawType = user?.vendorType || '';
+    const isService = rawType.startsWith('Services') || ['Hospital Vendor', 'Service Provider Vendor'].includes(vendorType);
+    const isStay = rawType.startsWith('Stay') || ['Hotel Vendor'].includes(vendorType);
+    const isTravel = rawType.startsWith('Travel') || ['Travel Agency Vendor'].includes(vendorType);
+    const isProduct = rawType.startsWith('Products') || ['Store Vendor', 'Electronics Vendor', 'Home & Furniture Vendor'].includes(vendorType);
+    const isDailyNeed = rawType.startsWith('Daily Needs') || ['Grocery Vendor', 'Pharmacy Vendor'].includes(vendorType);
+    const isFood = rawType.startsWith('Food') || ['Restaurant Vendor'].includes(vendorType);
+
+    if (isService) {
+      return 'Add Technician';
+    } else if (isStay || isTravel) {
+      return 'Add Executive';
+    } else if (isProduct || isDailyNeed || isFood) {
+      return 'Delivery Partners';
+    }
+
+    if (['Hospital Vendor', 'Service Provider Vendor'].includes(vendorType)) {
+      return 'Add Technician';
+    }
+    if (['Hotel Vendor', 'Travel Agency Vendor'].includes(vendorType)) {
+      return 'Add Executive';
+    }
+    return 'Delivery Partners';
+  };
+
   const getSidebarItems = () => {
     if (user?.role === 'Admin') {
       return [
@@ -41,10 +67,9 @@ const Sidebar = () => {
       { id: 'orders', name: terms.ordersName, icon: ClipboardList },
       { id: 'customers', name: terms.customersName, icon: Users }
     ];
-    if (['Hospital Vendor', 'Service Provider Vendor'].includes(vendorType)) {
-      items.push({ id: 'delivery', name: 'Service Provider', icon: Truck });
-    } else if (!['Hotel Vendor', 'Education Vendor', 'Job Vendor'].includes(vendorType)) {
-      items.push({ id: 'delivery', name: 'Delivery Partners', icon: Truck });
+    const partnerLabel = getPartnerLabel();
+    if (!['Education Vendor', 'Job Vendor'].includes(vendorType)) {
+      items.push({ id: 'delivery', name: partnerLabel, icon: Truck });
     }
     items.push({ id: 'payments', name: 'Payments', icon: IndianRupee });
     items.push({ id: 'card', name: 'Membership Card', icon: CreditCard });

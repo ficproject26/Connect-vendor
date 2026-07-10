@@ -170,13 +170,14 @@ const JobList = () => {
     handleImageUpload,
     handleStatusChange,
     handlePartnerImageUpload,
+    handleOpenStorefront,
     fetchDashboardData,
     getAxiosConfig
   } = useDashboard();
 
   return (
     <>
-      activeTab === 'discounts' || ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'].includes(activeTab)) && (
+      {(activeTab === 'discounts' || ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'].includes(activeTab)) && (
           <div className="space-y-6 animate-fadeIn">
             <div>
               <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Participating Partners</h2>
@@ -296,8 +297,6 @@ const JobList = () => {
             )}
           </div>
         )}
-
-        {/* Redeem Offer Tab (Membe
     </>
   );
 };

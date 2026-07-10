@@ -387,6 +387,48 @@ const VendorDashboard = () => {
     return Array.from(types);
   };
 
+  const getPartnerPageTerms = () => {
+    const rawType = user?.vendorType || '';
+    const isService = rawType.startsWith('Services') || ['Hospital Vendor', 'Service Provider Vendor'].includes(vendorType);
+    const isStay = rawType.startsWith('Stay') || ['Hotel Vendor'].includes(vendorType);
+    const isTravel = rawType.startsWith('Travel') || ['Travel Agency Vendor'].includes(vendorType);
+    const isProduct = rawType.startsWith('Products') || ['Store Vendor', 'Electronics Vendor', 'Home & Furniture Vendor'].includes(vendorType);
+    const isDailyNeed = rawType.startsWith('Daily Needs') || ['Grocery Vendor', 'Pharmacy Vendor'].includes(vendorType);
+    const isFood = rawType.startsWith('Food') || ['Restaurant Vendor'].includes(vendorType);
+
+    if (isService) {
+      return {
+        title: 'Technician Log',
+        description: 'Add and edit technicians for service operations',
+        addButton: 'Add Technician',
+        searchPlaceholder: 'Search technicians by name or phone...',
+        emptyText: 'No technicians listed. Click the button to add.',
+        emptyFilterText: 'No technicians match your filter criteria.',
+        modalTitle: 'Technician'
+      };
+    } else if (isStay || isTravel) {
+      return {
+        title: 'Executive Log',
+        description: 'Add and edit executives for stay and travel operations',
+        addButton: 'Add Executive',
+        searchPlaceholder: 'Search executives by name or phone...',
+        emptyText: 'No executives listed. Click the button to add.',
+        emptyFilterText: 'No executives match your filter criteria.',
+        modalTitle: 'Executive'
+      };
+    } else {
+      return {
+        title: 'Delivery Crew Log',
+        description: 'Add and edit delivery personnel for dispatch operations',
+        addButton: 'Add Partner',
+        searchPlaceholder: 'Search crew by name, phone, or vehicle number...',
+        emptyText: 'No delivery partners listed. Click the button to add your crew.',
+        emptyFilterText: 'No delivery partners match your filter criteria.',
+        modalTitle: 'Delivery Partner'
+      };
+    }
+  };
+
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   
@@ -2131,6 +2173,32 @@ const VendorDashboard = () => {
               return { id: 'dashboard', name: 'Overview', icon: LayoutDashboard };
             };
 
+            const getPartnerLabel = () => {
+              const rawType = user?.vendorType || '';
+              const isService = rawType.startsWith('Services') || ['Hospital Vendor', 'Service Provider Vendor'].includes(vendorType);
+              const isStay = rawType.startsWith('Stay') || ['Hotel Vendor'].includes(vendorType);
+              const isTravel = rawType.startsWith('Travel') || ['Travel Agency Vendor'].includes(vendorType);
+              const isProduct = rawType.startsWith('Products') || ['Store Vendor', 'Electronics Vendor', 'Home & Furniture Vendor'].includes(vendorType);
+              const isDailyNeed = rawType.startsWith('Daily Needs') || ['Grocery Vendor', 'Pharmacy Vendor'].includes(vendorType);
+              const isFood = rawType.startsWith('Food') || ['Restaurant Vendor'].includes(vendorType);
+
+              if (isService) {
+                return 'Add Technician';
+              } else if (isStay || isTravel) {
+                return 'Add Executive';
+              } else if (isProduct || isDailyNeed || isFood) {
+                return 'Delivery Partners';
+              }
+
+              if (['Hospital Vendor', 'Service Provider Vendor'].includes(vendorType)) {
+                return 'Add Technician';
+              }
+              if (['Hotel Vendor', 'Travel Agency Vendor'].includes(vendorType)) {
+                return 'Add Executive';
+              }
+              return 'Delivery Partners';
+            };
+
             const getSidebarItems = () => {
               if (user?.role === 'Admin') {
                 return [
@@ -2156,10 +2224,9 @@ const VendorDashboard = () => {
                 { id: 'orders', name: terms.ordersName, icon: ClipboardList },
                 { id: 'customers', name: terms.customersName, icon: Users }
               ];
-              if (['Hospital Vendor', 'Service Provider Vendor'].includes(vendorType)) {
-                items.push({ id: 'delivery', name: 'Service Provider', icon: Truck });
-              } else if (!['Hotel Vendor', 'Education Vendor', 'Job Vendor'].includes(vendorType)) {
-                items.push({ id: 'delivery', name: 'Delivery Partners', icon: Truck });
+              const partnerLabel = getPartnerLabel();
+              if (!['Education Vendor', 'Job Vendor'].includes(vendorType)) {
+                items.push({ id: 'delivery', name: partnerLabel, icon: Truck });
               }
               items.push({ id: 'payments', name: 'Payments', icon: IndianRupee });
               items.push({ id: 'card', name: 'Membership Card', icon: CreditCard });
@@ -4148,23 +4215,23 @@ const VendorDashboard = () => {
 
         {/* Delivery Tab */}
         {activeTab === 'delivery' && (() => {
-          const isServiceBiz = ['Hospital Vendor', 'Service Provider Vendor'].includes(vendorType);
+          const pageTerms = getPartnerPageTerms();
           return (
             <div className="space-y-6 animate-fadeIn">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                    {isServiceBiz ? 'Service Provider Log' : 'Delivery Crew Log'}
+                    {pageTerms.title}
                   </h2>
                   <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">
-                    {isServiceBiz ? 'Add and edit service providers for vendor operations' : 'Add and edit delivery personnel for dispatch operations'}
+                    {pageTerms.description}
                   </p>
                 </div>
                 <button
                   onClick={handleOpenAddPartner}
                   className="bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 text-white font-semibold text-sm px-5 py-3 rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-primary-600/15 active:scale-[0.98]"
                 >
-                  <Plus size={16} /> {isServiceBiz ? 'Add Service Provider' : 'Add Partner'}
+                  <Plus size={16} /> {pageTerms.addButton}
                 </button>
               </div>
 
@@ -4173,7 +4240,7 @@ const VendorDashboard = () => {
                 <div className="flex-1">
                   <input
                     type="text"
-                    placeholder={isServiceBiz ? 'Search by name or phone...' : 'Search crew by name, phone, or vehicle number...'}
+                    placeholder={pageTerms.searchPlaceholder}
                     value={partnerSearchQuery}
                     onChange={(e) => setPartnerSearchQuery(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
@@ -4198,7 +4265,7 @@ const VendorDashboard = () => {
               ) : partners.length === 0 ? (
                 <div className="glass-card p-12 text-center rounded-3xl">
                   <p className="text-slate-800 dark:text-slate-200 font-medium">
-                    {isServiceBiz ? 'No service providers listed. Click the button to add.' : 'No delivery partners listed. Click the button to add your crew.'}
+                    {pageTerms.emptyText}
                   </p>
                 </div>
               ) : (
@@ -4215,7 +4282,7 @@ const VendorDashboard = () => {
                     return (
                       <div className="glass-card p-12 text-center rounded-3xl">
                         <p className="text-slate-800 dark:text-slate-200 font-medium">
-                          {isServiceBiz ? 'No service providers match your filter criteria.' : 'No delivery partners match your filter criteria.'}
+                          {pageTerms.emptyFilterText}
                         </p>
                       </div>
                     );
@@ -7061,7 +7128,7 @@ const VendorDashboard = () => {
       </Modal>
 
       {/* Add / Edit Delivery Partner Modal */}
-      <Modal isOpen={isPartnerModalOpen} onClose={() => setIsPartnerModalOpen(false)} title={`${isEditPartner ? 'Edit' : 'Add'} ${['Hospital Vendor', 'Service Provider Vendor'].includes(vendorType) ? 'Service Provider' : 'Delivery Partner'}`}>
+      <Modal isOpen={isPartnerModalOpen} onClose={() => setIsPartnerModalOpen(false)} title={`${isEditPartner ? 'Edit' : 'Add'} ${getPartnerPageTerms().modalTitle}`}>
         <form onSubmit={handleSavePartner} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1.5 text-left">
           
           {/* Accordion sections with all 12 categories of fields */}
