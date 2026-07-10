@@ -16,7 +16,7 @@ export const getBackendUrl = () => {
   
   // If running in production (Vercel), connect to deployed backend URL
   // You can set VITE_BACKEND_URL in Vercel environment variables.
-  return import.meta.env.VITE_BACKEND_URL || 'https://connect-vendor-backend-local.loca.lt';
+  return import.meta.env.VITE_BACKEND_URL || 'https://connect-vendor.onrender.com';
 };
 
 // Set up Axios request interceptor to dynamically rewrite backend URLs
@@ -30,13 +30,7 @@ axios.interceptors.request.use(
       // If we are communicating over HTTPS, rewrite the URL protocol to https
       if (backendUrl.startsWith('https://')) {
         config.url = config.url.replace(/^http:\/\//, 'https://');
-      }
-
-      // Bypass localtunnel warning page
-      if (backendUrl.includes('loca.lt')) {
-        config.headers = config.headers || {};
-        config.headers['Bypass-Tunnel-Reminder'] = 'true';
-      }
+        }
     }
     return config;
   },
