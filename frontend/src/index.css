@@ -2,10 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+::selection {
+  background-color: #8b5cf6;
+  color: #ffffff;
+}
+
 @layer base {
   body {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    @apply bg-slate-50 text-slate-800 antialiased selection:bg-primary-500 selection:text-white transition-colors duration-300;
+    @apply bg-slate-50 text-slate-800 antialiased transition-colors duration-300;
   }
   .dark body {
     @apply bg-slate-950 text-slate-100;
