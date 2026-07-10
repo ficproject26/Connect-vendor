@@ -1,0 +1,13 @@
+{
+  "name": "multi-vendor-platform",
+  "version": "1.0.0",
+  "description": "Multi-Vendor Platform Root",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "build": "npm run build --prefix frontend && node move-dist.js",
+    "postinstall": "npm install --prefix frontend"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
