@@ -134,13 +134,20 @@ router.post('/orders', async (req, res) => {
     vendorId,
     memberId,
     memberName,
+    type,
     items,
     totalAmount,
     discountApplied,
     finalAmount,
     candidateEmail,
     candidateResume,
-    order_number
+    order_number,
+    appointmentDate,
+    appointmentTimeSlot,
+    doctorName,
+    tableNumber,
+    roomNumber,
+    prescriptionUrl
   } = req.body;
 
   if (!vendorId || !memberName || finalAmount === undefined || finalAmount === null) {
@@ -148,20 +155,40 @@ router.post('/orders', async (req, res) => {
   }
 
   try {
+    let orderType = type || 'Order';
+    if (!type) {
+      const vendor = await User.findOne({
+        role: 'Vendor',
+        $or: [ { _id: vendorId }, { 'businesses._id': vendorId } ]
+      });
+      if (vendor) {
+        const vType = vendor.baseVendorType || vendor.vendorType;
+        const isHospital = vType && (vType === 'Hospital' || vType.startsWith('Hospital Vendor'));
+        if (isHospital) orderType = 'Appointment';
+        else if (vType && (vType.startsWith('Hotel') || vType.startsWith('Service Provider Vendor'))) orderType = 'Booking';
+      }
+    }
+
     const orderData = {
       id: id,
       order_number: order_number,
       vendorId,
       memberId: memberId || 'cust_dhanush',
       memberName,
-      type: 'Order',
+      type: orderType,
       items: items || [],
       totalAmount: totalAmount ?? finalAmount,
       discountApplied: discountApplied || 0,
       finalAmount: finalAmount,
       status: 'Pending',
       candidateEmail,
-      candidateResume
+      candidateResume,
+      appointmentDate,
+      appointmentTimeSlot,
+      doctorName,
+      tableNumber,
+      roomNumber,
+      prescriptionUrl
     };
 
     // If order already exists in the shared database (created by customer backend), update and return it
@@ -178,7 +205,14 @@ router.post('/orders', async (req, res) => {
             candidateResume: candidateResume || existing.candidateResume,
             items: (items && items.length > 0) ? items : existing.items,
             totalAmount: totalAmount ?? finalAmount,
-            finalAmount: finalAmount
+            finalAmount: finalAmount,
+            type: orderType,
+            appointmentDate: appointmentDate || existing.appointmentDate,
+            appointmentTimeSlot: appointmentTimeSlot || existing.appointmentTimeSlot,
+            doctorName: doctorName || existing.doctorName,
+            tableNumber: tableNumber || existing.tableNumber,
+            roomNumber: roomNumber || existing.roomNumber,
+            prescriptionUrl: prescriptionUrl || existing.prescriptionUrl
           }
         }
       );

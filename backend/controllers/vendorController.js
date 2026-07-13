@@ -296,7 +296,20 @@ const updateOrderStatus = async (req, res) => {
     const { status, deliveryPartnerId } = req.body;
     const order = await Order.findById(req.params.id);
 
-    if (!order || order.vendorId !== req.user._id) {
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const businessIds = [parentUserId.toString()];
+    if (user.businesses && user.businesses.length > 0) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+      });
+    }
+
+    if (!order || !businessIds.includes(order.vendorId.toString())) {
       return res.status(404).json({ success: false, message: 'Order/Booking not found or unauthorized' });
     }
 
