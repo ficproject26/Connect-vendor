@@ -9,10 +9,21 @@ const { Product, Order, Customer, DeliveryPartner, User, MembershipCard, Platfor
 // @access  Private (Vendor)
 const getVendorAnalytics = async (req, res) => {
   try {
-    const vendorId = req.user._id;
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const businessIds = [parentUserId.toString()];
+    if (user.businesses && user.businesses.length > 0) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+      });
+    }
 
     // Fetch vendor orders
-    const orders = await Order.find({ vendorId });
+    const orders = await Order.find({ vendorId: { $in: businessIds } });
     
     // Calculations
     const totalOrdersCount = orders.length;
@@ -20,9 +31,9 @@ const getVendorAnalytics = async (req, res) => {
     const pendingOrdersCount = orders.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'].includes(o.status)).length;
     
     const totalRevenue = completedOrders.reduce((sum, o) => sum + o.finalAmount, 0);
-    const uniqueCustomersCount = await Customer.countDocuments({ vendorId });
-    const totalItemsCount = await Product.countDocuments({ vendorId });
-    const availableItemsCount = await Product.countDocuments({ vendorId, status: 'Available' });
+    const uniqueCustomersCount = await Customer.countDocuments({ vendorId: { $in: businessIds } });
+    const totalItemsCount = await Product.countDocuments({ vendorId: { $in: businessIds } });
+    const availableItemsCount = await Product.countDocuments({ vendorId: { $in: businessIds }, status: 'Available' });
 
     // Today's Revenue Calculation
     const todayDateString = new Date().toDateString();
@@ -274,12 +285,9 @@ const getOrders = async (req, res) => {
       });
     }
 
-    // Fetch orders matching vendor businessIds OR any order synced from customer app (type: 'Order')
+    // Fetch orders matching vendor businessIds
     const orders = await Order.find({
-      $or: [
-        { vendorId: { $in: businessIds } },
-        { type: 'Order' }
-      ]
+      vendorId: { $in: businessIds }
     }).sort({ createdAt: -1 });
     res.status(200).json({ success: true, data: orders });
   } catch (error) {

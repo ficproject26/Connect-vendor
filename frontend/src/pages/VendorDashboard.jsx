@@ -363,7 +363,16 @@ const getCategoryIcon = (category) => {
 
 const VendorDashboard = () => {
   const { user, token, card, sidebarCollapsed, activeBusinessId } = useSelector(state => state.auth);
-  const vendorType = getBaseVendorType(user?.baseVendorType || user?.vendorType, user?.category, user?.subcategory) || 'Store Vendor';
+  
+  const getActiveVendorType = () => {
+    if (!user) return 'Store Vendor';
+    const activeBiz = user.businesses?.find(b => b._id.toString() === activeBusinessId?.toString());
+    const rawType = activeBiz ? activeBiz.vendorType : (user.baseVendorType || user.vendorType);
+    const rawCat = activeBiz ? activeBiz.category : user.category;
+    const rawSubcat = activeBiz ? activeBiz.subcategory : user.subcategory;
+    return getBaseVendorType(rawType, rawCat, rawSubcat) || 'Store Vendor';
+  };
+  const vendorType = getActiveVendorType();
 
   const getOrderVendorType = (order) => {
     const parentId = user?.parentUserId || user?._id || '';
@@ -3612,11 +3621,11 @@ const VendorDashboard = () => {
                             yesterday.setDate(yesterday.getDate() - 1);
                             matchesTime = orderDateStr === yesterday.toDateString();
                           } else if (orderTimeFilter === 'LastWeek') {
-                            matchesTime = (nowTime - orderTime) <= 7 * 24 * 60 * 6500;
+                            matchesTime = (nowTime - orderTime) <= 7 * 24 * 60 * 60 * 1000;
                           } else if (orderTimeFilter === 'LastMonth') {
-                            matchesTime = (nowTime - orderTime) <= 30 * 24 * 60 * 6500;
+                            matchesTime = (nowTime - orderTime) <= 30 * 24 * 60 * 60 * 1000;
                           } else if (orderTimeFilter === 'LastYear') {
-                            matchesTime = (nowTime - orderTime) <= 365 * 24 * 60 * 6500;
+                            matchesTime = (nowTime - orderTime) <= 365 * 24 * 60 * 60 * 1000;
                           }
                         }
                       }

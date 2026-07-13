@@ -377,7 +377,16 @@ export const DashboardProvider = ({ children }) => {
   // Monolithic Body Logic
 
   const { user, token, card, sidebarCollapsed, activeBusinessId } = useSelector(state => state.auth);
-  const vendorType = getBaseVendorType(user?.baseVendorType || user?.vendorType, user?.category, user?.subcategory) || 'Store Vendor';
+
+  const getActiveVendorType = () => {
+    if (!user) return 'Store Vendor';
+    const activeBiz = user.businesses?.find(b => b._id.toString() === activeBusinessId?.toString());
+    const rawType = activeBiz ? activeBiz.vendorType : (user.baseVendorType || user.vendorType);
+    const rawCat = activeBiz ? activeBiz.category : user.category;
+    const rawSubcat = activeBiz ? activeBiz.subcategory : user.subcategory;
+    return getBaseVendorType(rawType, rawCat, rawSubcat) || 'Store Vendor';
+  };
+  const vendorType = getActiveVendorType();
 
   const getTerms = () => {
     const isHospitalBiz = ['Hospital Vendor'].includes(vendorType);

@@ -322,11 +322,11 @@ const Orders = () => {
                             yesterday.setDate(yesterday.getDate() - 1);
                             matchesTime = orderDateStr === yesterday.toDateString();
                           } else if (orderTimeFilter === 'LastWeek') {
-                            matchesTime = (nowTime - orderTime) <= 7 * 24 * 60 * 6500;
+                            matchesTime = (nowTime - orderTime) <= 7 * 24 * 60 * 60 * 1000;
                           } else if (orderTimeFilter === 'LastMonth') {
-                            matchesTime = (nowTime - orderTime) <= 30 * 24 * 60 * 6500;
+                            matchesTime = (nowTime - orderTime) <= 30 * 24 * 60 * 60 * 1000;
                           } else if (orderTimeFilter === 'LastYear') {
-                            matchesTime = (nowTime - orderTime) <= 365 * 24 * 60 * 6500;
+                            matchesTime = (nowTime - orderTime) <= 365 * 24 * 60 * 60 * 1000;
                           }
                         }
                       }
