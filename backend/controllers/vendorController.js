@@ -23,7 +23,22 @@ const getVendorAnalytics = async (req, res) => {
     }
 
     // Fetch vendor orders
-    const orders = await Order.find({ vendorId: { $in: businessIds } });
+    const rawOrders = await Order.find({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ]
+    });
+
+    const orders = rawOrders.map(o => {
+      const obj = o.toObject ? o.toObject() : o;
+      if (!obj.vendorId && obj.vendor_id) obj.vendorId = obj.vendor_id;
+      if (!obj.memberName && obj.customer_name) obj.memberName = obj.customer_name;
+      if (!obj.memberId && obj.customer_id) obj.memberId = obj.customer_id;
+      if (obj.finalAmount === undefined && obj.amount !== undefined) obj.finalAmount = obj.amount;
+      if (obj.totalAmount === undefined && obj.amount !== undefined) obj.totalAmount = obj.amount;
+      return obj;
+    });
     
     // Calculations
     const totalOrdersCount = orders.length;
@@ -31,9 +46,25 @@ const getVendorAnalytics = async (req, res) => {
     const pendingOrdersCount = orders.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'].includes(o.status)).length;
     
     const totalRevenue = completedOrders.reduce((sum, o) => sum + o.finalAmount, 0);
-    const uniqueCustomersCount = await Customer.countDocuments({ vendorId: { $in: businessIds } });
-    const totalItemsCount = await Product.countDocuments({ vendorId: { $in: businessIds } });
-    const availableItemsCount = await Product.countDocuments({ vendorId: { $in: businessIds }, status: 'Available' });
+    const uniqueCustomersCount = await Customer.countDocuments({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ]
+    });
+    const totalItemsCount = await Product.countDocuments({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ]
+    });
+    const availableItemsCount = await Product.countDocuments({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ],
+      status: 'Available'
+    });
 
     // Today's Revenue Calculation
     const todayDateString = new Date().toDateString();
@@ -287,9 +318,23 @@ const getOrders = async (req, res) => {
 
     // Fetch orders matching vendor businessIds
     const orders = await Order.find({
-      vendorId: { $in: businessIds }
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ]
     }).sort({ createdAt: -1 });
-    res.status(200).json({ success: true, data: orders });
+
+    const normalizedOrders = orders.map(o => {
+      const obj = o.toObject ? o.toObject() : o;
+      if (!obj.vendorId && obj.vendor_id) obj.vendorId = obj.vendor_id;
+      if (!obj.memberName && obj.customer_name) obj.memberName = obj.customer_name;
+      if (!obj.memberId && obj.customer_id) obj.memberId = obj.customer_id;
+      if (obj.finalAmount === undefined && obj.amount !== undefined) obj.finalAmount = obj.amount;
+      if (obj.totalAmount === undefined && obj.amount !== undefined) obj.totalAmount = obj.amount;
+      return obj;
+    });
+
+    res.status(200).json({ success: true, data: normalizedOrders });
   } catch (error) {
     console.error('Get Orders Error:', error);
     res.status(500).json({ success: false, message: 'Server error retrieving orders' });
