@@ -8,7 +8,7 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   role: { type: String, enum: ['Admin', 'Vendor', 'Member'], required: true },
-  status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Approved' },
+  status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
   
   // Vendor-specific fields
   vendorType: { type: String }, // e.g. Hospital, Restaurant, etc.

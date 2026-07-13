@@ -242,7 +242,7 @@ const registerVendor = async (req, res) => {
       email,
       password: hashedPassword,
       role: 'Vendor',
-      status: 'Approved', // Approved directly to remove admin approval after register
+      status: 'Pending', // Put vendor registration under admin approval
       vendorType,
       category,
       categoryId: finalCategoryId,
