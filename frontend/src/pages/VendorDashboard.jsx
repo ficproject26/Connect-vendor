@@ -363,7 +363,41 @@ const getCategoryIcon = (category) => {
 
 const VendorDashboard = () => {
   const { user, token, card, sidebarCollapsed, activeBusinessId } = useSelector(state => state.auth);
-  
+  const [, setCategoryTrigger] = useState(0);
+
+  useEffect(() => {
+    const fetchDynamicCategories = async () => {
+      try {
+        const res = await fetch('http://localhost:5001/api/admin/categories');
+        if (res.ok) {
+          const dbCats = await res.json();
+          dbCats.forEach(cat => {
+            let main = cat.name;
+            if (main === 'Restaurants') main = 'Food';
+            if (main === 'Hotels') main = 'Stay';
+            if (main === 'Stores') main = 'Products';
+            
+            const sub = cat.subcategory || 'General';
+            const subsub = cat.subSubcategory || '';
+            
+            if (COMPLETE_CAT_TAXONOMY[main]) {
+              if (!COMPLETE_CAT_TAXONOMY[main][sub]) {
+                COMPLETE_CAT_TAXONOMY[main][sub] = [];
+              }
+              if (subsub && !COMPLETE_CAT_TAXONOMY[main][sub].includes(subsub)) {
+                COMPLETE_CAT_TAXONOMY[main][sub].push(subsub);
+              }
+            }
+          });
+          setCategoryTrigger(prev => prev + 1);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch dynamic categories from admin backend", err);
+      }
+    };
+    fetchDynamicCategories();
+  }, []);
+
   const getActiveVendorType = () => {
     if (!user) return 'Store Vendor';
     const activeBiz = user.businesses?.find(b => b._id.toString() === activeBusinessId?.toString());
