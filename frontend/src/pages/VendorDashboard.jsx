@@ -373,9 +373,9 @@ const VendorDashboard = () => {
           const dbCats = await res.json();
           dbCats.forEach(cat => {
             let main = cat.name;
-            if (main === 'Restaurants') main = 'Food';
-            if (main === 'Hotels') main = 'Stay';
-            if (main === 'Stores') main = 'Products';
+            if (main === 'Restaurants' || main === 'Food') main = 'Food';
+            if (main === 'Hotels' || main === 'Stay') main = 'Stay';
+            if (main === 'Stores' || main === 'Products') main = 'Products';
             
             const sub = cat.subcategory || 'General';
             const subsub = cat.subSubcategory || '';
