@@ -1798,7 +1798,7 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/vendor/upload`, formData, {
+      const res = await axios.post(`${getBackendUrl()}/api/vendor/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}`
@@ -1825,7 +1825,7 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/vendor/upload`, formData, {
+      const res = await axios.post(`${getBackendUrl()}/api/vendor/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}`
@@ -7114,6 +7114,12 @@ const VendorDashboard = () => {
                 />
                 {imageUploading && (
                   <p className="text-xs text-primary-500 font-bold mt-1 animate-pulse">Uploading image...</p>
+                )}
+                {error && (
+                  <p className="text-xs text-red-500 font-bold mt-1">⚠️ {error}</p>
+                )}
+                {message && (
+                  <p className="text-xs text-emerald-500 font-bold mt-1">✓ {message}</p>
                 )}
               </div>
             )}
