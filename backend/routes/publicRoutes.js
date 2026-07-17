@@ -71,7 +71,8 @@ router.get('/products', async (req, res) => {
       vendorMap[vendorIdStr] = {
         name: vendor.businessName || vendor.name,
         baseVendorType: vendor.baseVendorType || vendor.vendorType,
-        category: vendor.category
+        category: vendor.category,
+        city: vendor.bankCity || 'Bangalore'
       };
 
       if (vendor.businesses && Array.isArray(vendor.businesses)) {
@@ -80,7 +81,8 @@ router.get('/products', async (req, res) => {
             vendorMap[biz._id.toString()] = {
               name: biz.businessName || vendor.businessName || vendor.name,
               baseVendorType: biz.baseVendorType || biz.vendorType || vendor.baseVendorType || vendor.vendorType,
-              category: biz.category || vendor.category
+              category: biz.category || vendor.category,
+              city: vendor.bankCity || 'Bangalore'
             };
           }
         });
@@ -119,6 +121,16 @@ router.get('/products', async (req, res) => {
           rating: 4.5,
           reviews: 120,
           vendorName: vendor.name,
+          vendorCity: (() => {
+            const pin = String(p.pinCode || '').trim();
+            if (pin.startsWith('56')) return 'Bangalore';
+            if (pin.startsWith('60')) return 'Chennai';
+            if (pin.startsWith('50')) return 'Hyderabad';
+            if (pin.startsWith('40')) return 'Mumbai';
+            if (pin.startsWith('11')) return 'Delhi';
+            if (pin.startsWith('64')) return 'Coimbatore';
+            return vendor.city || 'Bangalore';
+          })(),
           tag: p.status === 'Low Stock' ? 'Low Stock' : 'Verified Partner',
           discount: '20% off',
           delivery: 'Free Delivery'
