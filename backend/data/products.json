@@ -67,7 +67,7 @@
     "name": "Fresh Farm Eggs 12pcs",
     "description": "Farm fresh, naturally laid organic brown eggs rich in protein.",
     "price": 90,
-    "category": "Rice",
+    "category": "Eggs",
     "stock": 200,
     "imageUrl": "https://images.unsplash.com/photo-1506976785307-8732e854ad03?w=500&auto=format&fit=crop&q=60"
   },
@@ -188,7 +188,7 @@
     "specialization": "Cardiology (Heart Specialist)",
     "duration": "1 hour",
     "roomType": "Standard",
-    "imageUrl": "",
+    "imageUrl": "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=500&auto=format&fit=crop&q=60",
     "foodType": "Veg",
     "status": "Available",
     "cardTypes": [
@@ -213,7 +213,7 @@
     "pinCode": "505640",
     "duration": "1 hour",
     "roomType": "Standard",
-    "imageUrl": "",
+    "imageUrl": "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=500&auto=format&fit=crop&q=60",
     "foodType": "Veg",
     "status": "Available",
     "cardTypes": [

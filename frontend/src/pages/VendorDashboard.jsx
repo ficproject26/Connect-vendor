@@ -368,7 +368,8 @@ const VendorDashboard = () => {
   useEffect(() => {
     const fetchDynamicCategories = async () => {
       try {
-        const res = await fetch('http://localhost:5001/api/admin/categories');
+        const adminApiBase = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:5001/api';
+        const res = await fetch(`${adminApiBase}/admin/categories`);
         if (res.ok) {
           const dbCats = await res.json();
           dbCats.forEach(cat => {
