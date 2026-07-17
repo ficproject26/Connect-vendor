@@ -1,5 +1,6 @@
 import React from 'react';
 import { useDashboard } from '../../context/DashboardContext';
+import { getBackendUrl } from '../../../../services/apiSetup';
 import { 
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
@@ -317,7 +318,7 @@ const ProductList = () => {
                                 <div>
                                   <div className="mb-3 rounded-xl overflow-hidden aspect-video bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
                                     <img
-                                      src={item.imageUrl ? (item.imageUrl.startsWith('http') ? item.imageUrl : `http://${window.location.hostname}:8000${item.imageUrl}`) : getFallbackImageUrl(item, vendorType)}
+                                      src={item.imageUrl ? (item.imageUrl.startsWith('http') ? item.imageUrl : `${getBackendUrl()}${item.imageUrl}`) : getFallbackImageUrl(item, vendorType)}
                                       alt={item.name}
                                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                     />

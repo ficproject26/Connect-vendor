@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
+import { getBackendUrl } from '../services/apiSetup';
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 
@@ -3355,7 +3356,7 @@ const VendorDashboard = () => {
                                 <div>
                                   <div className="mb-3 rounded-xl overflow-hidden aspect-video bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
                                     <img
-                                      src={item.imageUrl ? (item.imageUrl.startsWith('http') ? item.imageUrl : `http://${window.location.hostname}:8000${item.imageUrl}`) : getFallbackImageUrl(item, vendorType)}
+                                      src={item.imageUrl ? (item.imageUrl.startsWith('http') ? item.imageUrl : `${getBackendUrl()}${item.imageUrl}`) : getFallbackImageUrl(item, vendorType)}
                                       alt={item.name}
                                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                     />
@@ -4342,7 +4343,7 @@ const VendorDashboard = () => {
                               <div className="flex items-center gap-3">
                                 <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 shrink-0 relative group">
                                   <img
-                                    src={p.imageUrl ? (p.imageUrl.startsWith('http') ? p.imageUrl : `http://${window.location.hostname}:8000${p.imageUrl}`) : getPartnerAvatarUrl(p)}
+                                    src={p.imageUrl ? (p.imageUrl.startsWith('http') ? p.imageUrl : `${getBackendUrl()}${p.imageUrl}`) : getPartnerAvatarUrl(p)}
                                     alt={p.name}
                                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                   />
@@ -7090,7 +7091,7 @@ const VendorDashboard = () => {
             {itemForm.imageUrl ? (
               <div className="relative w-fit">
                 <img
-                  src={itemForm.imageUrl.startsWith('http') ? itemForm.imageUrl : `http://${window.location.hostname}:8000${itemForm.imageUrl}`}
+                  src={itemForm.imageUrl.startsWith('http') ? itemForm.imageUrl : `${getBackendUrl()}${itemForm.imageUrl}`}
                   alt="Preview"
                   className="max-h-32 rounded-xl object-contain border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-1"
                 />
@@ -7200,7 +7201,7 @@ const VendorDashboard = () => {
                   {url ? (
                     <div className="relative w-fit">
                       <img
-                        src={url.startsWith('http') ? url : `http://${window.location.hostname}:8000${url}`}
+                        src={url.startsWith('http') ? url : `${getBackendUrl()}${url}`}
                         alt={label}
                         className="max-h-20 rounded-xl object-contain border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-1"
                       />
@@ -8040,7 +8041,7 @@ const VendorDashboard = () => {
                     >
                       <div className="flex gap-4">
                         <img 
-                          src={product.imageUrl ? (product.imageUrl.startsWith('http') ? product.imageUrl : `http://${window.location.hostname}:8000${product.imageUrl}`) : getFallbackImageUrl(product, selectedStorefrontVendor.vendorType)}
+                          src={product.imageUrl ? (product.imageUrl.startsWith('http') ? product.imageUrl : `${getBackendUrl()}${product.imageUrl}`) : getFallbackImageUrl(product, selectedStorefrontVendor.vendorType)}
                           alt={product.name} 
                           className="w-20 h-20 object-cover rounded-xl border border-slate-200 dark:border-slate-800 shrink-0"
                         />
@@ -8478,7 +8479,7 @@ const VendorDashboard = () => {
               {/* Product Info Preview */}
               <div className="flex gap-4 items-center bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl border border-slate-200/40 dark:border-slate-800/40">
                 <img 
-                  src={selectedSoldItem.imageUrl ? (selectedSoldItem.imageUrl.startsWith('http') ? selectedSoldItem.imageUrl : `http://${window.location.hostname}:8000${selectedSoldItem.imageUrl}`) : getFallbackImageUrl(selectedSoldItem, vendorType)}
+                  src={selectedSoldItem.imageUrl ? (selectedSoldItem.imageUrl.startsWith('http') ? selectedSoldItem.imageUrl : `${getBackendUrl()}${selectedSoldItem.imageUrl}`) : getFallbackImageUrl(selectedSoldItem, vendorType)}
                   alt={selectedSoldItem.name} 
                   className="w-16 h-16 object-cover rounded-xl border border-slate-200 dark:border-slate-800"
                 />
