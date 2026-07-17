@@ -237,7 +237,7 @@
     "pinCode": "606123",
     "duration": "1 hour",
     "roomType": "Standard",
-    "imageUrl": "/uploads/1781688708892-images.jpeg",
+    "imageUrl": "https://res.cloudinary.com/yvsm7ze0/image/upload/v1784290528/connect_uploads/1781688708892-images.jpg",
     "foodType": "Veg",
     "status": "Available",
     "cardTypes": [
