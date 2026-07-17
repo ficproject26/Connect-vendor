@@ -29,24 +29,11 @@ const {
   deleteBusiness
 } = require('../controllers/vendorController');
 
-// Ensure upload directory exists
-const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const { uploadToCloudinary } = require('../config/cloudinary');
 
-// Multer Config for Product Images
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  }
-});
-
+// Multer Config for Product Images using Memory Storage
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
     const filetypes = /jpeg|jpg|png|webp|gif/;
@@ -65,9 +52,9 @@ const router = express.Router();
 router.use(protect);
 router.use(authorize('Vendor'));
 
-// Upload Endpoint
+// Upload Endpoint using Cloudinary
 router.post('/upload', (req, res) => {
-  upload.single('image')(req, res, (err) => {
+  upload.single('image')(req, res, async (err) => {
     if (err) {
       // Multer errors (file size, file type, etc.)
       if (err.code === 'LIMIT_FILE_SIZE') {
@@ -78,10 +65,16 @@ router.post('/upload', (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
-    res.status(200).json({
-      success: true,
-      imageUrl: `/uploads/${req.file.filename}`
-    });
+    try {
+      const cloudinaryUrl = await uploadToCloudinary(req.file.buffer, 'product_images');
+      res.status(200).json({
+        success: true,
+        imageUrl: cloudinaryUrl
+      });
+    } catch (uploadErr) {
+      console.error('Cloudinary Upload Error:', uploadErr);
+      res.status(500).json({ success: false, message: 'Failed to upload image to Cloudinary' });
+    }
   });
 });
 

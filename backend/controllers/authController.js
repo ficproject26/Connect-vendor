@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const qrcode = require('qrcode');
 const { User, MembershipPlan, MembershipCard } = require('../models/Schemas');
+const { uploadToCloudinary } = require('../config/cloudinary');
 
 // Helper function to generate JWT
 const generateToken = (id) => {
@@ -177,20 +178,34 @@ const registerVendor = async (req, res) => {
       return res.status(400).json({ success: false, message: 'User already exists with this email' });
     }
 
-    // Get files if uploaded
+    // Get files if uploaded and upload to Cloudinary
     let businessLicense = '';
     if (req.files && req.files['businessLicense'] && req.files['businessLicense'][0]) {
-      businessLicense = `/uploads/${req.files['businessLicense'][0].filename}`;
+      try {
+        businessLicense = await uploadToCloudinary(req.files['businessLicense'][0].buffer, 'licenses');
+      } catch (err) {
+        console.error('Failed to upload businessLicense to Cloudinary:', err);
+      }
     }
 
     let logo = '';
     if (req.files && req.files['logo'] && req.files['logo'][0]) {
-      logo = `/uploads/${req.files['logo'][0].filename}`;
+      try {
+        logo = await uploadToCloudinary(req.files['logo'][0].buffer, 'logos');
+      } catch (err) {
+        console.error('Failed to upload logo to Cloudinary:', err);
+      }
     }
 
     let businessImages = [];
-    if (req.files && req.files['businessImages']) {
-      businessImages = req.files['businessImages'].map(file => `/uploads/${file.filename}`);
+    if (req.files && req.files['businessImages'] && req.files['businessImages'].length > 0) {
+      try {
+        businessImages = await Promise.all(
+          req.files['businessImages'].map(file => uploadToCloudinary(file.buffer, 'business_images'))
+        );
+      } catch (err) {
+        console.error('Failed to upload businessImages to Cloudinary:', err);
+      }
     }
 
     // Hash password
