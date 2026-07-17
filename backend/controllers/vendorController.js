@@ -246,6 +246,7 @@ const updateProduct = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Catalog item not found or unauthorized' });
     }
 
+    const subcategory = getVendorSubcategory(req.user);
     const finalCategory = category || product.category || subcategory || 'General';
 
     const updated = await Product.findByIdAndUpdate(req.params.id, {

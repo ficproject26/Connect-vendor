@@ -90,6 +90,10 @@ router.get('/products', async (req, res) => {
     // 2. Fetch all products
     const products = await Product.find({ status: { $ne: 'Unavailable' } });
 
+    const host = req.get('host');
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const baseUrl = `${protocol}://${host}`;
+
     // 3. Filter and map products to customer app format
     const mappedProducts = products
       .filter(p => vendorMap[p.vendorId]) // only include products from approved vendors
@@ -108,8 +112,10 @@ router.get('/products', async (req, res) => {
           category: p.category || vendor.category || 'General',
           subNavbarCategory: subNavbarCategory,
           image: p.imageUrl 
-            ? (p.imageUrl.startsWith('/uploads') ? `http://localhost:8000${p.imageUrl}` : p.imageUrl)
-            : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60',
+            ? (p.imageUrl.startsWith('/uploads') ? `${baseUrl}${p.imageUrl}` : p.imageUrl)
+            : (subNavbarCategory === 'Services' 
+                ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
+                : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60'),
           rating: 4.5,
           reviews: 120,
           vendorName: vendor.name,
