@@ -6896,16 +6896,18 @@ const VendorDashboard = () => {
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Original Price (₹)</label>
-            <input
-              type="number"
-              value={itemForm.originalPrice || ''}
-              onChange={e => setItemForm({ ...itemForm, originalPrice: e.target.value })}
-              className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-              placeholder="e.g. 399 (optional)"
-            />
-          </div>
+          {terms.catalogItem !== 'Job' && (
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Original Price (₹)</label>
+              <input
+                type="number"
+                value={itemForm.originalPrice || ''}
+                onChange={e => setItemForm({ ...itemForm, originalPrice: e.target.value })}
+                className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                placeholder="e.g. 399 (optional)"
+              />
+            </div>
+          )}
 
           {selectedMainCat && COMPLETE_CAT_TAXONOMY[selectedMainCat] && (
             <>
