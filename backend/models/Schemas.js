@@ -123,6 +123,7 @@ const ProductSchema = new mongoose.Schema({
   duration: { type: String },                 // Service Provider (Service duration)
   roomType: { type: String },                 // Hotel (Room standard/type)
   imageUrl: { type: String },                 // Product Image
+  imageUrls: { type: [String], default: [] }, // Multiple Product Images
   foodType: { type: String },                 // Restaurant (Veg / Non-Veg)
   bookingType: { type: String, enum: ['Slot booking', 'technician booking'], default: 'Slot booking' }, // Service booking type categories
   status: { type: String, default: 'Available' }, // e.g. Available, Out of Stock, Booked

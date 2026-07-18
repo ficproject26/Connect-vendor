@@ -118,6 +118,13 @@ router.get('/products', async (req, res) => {
             : (subNavbarCategory === 'Services' 
                 ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
                 : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60'),
+          images: p.imageUrls && p.imageUrls.length > 0
+            ? p.imageUrls.map(img => img.startsWith('/uploads') ? `${baseUrl}${img}` : img)
+            : [p.imageUrl 
+                ? (p.imageUrl.startsWith('/uploads') ? `${baseUrl}${p.imageUrl}` : p.imageUrl)
+                : (subNavbarCategory === 'Services' 
+                    ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
+                    : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60')],
           rating: 4.5,
           reviews: 120,
           vendorName: vendor.name,

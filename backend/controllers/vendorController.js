@@ -173,7 +173,7 @@ const getVendorSubcategory = (user) => {
 // @access  Private (Vendor)
 const createProduct = async (req, res) => {
   try {
-    const { name, description, price, originalPrice, category, stock, unit, warranty, specialization, pinCode, duration, roomType, imageUrl, foodType, cardTypes, availableTimeSlots, bookingType } = req.body;
+    const { name, description, price, originalPrice, category, stock, unit, warranty, specialization, pinCode, duration, roomType, imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType } = req.body;
 
     if (!name || price === undefined) {
       return res.status(400).json({ success: false, message: 'Name and price are required' });
@@ -197,7 +197,8 @@ const createProduct = async (req, res) => {
       pinCode,
       duration,
       roomType,
-      imageUrl,
+      imageUrl: imageUrl || (imageUrls && imageUrls.length > 0 ? imageUrls[0] : ''),
+      imageUrls: imageUrls || (imageUrl ? [imageUrl] : []),
       foodType,
       bookingType: bookingType || 'Slot booking',
       status: 'Available',
@@ -239,7 +240,7 @@ const getProducts = async (req, res) => {
 // @access  Private (Vendor)
 const updateProduct = async (req, res) => {
   try {
-    const { name, description, price, originalPrice, category, stock, unit, warranty, specialization, pinCode, duration, roomType, status, imageUrl, foodType, cardTypes, availableTimeSlots, bookingType } = req.body;
+    const { name, description, price, originalPrice, category, stock, unit, warranty, specialization, pinCode, duration, roomType, status, imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType } = req.body;
     const product = await Product.findById(req.params.id);
 
     if (!product || product.vendorId !== req.user._id) {
@@ -263,7 +264,8 @@ const updateProduct = async (req, res) => {
         pinCode: pinCode !== undefined ? pinCode : product.pinCode,
         duration: duration !== undefined ? duration : product.duration,
         roomType: roomType !== undefined ? roomType : product.roomType,
-        imageUrl: imageUrl !== undefined ? imageUrl : product.imageUrl,
+        imageUrl: imageUrl !== undefined ? imageUrl : (imageUrls && imageUrls.length > 0 ? imageUrls[0] : product.imageUrl),
+        imageUrls: imageUrls !== undefined ? imageUrls : (imageUrl !== undefined ? (imageUrl ? [imageUrl] : []) : product.imageUrls),
         foodType: foodType !== undefined ? foodType : product.foodType,
         bookingType: bookingType !== undefined ? bookingType : product.bookingType,
         status: status || product.status,

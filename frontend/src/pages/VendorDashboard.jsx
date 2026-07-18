@@ -559,7 +559,7 @@ const VendorDashboard = () => {
   const [isEditItem, setIsEditItem] = useState(false);
   const [itemForm, setItemForm] = useState({
     name: '', description: '', price: '', category: '', stock: '0', unit: 'count',
-    warranty: '', specialization: '', pinCode: '', duration: '', roomType: '', imageUrl: '', status: 'Available',
+    warranty: '', specialization: '', pinCode: '', duration: '', roomType: '', imageUrl: '', imageUrls: [], status: 'Available',
     cardTypes: ['Silver', 'Gold', 'Diamond']
   });
   const [selectedMainCat, setSelectedMainCat] = useState('');
@@ -1744,7 +1744,7 @@ const VendorDashboard = () => {
 
     setItemForm({
       name: '', description: '', price: '', originalPrice: '', category: thirdCatVal, stock: '10', unit: 'count',
-      warranty: '', specialization: '', pinCode: '', duration: '1 hour', roomType: 'Standard', imageUrl: '',
+      warranty: '', specialization: '', pinCode: '', duration: '1 hour', roomType: 'Standard', imageUrl: '', imageUrls: [],
       foodType: 'Veg', status: terms.catalogStatuses[0],
       cardTypes: ['Silver', 'Gold', 'Diamond']
     });
@@ -1778,6 +1778,7 @@ const VendorDashboard = () => {
       duration: item.duration || '',
       roomType: item.roomType || '',
       imageUrl: item.imageUrl || '',
+      imageUrls: item.imageUrls || (item.imageUrl ? [item.imageUrl] : []),
       foodType: item.foodType || 'Veg',
       status: item.status || terms.catalogStatuses[0],
       cardTypes: item.cardTypes || ['Silver', 'Gold', 'Diamond']
@@ -1805,7 +1806,17 @@ const VendorDashboard = () => {
         }
       });
       if (res.data.success) {
-        setItemForm(prev => ({ ...prev, imageUrl: res.data.imageUrl }));
+        setItemForm(prev => {
+          const currentUrls = prev.imageUrls && prev.imageUrls.length > 0
+            ? prev.imageUrls
+            : (prev.imageUrl ? [prev.imageUrl] : []);
+          const newUrls = [...currentUrls, res.data.imageUrl];
+          return {
+            ...prev,
+            imageUrl: newUrls[0],
+            imageUrls: newUrls
+          };
+        });
         setMessage('Image uploaded successfully!');
       }
     } catch (err) {
@@ -7086,42 +7097,64 @@ const VendorDashboard = () => {
           </div>
 
 
-          <div className="space-y-1">
+          <div className="space-y-2">
             <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">{terms.imageLabel}</label>
-            {itemForm.imageUrl ? (
-              <div className="relative w-fit">
-                <img
-                  src={itemForm.imageUrl.startsWith('http') ? itemForm.imageUrl : `${getBackendUrl()}${itemForm.imageUrl}`}
-                  alt="Preview"
-                  className="max-h-32 rounded-xl object-contain border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-1"
-                />
-                <button
-                  type="button"
-                  onClick={() => setItemForm(prev => ({ ...prev, imageUrl: '' }))}
-                  className="absolute -top-1.5 -right-1.5 bg-red-500 hover:bg-red-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-md"
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <div className="relative">
+            <div className="grid grid-cols-3 gap-3">
+              {(itemForm.imageUrls && itemForm.imageUrls.length > 0 
+                ? itemForm.imageUrls 
+                : (itemForm.imageUrl ? [itemForm.imageUrl] : [])
+              ).map((url, idx) => (
+                <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 group">
+                  <img
+                    src={url.startsWith('http') ? url : `${getBackendUrl()}${url}`}
+                    alt={`Preview ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItemForm(prev => {
+                        const currentUrls = prev.imageUrls && prev.imageUrls.length > 0 
+                          ? prev.imageUrls 
+                          : (prev.imageUrl ? [prev.imageUrl] : []);
+                        const newUrls = currentUrls.filter((_, i) => i !== idx);
+                        return {
+                          ...prev,
+                          imageUrls: newUrls,
+                          imageUrl: newUrls.length > 0 ? newUrls[0] : ''
+                        };
+                      });
+                    }}
+                    className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-md cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              
+              <div className="relative aspect-square rounded-xl border border-dashed border-slate-350 dark:border-slate-700 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-950/20 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors">
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleImageUpload}
                   disabled={imageUploading}
-                  className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 dark:file:bg-slate-900 dark:file:text-slate-200 file:cursor-pointer cursor-pointer hover:file:bg-slate-200 dark:hover:file:bg-slate-800 focus:outline-none"
+                  className="absolute inset-0 opacity-0 cursor-pointer"
                 />
-                {imageUploading && (
-                  <p className="text-xs text-primary-500 font-bold mt-1 animate-pulse">Uploading image...</p>
-                )}
-                {error && (
-                  <p className="text-xs text-red-500 font-bold mt-1">⚠️ {error}</p>
-                )}
-                {message && (
-                  <p className="text-xs text-emerald-500 font-bold mt-1">✓ {message}</p>
+                {imageUploading ? (
+                  <span className="text-[10px] text-primary-500 font-bold animate-pulse text-center px-1">Uploading...</span>
+                ) : (
+                  <>
+                    <span className="text-xl font-bold text-slate-400 dark:text-slate-500">+</span>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 text-center">Add Image</span>
+                  </>
                 )}
               </div>
+            </div>
+            {error && (
+              <p className="text-xs text-red-500 font-bold mt-1">⚠️ {error}</p>
+            )}
+            {message && (
+              <p className="text-xs text-emerald-500 font-bold mt-1">✓ {message}</p>
             )}
           </div>
 
