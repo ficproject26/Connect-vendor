@@ -112,6 +112,7 @@ router.get('/products', async (req, res) => {
           price: p.price,
           unit: p.unit || 'count',
           originalPrice: p.originalPrice || Math.round(p.price * 1.25),
+          guests: p.guests || 2,
           category: p.category || vendor.category || 'General',
           subNavbarCategory: subNavbarCategory,
           image: p.imageUrl 

@@ -122,6 +122,7 @@ const ProductSchema = new mongoose.Schema({
   pinCode: { type: String },
   duration: { type: String },                 // Service Provider (Service duration)
   roomType: { type: String },                 // Hotel (Room standard/type)
+  guests: { type: Number, default: 2 },       // Hotel room guest capacity
   imageUrl: { type: String },                 // Product Image
   imageUrls: { type: [String], default: [] }, // Multiple Product Images
   foodType: { type: String },                 // Restaurant (Veg / Non-Veg)

@@ -559,7 +559,7 @@ const VendorDashboard = () => {
   const [isEditItem, setIsEditItem] = useState(false);
   const [itemForm, setItemForm] = useState({
     name: '', description: '', price: '', category: '', stock: '0', unit: 'count',
-    warranty: '', specialization: '', pinCode: '', duration: '', roomType: '', imageUrl: '', imageUrls: [], status: 'Available',
+    warranty: '', specialization: '', pinCode: '', duration: '', roomType: '', guests: '2', imageUrl: '', imageUrls: [], status: 'Available',
     cardTypes: ['Silver', 'Gold', 'Diamond']
   });
   const [selectedMainCat, setSelectedMainCat] = useState('');
@@ -1744,7 +1744,7 @@ const VendorDashboard = () => {
 
     setItemForm({
       name: '', description: '', price: '', originalPrice: '', category: thirdCatVal, stock: '10', unit: 'count',
-      warranty: '', specialization: '', pinCode: '', duration: '1 hour', roomType: 'Standard', imageUrl: '', imageUrls: [],
+      warranty: '', specialization: '', pinCode: '', duration: '1 hour', roomType: 'Standard', guests: '2', imageUrl: '', imageUrls: [],
       foodType: 'Veg', status: terms.catalogStatuses[0],
       cardTypes: ['Silver', 'Gold', 'Diamond']
     });
@@ -1758,9 +1758,16 @@ const VendorDashboard = () => {
 
     let subcatVal = '';
     if (mainCat && COMPLETE_CAT_TAXONOMY[mainCat]) {
-      subcatVal = Object.keys(COMPLETE_CAT_TAXONOMY[mainCat]).find(k => 
-        COMPLETE_CAT_TAXONOMY[mainCat][k].includes(item.category)
-      ) || Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])[0] || '';
+      mainCatKeysLoop:
+      for (const k of Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])) {
+        if (COMPLETE_CAT_TAXONOMY[mainCat][k].includes(item.category)) {
+          subcatVal = k;
+          break mainCatKeysLoop;
+        }
+      }
+      if (!subcatVal) {
+        subcatVal = Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])[0] || '';
+      }
     }
     setSelectedSubcat(subcatVal);
 
@@ -1777,6 +1784,7 @@ const VendorDashboard = () => {
       pinCode: item.pinCode || '',
       duration: item.duration || '',
       roomType: item.roomType || '',
+      guests: item.guests ? item.guests.toString() : '2',
       imageUrl: item.imageUrl || '',
       imageUrls: item.imageUrls || (item.imageUrl ? [item.imageUrl] : []),
       foodType: item.foodType || 'Veg',
@@ -6966,17 +6974,30 @@ const VendorDashboard = () => {
           )}
 
           {vendorType.startsWith('Hotel') && (
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Room Class / Type</label>
-              <input
-                type="text"
-                required
-                value={itemForm.roomType}
-                onChange={e => setItemForm({ ...itemForm, roomType: e.target.value })}
-                className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                placeholder="e.g. Ocean-view Double Bed"
-              />
-            </div>
+            <>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Room Class / Type</label>
+                <input
+                  type="text"
+                  required
+                  value={itemForm.roomType}
+                  onChange={e => setItemForm({ ...itemForm, roomType: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. Ocean-view Double Bed"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Number of Guests</label>
+                <input
+                  type="number"
+                  required
+                  value={itemForm.guests}
+                  onChange={e => setItemForm({ ...itemForm, guests: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. 2"
+                />
+              </div>
+            </>
           )}
 
           {vendorType.startsWith('Electronics') && (
