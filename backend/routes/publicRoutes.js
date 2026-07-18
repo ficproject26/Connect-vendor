@@ -144,6 +144,17 @@ router.get('/products', async (req, res) => {
   }
 });
 
+// DELETE /api/public/products/delete-all
+router.delete('/products/delete-all', async (req, res) => {
+  try {
+    await Product.deleteMany({});
+    res.status(200).json({ success: true, message: 'All products and services deleted successfully' });
+  } catch (error) {
+    console.error('Delete all products error:', error);
+    res.status(500).json({ success: false, message: 'Server error deleting products' });
+  }
+});
+
 // POST /api/public/orders
 router.post('/orders', async (req, res) => {
   console.log('[Sync Request Body]:', JSON.stringify(req.body, null, 2));
