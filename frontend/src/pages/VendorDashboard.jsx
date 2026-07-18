@@ -6855,8 +6855,12 @@ const VendorDashboard = () => {
 
       {/* MODALS */}
 
-      {/* Add / Edit Catalog Item Modal */}
-      <Modal isOpen={isItemModalOpen} onClose={() => setIsItemModalOpen(false)} title={`${isEditItem ? 'Update' : 'Add New'} ${terms.catalogItem}`}>
+      <Modal 
+        isOpen={isItemModalOpen} 
+        onClose={() => setIsItemModalOpen(false)} 
+        title={`${isEditItem ? 'Update' : 'Add New'} ${terms.catalogItem}`}
+        closeOnOutsideClick={false}
+      >
         <form onSubmit={handleSaveItem} className="space-y-4">
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">{terms.nameLabel}</label>
@@ -7158,13 +7162,22 @@ const VendorDashboard = () => {
             )}
           </div>
 
-          <button
-            type="submit"
-            disabled={imageUploading}
-            className="w-full bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 disabled:from-primary-800/40 disabled:to-indigo-800/40 disabled:text-slate-500 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-primary-600/15"
-          >
-            {imageUploading ? 'Uploading Image...' : 'Save Catalog Entry'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setIsItemModalOpen(false)}
+              className="flex-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 font-semibold py-3 rounded-xl transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={imageUploading}
+              className="flex-[2] bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 disabled:from-primary-800/40 disabled:to-indigo-800/40 disabled:text-slate-500 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-primary-600/15"
+            >
+              {imageUploading ? 'Uploading Image...' : 'Save Catalog Entry'}
+            </button>
+          </div>
         </form>
       </Modal>
 
