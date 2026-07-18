@@ -173,7 +173,7 @@ const getVendorSubcategory = (user) => {
 // @access  Private (Vendor)
 const createProduct = async (req, res) => {
   try {
-    const { name, description, price, originalPrice, category, stock, unit, warranty, specialization, pinCode, duration, roomType, guests, imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType } = req.body;
+    const { name, description, price, originalPrice, category, stock, unit, warranty, specialization, pinCode, duration, roomType, guests, amenities, imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType } = req.body;
 
     if (!name || price === undefined) {
       return res.status(400).json({ success: false, message: 'Name and price are required' });
@@ -198,6 +198,7 @@ const createProduct = async (req, res) => {
       duration,
       roomType,
       guests: guests !== undefined ? Number(guests) : undefined,
+      amenities: amenities || [],
       imageUrl: imageUrl || (imageUrls && imageUrls.length > 0 ? imageUrls[0] : ''),
       imageUrls: imageUrls || (imageUrl ? [imageUrl] : []),
       foodType,
@@ -241,7 +242,7 @@ const getProducts = async (req, res) => {
 // @access  Private (Vendor)
 const updateProduct = async (req, res) => {
   try {
-    const { name, description, price, originalPrice, category, stock, unit, warranty, specialization, pinCode, duration, roomType, guests, status, imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType } = req.body;
+    const { name, description, price, originalPrice, category, stock, unit, warranty, specialization, pinCode, duration, roomType, guests, amenities, status, imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType } = req.body;
     const product = await Product.findById(req.params.id);
 
     if (!product || product.vendorId !== req.user._id) {
@@ -266,6 +267,7 @@ const updateProduct = async (req, res) => {
         duration: duration !== undefined ? duration : product.duration,
         roomType: roomType !== undefined ? roomType : product.roomType,
         guests: guests !== undefined ? Number(guests) : product.guests,
+        amenities: amenities !== undefined ? amenities : product.amenities,
         imageUrl: imageUrl !== undefined ? imageUrl : (imageUrls && imageUrls.length > 0 ? imageUrls[0] : product.imageUrl),
         imageUrls: imageUrls !== undefined ? imageUrls : (imageUrl !== undefined ? (imageUrl ? [imageUrl] : []) : product.imageUrls),
         foodType: foodType !== undefined ? foodType : product.foodType,

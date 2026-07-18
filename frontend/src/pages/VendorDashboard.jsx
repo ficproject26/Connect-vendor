@@ -559,7 +559,7 @@ const VendorDashboard = () => {
   const [isEditItem, setIsEditItem] = useState(false);
   const [itemForm, setItemForm] = useState({
     name: '', description: '', price: '', category: '', stock: '0', unit: 'count',
-    warranty: '', specialization: '', pinCode: '', duration: '', roomType: '', guests: '2', imageUrl: '', imageUrls: [], status: 'Available',
+    warranty: '', specialization: '', pinCode: '', duration: '', roomType: '', guests: '2', amenities: [], imageUrl: '', imageUrls: [], status: 'Available',
     cardTypes: ['Silver', 'Gold', 'Diamond']
   });
   const [selectedMainCat, setSelectedMainCat] = useState('');
@@ -1744,7 +1744,7 @@ const VendorDashboard = () => {
 
     setItemForm({
       name: '', description: '', price: '', originalPrice: '', category: thirdCatVal, stock: '10', unit: 'count',
-      warranty: '', specialization: '', pinCode: '', duration: '1 hour', roomType: 'Standard', guests: '2', imageUrl: '', imageUrls: [],
+      warranty: '', specialization: '', pinCode: '', duration: '1 hour', roomType: 'Standard', guests: '2', amenities: [], imageUrl: '', imageUrls: [],
       foodType: 'Veg', status: terms.catalogStatuses[0],
       cardTypes: ['Silver', 'Gold', 'Diamond']
     });
@@ -1785,6 +1785,7 @@ const VendorDashboard = () => {
       duration: item.duration || '',
       roomType: item.roomType || '',
       guests: item.guests ? item.guests.toString() : '2',
+      amenities: item.amenities || [],
       imageUrl: item.imageUrl || '',
       imageUrls: item.imageUrls || (item.imageUrl ? [item.imageUrl] : []),
       foodType: item.foodType || 'Veg',
@@ -6998,6 +6999,37 @@ const VendorDashboard = () => {
                 />
               </div>
             </>
+          )}
+
+          {(vendorType.startsWith('Hotel') || vendorType.startsWith('Travel')) && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Available Amenities</label>
+              <div className="grid grid-cols-2 gap-2 bg-slate-50/50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200/50 dark:border-slate-800 animate-fadeIn">
+                {(vendorType.startsWith('Hotel') 
+                  ? ['Wi-Fi', 'Room Service', 'AC', 'Gym', 'Spa', 'Laundry', '24/7 Security', 'Restaurant', 'Parking', 'Power Backup']
+                  : ['Wi-Fi', 'Sleeper Berth', 'Blanket & Pillow', 'Charging Point', 'Water Bottle', 'CCTV', 'GPS Tracking', 'AC', 'Gym', 'Spa', 'Laundry', '24/7 Security', 'Restaurant', 'Parking', 'Power Backup']
+                ).map(amenity => {
+                  const hasAmenity = (itemForm.amenities || []).includes(amenity);
+                  return (
+                    <label key={amenity} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-350 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasAmenity}
+                        onChange={(e) => {
+                          const current = itemForm.amenities || [];
+                          const updated = e.target.checked 
+                            ? [...current, amenity] 
+                            : current.filter(x => x !== amenity);
+                          setItemForm({ ...itemForm, amenities: updated });
+                        }}
+                        className="rounded text-primary-500 focus:ring-primary-500"
+                      />
+                      <span>{amenity}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {vendorType.startsWith('Electronics') && (
