@@ -42,20 +42,21 @@ const getSubNavbarCategory = (baseVendorType, category) => {
   const type = (baseVendorType || '').toLowerCase();
   const cat = (category || '').toLowerCase();
 
+  // 1. Check vendor type / business type first (strongest indicator)
+  if (type.includes('grocery') || type.includes('pharmacy') || type.includes('daily needs') || type.includes('dailyneeds')) return 'Daily Needs';
   if (type.includes('restaurant') || type.includes('food')) return 'Food';
   if (type.includes('hotel') || type.includes('stay')) return 'Stay';
   if (type.includes('travel')) return 'Travel';
-  if (type.includes('job')) return 'Jobs';
-  if (type.includes('pharmacy') || type.includes('grocery') || type.includes('daily needs')) return 'Daily Needs';
-  if (type.includes('service') || type.includes('hospital') || type.includes('education')) return 'Services';
-  if (type.includes('electronics') || type.includes('furniture') || type.includes('store') || type.includes('products')) return 'Products';
-  
-  if (cat.includes('food') || cat.includes('restaurant')) return 'Food';
-  if (cat.includes('stay') || cat.includes('hotel')) return 'Stay';
-  if (cat.includes('travel')) return 'Travel';
+  if (type.includes('hospital') || type.includes('service') || type.includes('education')) return 'Services';
+  if (type.includes('store') || type.includes('electronics') || type.includes('furniture') || type.includes('product')) return 'Products';
+
+  // 2. Fallback to product category name
+  if (cat.includes('food') || cat.includes('restaurant') || cat.includes('dining') || cat.includes('dish')) return 'Food';
+  if (cat.includes('stay') || cat.includes('hotel') || cat.includes('room') || cat.includes('accommodation')) return 'Stay';
+  if (cat.includes('travel') || cat.includes('cab') || cat.includes('bus') || cat.includes('flight')) return 'Travel';
   if (cat.includes('job') || cat.includes('it jobs')) return 'Jobs';
-  if (cat.includes('grocery') || cat.includes('pharmacy') || cat.includes('healthcare') || cat.includes('daily needs')) return 'Daily Needs';
-  if (cat.includes('service') || cat.includes('education')) return 'Services';
+  if (cat.includes('grocery') || cat.includes('pharmacy') || cat.includes('healthcare') || cat.includes('daily needs') || cat.includes('rice') || cat.includes('medicine')) return 'Daily Needs';
+  if (cat.includes('service') || cat.includes('hospital') || cat.includes('education') || cat.includes('doctor') || cat.includes('clinic')) return 'Services';
 
   return 'Products';
 };
@@ -63,8 +64,8 @@ const getSubNavbarCategory = (baseVendorType, category) => {
 // GET /api/public/products
 router.get('/products', async (req, res) => {
   try {
-    // 1. Fetch all approved vendors
-    const approvedVendors = await User.find({ role: 'Vendor', status: 'Approved' });
+    // 1. Fetch all vendors (Approved, Pending, or Rejected for development/testing visibility)
+    const approvedVendors = await User.find({ role: 'Vendor' });
     const vendorMap = {};
     approvedVendors.forEach(vendor => {
       const vendorIdStr = vendor._id.toString();

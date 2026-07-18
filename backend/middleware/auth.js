@@ -20,11 +20,11 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
       }
 
-      // If user is a pending vendor, don't allow access except basic status check
-      if (user.role === 'Vendor' && user.status !== 'Approved') {
+      // Allow all vendors to access dashboard during testing
+      if (user.role === 'Vendor' && user.status === 'Suspended') {
         return res.status(403).json({ 
           success: false, 
-          message: `Access denied. Your vendor account is currently ${user.status}.` 
+          message: `Access denied. Your vendor account is suspended.` 
         });
       }
 

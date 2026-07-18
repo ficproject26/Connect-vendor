@@ -174,7 +174,7 @@ const getMemberCard = async (req, res) => {
 // @access  Private (Member)
 const getParticipatingVendors = async (req, res) => {
   try {
-    const vendors = await User.find({ role: 'Vendor', status: 'Approved' });
+    const vendors = await User.find({ role: 'Vendor' });
     
     // Format vendor list for member display
     const formatted = [];
@@ -236,7 +236,6 @@ const redeemDiscount = async (req, res) => {
     // Get vendor details
     const vendor = await User.findOne({ 
       role: 'Vendor', 
-      status: 'Approved',
       $or: [ { _id: vendorId }, { 'businesses._id': vendorId } ]
     });
     if (!vendor) {
