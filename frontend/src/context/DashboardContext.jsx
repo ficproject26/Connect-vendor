@@ -54,6 +54,9 @@ const getProductMainCategory = (itemCategory, vType) => {
   if (type.startsWith('Education')) {
     return 'Education';
   }
+  if (type.startsWith('Travel Agency')) {
+    return 'Travel';
+  }
   if (type.startsWith('Hospital') || type.startsWith('Service')) {
     return 'Services';
   }

@@ -785,8 +785,13 @@ export const getBaseVendorType = (vendorType, category, subcategory) => {
     return "Hotel Vendor";
   }
 
-  // 6. Travel / Services fallback
-  if (type === "Travel" || type === "Services") {
+  // 6. Travel
+  if (type === "Travel") {
+    return "Travel Agency Vendor";
+  }
+
+  // 7. Services fallback
+  if (type === "Services") {
     return "Service Provider Vendor";
   }
 

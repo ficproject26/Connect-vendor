@@ -55,6 +55,9 @@ const getProductMainCategory = (itemCategory, vType) => {
   if (type.startsWith('Education')) {
     return 'Education';
   }
+  if (type.startsWith('Travel Agency')) {
+    return 'Travel';
+  }
   if (type.startsWith('Hospital') || type.startsWith('Service')) {
     return 'Services';
   }
@@ -6974,7 +6977,7 @@ const VendorDashboard = () => {
             </div>
           )}
 
-          {vendorType.startsWith('Hotel') && (
+          {(vendorType.startsWith('Hotel') || selectedMainCat === 'Stay') && (
             <>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Room Class / Type</label>
@@ -7001,11 +7004,11 @@ const VendorDashboard = () => {
             </>
           )}
 
-          {(vendorType.startsWith('Hotel') || vendorType.startsWith('Travel')) && (
+          {(vendorType.startsWith('Hotel') || vendorType.startsWith('Travel') || selectedMainCat === 'Stay' || selectedMainCat === 'Travel') && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Available Amenities</label>
               <div className="grid grid-cols-2 gap-2 bg-slate-50/50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200/50 dark:border-slate-800 animate-fadeIn">
-                {(vendorType.startsWith('Hotel') 
+                {((vendorType.startsWith('Hotel') || selectedMainCat === 'Stay') 
                   ? ['Wi-Fi', 'Room Service', 'AC', 'Gym', 'Spa', 'Laundry', '24/7 Security', 'Restaurant', 'Parking', 'Power Backup']
                   : ['Wi-Fi', 'Sleeper Berth', 'Blanket & Pillow', 'Charging Point', 'Water Bottle', 'CCTV', 'GPS Tracking', 'AC', 'Gym', 'Spa', 'Laundry', '24/7 Security', 'Restaurant', 'Parking', 'Power Backup']
                 ).map(amenity => {
