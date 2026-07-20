@@ -7010,7 +7010,7 @@ const VendorDashboard = () => {
               <div className="grid grid-cols-2 gap-2 bg-slate-50/50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200/50 dark:border-slate-800 animate-fadeIn">
                 {((vendorType.startsWith('Hotel') || selectedMainCat === 'Stay') 
                   ? ['Wi-Fi', 'Room Service', 'AC', 'Gym', 'Spa', 'Laundry', '24/7 Security', 'Restaurant', 'Parking', 'Power Backup']
-                  : ['Wi-Fi', 'Sleeper Berth', 'Blanket & Pillow', 'Charging Point', 'Water Bottle', 'CCTV', 'GPS Tracking', 'AC', 'Gym', 'Spa', 'Laundry', '24/7 Security', 'Restaurant', 'Parking', 'Power Backup']
+                  : ['Wi-Fi', 'Sleeper Berth', 'Blanket & Pillow', 'Charging Point', 'Water Bottle', 'CCTV', 'GPS Tracking', 'AC', '24/7 Security', 'Power Backup']
                 ).map(amenity => {
                   const hasAmenity = (itemForm.amenities || []).includes(amenity);
                   return (
