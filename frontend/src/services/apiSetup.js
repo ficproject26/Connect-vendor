@@ -39,18 +39,74 @@ axios.interceptors.request.use(
   }
 );
 
-// Set up Axios response interceptor to handle auth errors (e.g. user deleted or token expired)
+// --- RETRY LOGIC for sleeping Render backend ---
+// Retry up to 3 times with increasing delay when backend is waking up
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 3000; // start with 3 seconds
+
 axios.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response && (error.response.status === 401 || error.response.data?.message === 'Not authorized, user not found')) {
-      console.warn('Session expired or user deleted, clearing storage and logging out...');
-      localStorage.removeItem('vendor_user');
-      localStorage.removeItem('vendor_token');
-      localStorage.removeItem('vendor_card');
-      localStorage.removeItem('active_business_id');
-      window.location.href = '/';
+  async (error) => {
+    const config = error.config;
+
+    // Don't retry if no config, or already retried max times, or it's a client error (4xx)
+    if (!config || config.__retryCount >= MAX_RETRIES) {
+      // Handle auth errors
+      if (error.response && (error.response.status === 401 || error.response.data?.message === 'Not authorized, user not found')) {
+        console.warn('Session expired or user deleted, clearing storage and logging out...');
+        localStorage.removeItem('vendor_user');
+        localStorage.removeItem('vendor_token');
+        localStorage.removeItem('vendor_card');
+        localStorage.removeItem('active_business_id');
+        window.location.href = '/';
+      }
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    // Only retry on network errors (no response) or 5xx server errors (backend waking up)
+    const isNetworkError = !error.response;
+    const isServerError = error.response && error.response.status >= 500;
+
+    if (!isNetworkError && !isServerError) {
+      // 4xx errors (auth, validation, etc.) — don't retry, handle auth
+      if (error.response && (error.response.status === 401 || error.response.data?.message === 'Not authorized, user not found')) {
+        console.warn('Session expired or user deleted, clearing storage and logging out...');
+        localStorage.removeItem('vendor_user');
+        localStorage.removeItem('vendor_token');
+        localStorage.removeItem('vendor_card');
+        localStorage.removeItem('active_business_id');
+        window.location.href = '/';
+      }
+      return Promise.reject(error);
+    }
+
+    // Increment retry count
+    config.__retryCount = (config.__retryCount || 0) + 1;
+    const delay = RETRY_DELAY_MS * config.__retryCount; // 3s, 6s, 9s
+
+    console.warn(
+      `⏳ Backend not responding (attempt ${config.__retryCount}/${MAX_RETRIES}). Retrying in ${delay / 1000}s...`
+    );
+
+    // Wait before retrying
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    return axios(config);
   }
 );
+
+// --- WAKE-UP PING ---
+// When the app loads, send a lightweight ping to wake up the Render backend
+// This runs once so that by the time the user interacts, the backend is ready
+const wakeUpBackend = async () => {
+  try {
+    const backendUrl = getBackendUrl();
+    await fetch(`${backendUrl}/`, { method: 'GET', mode: 'cors' });
+    console.log('✅ Backend is awake');
+  } catch (err) {
+    console.warn('⏳ Backend is waking up, it may take a moment...');
+  }
+};
+
+// Fire the wake-up ping immediately on import
+wakeUpBackend();

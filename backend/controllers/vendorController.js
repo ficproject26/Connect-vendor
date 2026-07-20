@@ -220,16 +220,25 @@ const createProduct = async (req, res) => {
 // @access  Private (Vendor)
 const getProducts = async (req, res) => {
   try {
-    const vendorId = req.user._id;
-    const subcategory = getVendorSubcategory(req.user);
-    const query = { vendorId };
-    console.log('=== GET PRODUCTS DEBUG ===');
-    console.log('Query:', query);
-    console.log('User ID:', req.user._id);
-    console.log('User subcategory:', req.user.subcategory);
-    console.log('User parentUserId:', req.user.parentUserId);
-    console.log('==========================');
-    const products = await Product.find(query);
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const businessIds = [parentUserId.toString()];
+    if (user.businesses && user.businesses.length > 0) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+      });
+    }
+
+    const products = await Product.find({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ]
+    });
     res.status(200).json({ success: true, data: products });
   } catch (error) {
     console.error('Get Products Error:', error);
@@ -444,8 +453,25 @@ const updateOrderStatus = async (req, res) => {
 // @access  Private (Vendor)
 const getCustomers = async (req, res) => {
   try {
-    const vendorId = req.user._id;
-    const customers = await Customer.find({ vendorId });
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const businessIds = [parentUserId.toString()];
+    if (user.businesses && user.businesses.length > 0) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+      });
+    }
+
+    const customers = await Customer.find({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ]
+    });
     res.status(200).json({ success: true, data: customers });
   } catch (error) {
     console.error('Get Customers Error:', error);
@@ -484,8 +510,22 @@ const createDeliveryPartner = async (req, res) => {
 // @access  Private (Vendor)
 const getDeliveryPartners = async (req, res) => {
   try {
-    const vendorId = req.user._id;
-    const partners = await DeliveryPartner.find({ vendorId });
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const businessIds = [parentUserId.toString()];
+    if (user.businesses && user.businesses.length > 0) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+      });
+    }
+
+    const partners = await DeliveryPartner.find({
+      vendorId: { $in: businessIds }
+    });
     res.status(200).json({ success: true, data: partners });
   } catch (error) {
     console.error('Get Delivery Partners Error:', error);
