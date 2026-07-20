@@ -220,23 +220,11 @@ const createProduct = async (req, res) => {
 // @access  Private (Vendor)
 const getProducts = async (req, res) => {
   try {
-    const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(parentUserId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Vendor user not found' });
-    }
-
-    const businessIds = [parentUserId.toString()];
-    if (user.businesses && user.businesses.length > 0) {
-      user.businesses.forEach(b => {
-        if (b._id) businessIds.push(b._id.toString());
-      });
-    }
-
+    const vendorId = req.user._id;
     const products = await Product.find({
       $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
+        { vendorId: vendorId },
+        { vendor_id: vendorId }
       ]
     });
     res.status(200).json({ success: true, data: products });

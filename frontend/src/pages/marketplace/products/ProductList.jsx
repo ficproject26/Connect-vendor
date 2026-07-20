@@ -208,22 +208,25 @@ const ProductList = () => {
 
                 {/* ── Catalog Summary Cards ── */}
                 {(() => {
+                  const savedActiveId = localStorage.getItem('active_business_id') || activeBusinessId || user?.activeBusinessId;
+                  const bizOrders = orders.filter(o => !savedActiveId || o.vendorId === savedActiveId || o.vendor_id === savedActiveId);
+
                   const totalItems = catalog.length;
-                  const totalOrders = orders.length;
+                  const totalOrders = bizOrders.length;
                   
                   // Calculate revenue from completed orders
                   const completedStatuses = ['Completed', 'Delivered', 'Checked Out', 'Hired', 'Enrolled'];
-                  const revenue = orders
+                  const revenue = bizOrders
                     .filter(o => completedStatuses.includes(o.status))
                     .reduce((sum, o) => sum + (o.totalAmount || o.total || 0), 0);
                   
                   // Pending orders
                   const pendingStatuses = ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'];
-                  const pendingCount = orders.filter(o => pendingStatuses.includes(o.status)).length;
+                  const pendingCount = bizOrders.filter(o => pendingStatuses.includes(o.status)).length;
                   
                   // Top selling item
                   const itemSalesMap = {};
-                  orders.forEach(o => {
+                  bizOrders.forEach(o => {
                     if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
                       o.items?.forEach(item => {
                         const name = item.name || 'Unknown';
