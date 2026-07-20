@@ -5,7 +5,7 @@ import {
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
-  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers
+  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star
 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
@@ -205,6 +205,116 @@ const ProductList = () => {
                     <Plus size={16} /> Add {terms.catalogItem}
                   </button>
                 </div>
+
+                {/* ── Catalog Summary Cards ── */}
+                {(() => {
+                  const totalItems = catalog.length;
+                  const totalOrders = orders.length;
+                  
+                  // Calculate revenue from completed orders
+                  const completedStatuses = ['Completed', 'Delivered', 'Checked Out', 'Hired', 'Enrolled'];
+                  const revenue = orders
+                    .filter(o => completedStatuses.includes(o.status))
+                    .reduce((sum, o) => sum + (o.totalAmount || o.total || 0), 0);
+                  
+                  // Pending orders
+                  const pendingStatuses = ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'];
+                  const pendingCount = orders.filter(o => pendingStatuses.includes(o.status)).length;
+                  
+                  // Top selling item
+                  const itemSalesMap = {};
+                  orders.forEach(o => {
+                    if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+                      o.items?.forEach(item => {
+                        const name = item.name || 'Unknown';
+                        itemSalesMap[name] = (itemSalesMap[name] || 0) + (item.quantity || 1);
+                      });
+                    }
+                  });
+                  const topSelling = Object.entries(itemSalesMap).sort((a, b) => b[1] - a[1])[0];
+
+                  // Dynamic labels based on vendor type
+                  const type = vendorType || '';
+                  let pendingLabel = 'Pending Delivery';
+                  if (type.startsWith('Hospital')) pendingLabel = 'Pending Appointments';
+                  else if (type.startsWith('Hotel')) pendingLabel = 'Pending Check-ins';
+                  else if (type.startsWith('Service Provider')) pendingLabel = 'Pending Bookings';
+                  else if (type.startsWith('Job')) pendingLabel = 'Pending Applications';
+                  else if (type.startsWith('Education')) pendingLabel = 'Pending Enrollments';
+                  else if (type.startsWith('Restaurant')) pendingLabel = 'Pending Orders';
+
+                  return (
+                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                      {/* Total Items */}
+                      <div className="p-4 rounded-2xl bg-blue-50/70 dark:bg-blue-950/25 border border-blue-100 dark:border-blue-900/30 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-xl">
+                            <Package size={20} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] text-blue-600/80 dark:text-blue-300/80 uppercase font-bold tracking-wider truncate">Total {terms.catalogName}</p>
+                            <p className="text-xl font-extrabold text-blue-900 dark:text-blue-100 tracking-tight">{totalItems}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Total Orders */}
+                      <div className="p-4 rounded-2xl bg-purple-50/70 dark:bg-purple-950/25 border border-purple-100 dark:border-purple-900/30 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-xl">
+                            <ClipboardList size={20} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] text-purple-600/80 dark:text-purple-300/80 uppercase font-bold tracking-wider truncate">Total {terms.ordersName}</p>
+                            <p className="text-xl font-extrabold text-purple-900 dark:text-purple-100 tracking-tight">{totalOrders}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Top Selling */}
+                      <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/25 border border-amber-100 dark:border-amber-900/30 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-xl">
+                            <Star size={20} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] text-amber-600/80 dark:text-amber-300/80 uppercase font-bold tracking-wider truncate">Top {terms.catalogItem}</p>
+                            <p className="text-sm font-extrabold text-amber-900 dark:text-amber-100 tracking-tight truncate" title={topSelling ? topSelling[0] : 'N/A'}>
+                              {topSelling ? topSelling[0] : 'N/A'}
+                            </p>
+                            {topSelling && <p className="text-[10px] text-amber-500 dark:text-amber-400/70 font-semibold">{topSelling[1]} sold</p>}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Revenue */}
+                      <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/25 border border-emerald-100 dark:border-emerald-900/30 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                            <IndianRupee size={20} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] text-emerald-600/80 dark:text-emerald-300/80 uppercase font-bold tracking-wider truncate">{terms.catalogItem} Revenue</p>
+                            <p className="text-xl font-extrabold text-emerald-900 dark:text-emerald-100 tracking-tight">₹{revenue.toLocaleString('en-IN')}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pending */}
+                      <div className="p-4 rounded-2xl bg-orange-50/70 dark:bg-orange-950/25 border border-orange-100 dark:border-orange-900/30 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 rounded-xl">
+                            <Clock size={20} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] text-orange-600/80 dark:text-orange-300/80 uppercase font-bold tracking-wider truncate">{pendingLabel}</p>
+                            <p className="text-xl font-extrabold text-orange-900 dark:text-orange-100 tracking-tight">{pendingCount}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Main Two-Column Layout */}
                 <div className="flex flex-col md:flex-row gap-6 items-start">
