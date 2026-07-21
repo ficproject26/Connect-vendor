@@ -490,7 +490,7 @@ const VendorDashboard = () => {
       return ['dashboard', 'discounts', 'redeem', 'payments', 'renewal', 'Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'].includes(tab);
     }
     if (role === 'Vendor') {
-      const allowed = ['dashboard', 'catalog', 'orders', 'customers', 'payments', 'card', 'profile', 'business'];
+      const allowed = ['dashboard', 'catalog', 'orders', 'customers', 'payments', 'profile', 'business'];
       if (!['Hotel Vendor', 'Education Vendor', 'Job Vendor'].includes(vType)) {
         allowed.push('delivery');
       }
@@ -2297,7 +2297,6 @@ const VendorDashboard = () => {
                 items.push({ id: 'delivery', name: partnerLabel, icon: Truck });
               }
               items.push({ id: 'payments', name: 'Payments', icon: IndianRupee });
-              items.push({ id: 'card', name: 'Membership Card', icon: CreditCard });
               items.push({ id: 'business', name: 'Business', icon: Store });
               items.push({ id: 'profile', name: 'Business Settings', icon: User });
               return items;

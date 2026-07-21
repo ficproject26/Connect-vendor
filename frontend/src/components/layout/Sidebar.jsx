@@ -72,7 +72,6 @@ const Sidebar = () => {
       items.push({ id: 'delivery', name: partnerLabel, icon: Truck });
     }
     items.push({ id: 'payments', name: 'Payments', icon: IndianRupee });
-    items.push({ id: 'card', name: 'Membership Card', icon: CreditCard });
     items.push({ id: 'business', name: 'Business', icon: Store });
     items.push({ id: 'profile', name: 'Business Settings', icon: User });
     return items;
