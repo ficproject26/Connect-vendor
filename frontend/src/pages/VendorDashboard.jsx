@@ -9376,32 +9376,11 @@ const VendorDashboard = () => {
               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-black w-6 h-6 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-md">
                 {cart.reduce((sum, item) => sum + item.quantity, 0)}
               </span>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Shopping Cart Modal */}
-      <Modal
-        isOpen={isCartOpen}
-        onClose={() => setIsCartOpen(false)}
-        title="Shopping Cart"
-      >
-        <div className="space-y-4 text-left">
-          {cart.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-              <ShoppingBag className="mx-auto w-12 h-12 text-slate-350 dark:text-slate-700 mb-2" />
-              <p className="font-semibold text-sm">Your cart is empty</p>
-              <p className="text-xs mt-1">Browse products and click 'Add to Cart'</p>
-            </div>
-          ) : (
-            <>
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-                {cart.map(item => {
-                  const discountPct = card ? card.discountPercent : 0;
-                  const finalPrice = Math.round(item.price * (1 - discountPct / 100));
+                     {cart.map(item => {
+                  const discountPct = item.discountPercent || 0;
+                  const finalPrice = Math.round((item.price || 0) * (1 - discountPct / 100));
                   return (
-                    <div key={item._id} className="flex gap-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 items-center">
+                    <div key={item._id || item.id} className="flex gap-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 items-center">
                       <div className="flex-1 min-w-0">
                         <h6 className="font-bold text-sm text-slate-900 dark:text-white truncate">{item.name}</h6>
                         <div className="flex items-center gap-1.5 mt-1">
@@ -9414,9 +9393,9 @@ const VendorDashboard = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            setCart(prev => prev.map(i => i._id === item._id ? { ...i, quantity: Math.max(1, i.quantity - 1) } : i));
+                            setCart(prev => prev.map(i => (i._id === item._id || i.id === item.id) ? { ...i, quantity: Math.max(1, i.quantity - 1) } : i));
                           }}
-                          className="w-6 h-6 bg-slate-200 dark:bg-slate-850 rounded-lg text-slate-800 dark:text-slate-200 flex items-center justify-center font-bold text-xs hover:bg-slate-350 dark:hover:bg-slate-800"
+                          className="w-6 h-6 bg-slate-200 dark:bg-slate-855 rounded-lg text-slate-800 dark:text-slate-200 flex items-center justify-center font-bold text-xs hover:bg-slate-350 dark:hover:bg-slate-800"
                         >
                           -
                         </button>
@@ -9424,16 +9403,16 @@ const VendorDashboard = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            setCart(prev => prev.map(i => i._id === item._id ? { ...i, quantity: i.quantity + 1 } : i));
+                            setCart(prev => prev.map(i => (i._id === item._id || i.id === item.id) ? { ...i, quantity: i.quantity + 1 } : i));
                           }}
-                          className="w-6 h-6 bg-slate-200 dark:bg-slate-850 rounded-lg text-slate-800 dark:text-slate-200 flex items-center justify-center font-bold text-xs hover:bg-slate-350 dark:hover:bg-slate-800"
+                          className="w-6 h-6 bg-slate-200 dark:bg-slate-855 rounded-lg text-slate-800 dark:text-slate-200 flex items-center justify-center font-bold text-xs hover:bg-slate-350 dark:hover:bg-slate-800"
                         >
                           +
                         </button>
                         <button
                           type="button"
                           onClick={() => {
-                            setCart(prev => prev.filter(i => i._id !== item._id));
+                            setCart(prev => prev.filter(i => (i._id || i.id) !== (item._id || item.id)));
                           }}
                           className="text-red-500 hover:text-red-600 p-1.5 ml-1"
                           title="Remove item"
@@ -9450,13 +9429,13 @@ const VendorDashboard = () => {
                 <div className="flex justify-between items-center text-sm">
                   <span className="font-bold text-slate-500 dark:text-slate-400">Total Items:</span>
                   <span className="font-extrabold font-mono text-slate-900 dark:text-white">
-                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                    {cart.reduce((sum, item) => sum + (item.quantity || 1), 0)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-base">
                   <span className="font-bold text-slate-900 dark:text-white">Estimated Total:</span>
                   <span className="font-black font-mono text-emerald-600 dark:text-emerald-450">
-                    ₹{cart.reduce((sum, item) => sum + Math.round(item.price * (1 - (card ? card.discountPercent : 0) / 100)) * item.quantity, 0)}
+                    ₹{cart.reduce((sum, item) => sum + Math.round((item.price || 0) * (1 - (item.discountPercent || 0) / 100)) * (item.quantity || 1), 0).toLocaleString()}
                   </span>
                 </div>
                 
