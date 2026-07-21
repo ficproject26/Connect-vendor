@@ -9374,9 +9374,30 @@ const VendorDashboard = () => {
             <ShoppingBag size={24} />
             {cart.length > 0 && (
               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-black w-6 h-6 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-md">
-                {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                {cart.reduce((sum, item) => sum + (item.quantity || 1), 0)}
               </span>
-                     {cart.map(item => {
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Shopping Cart Modal */}
+      <Modal
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        title="Shopping Cart"
+      >
+        <div className="space-y-4 text-left">
+          {cart.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+              <ShoppingBag className="mx-auto w-12 h-12 text-slate-350 dark:text-slate-700 mb-2" />
+              <p className="font-semibold text-sm">Your cart is empty</p>
+              <p className="text-xs mt-1">Browse products and click 'Add to Cart'</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                {cart.map(item => {
                   const discountPct = item.discountPercent || 0;
                   const finalPrice = Math.round((item.price || 0) * (1 - discountPct / 100));
                   return (
@@ -9454,8 +9475,8 @@ const VendorDashboard = () => {
                       setError('');
                       try {
                         for (const item of cart) {
-                          const discountPct = card ? card.discountPercent : 0;
-                          const finalPrice = Math.round(item.price * (1 - discountPct / 100));
+                          const discountPct = item.discountPercent || 0;
+                          const finalPrice = Math.round((item.price || 0) * (1 - discountPct / 100));
                           await axios.post(`http://${window.location.hostname}:8000/api/member/redeem`, {
                             vendorId: item.vendorId,
                             productId: item._id,
