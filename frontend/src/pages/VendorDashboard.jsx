@@ -6940,14 +6940,19 @@ const VendorDashboard = () => {
 
               <div className="space-y-1 animate-fadeIn">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Type</label>
-                <input
-                  type="text"
+                <select
                   required
                   value={itemForm.jobType}
                   onChange={e => setItemForm({ ...itemForm, jobType: e.target.value })}
-                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                  placeholder="e.g. Full-time / Part-time / Remote"
-                />
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
+                >
+                  <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">-- Select Job Type --</option>
+                  <option value="Full-time" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Full-time</option>
+                  <option value="Part-time" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Part-time</option>
+                  <option value="Remote" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Remote</option>
+                  <option value="Internship" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Internship</option>
+                  <option value="Hybrid" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Hybrid</option>
+                </select>
               </div>
 
               <div className="space-y-1 animate-fadeIn">
