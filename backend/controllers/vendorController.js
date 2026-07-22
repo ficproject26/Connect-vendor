@@ -173,7 +173,13 @@ const getVendorSubcategory = (user) => {
 // @access  Private (Vendor)
 const createProduct = async (req, res) => {
   try {
-    const { name, description, price, originalPrice, category, stock, unit, warranty, specialization, pinCode, duration, roomType, guests, amenities, imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType } = req.body;
+    const { 
+      name, description, price, originalPrice, category, stock, unit, warranty, 
+      specialization, pinCode, duration, roomType, guests, amenities, imageUrl, 
+      imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
+      jobType, jobLocation, experience, skills, deadline, applicationTips, 
+      qualification, linkedProfile, contactNumber, mailId, department
+    } = req.body;
 
     if (!name || price === undefined) {
       return res.status(400).json({ success: false, message: 'Name and price are required' });
@@ -205,7 +211,18 @@ const createProduct = async (req, res) => {
       bookingType: bookingType || 'Slot booking',
       status: 'Available',
       cardTypes: cardTypes || ['Silver', 'Gold', 'Diamond'],
-      availableTimeSlots: availableTimeSlots || undefined
+      availableTimeSlots: availableTimeSlots || undefined,
+      jobType,
+      jobLocation,
+      experience,
+      skills,
+      deadline,
+      applicationTips,
+      qualification,
+      linkedProfile,
+      contactNumber,
+      mailId,
+      department
     });
 
     res.status(201).json({ success: true, message: 'Item created successfully', data: product });
@@ -239,7 +256,13 @@ const getProducts = async (req, res) => {
 // @access  Private (Vendor)
 const updateProduct = async (req, res) => {
   try {
-    const { name, description, price, originalPrice, category, stock, unit, warranty, specialization, pinCode, duration, roomType, guests, amenities, status, imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType } = req.body;
+    const { 
+      name, description, price, originalPrice, category, stock, unit, warranty, 
+      specialization, pinCode, duration, roomType, guests, amenities, status, 
+      imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
+      jobType, jobLocation, experience, skills, deadline, applicationTips, 
+      qualification, linkedProfile, contactNumber, mailId, department
+    } = req.body;
     const product = await Product.findById(req.params.id);
 
     if (!product || product.vendorId !== req.user._id) {
@@ -271,7 +294,18 @@ const updateProduct = async (req, res) => {
         bookingType: bookingType !== undefined ? bookingType : product.bookingType,
         status: status || product.status,
         cardTypes: cardTypes !== undefined ? cardTypes : product.cardTypes,
-        availableTimeSlots: availableTimeSlots !== undefined ? availableTimeSlots : product.availableTimeSlots
+        availableTimeSlots: availableTimeSlots !== undefined ? availableTimeSlots : product.availableTimeSlots,
+        jobType: jobType !== undefined ? jobType : product.jobType,
+        jobLocation: jobLocation !== undefined ? jobLocation : product.jobLocation,
+        experience: experience !== undefined ? experience : product.experience,
+        skills: skills !== undefined ? skills : product.skills,
+        deadline: deadline !== undefined ? deadline : product.deadline,
+        applicationTips: applicationTips !== undefined ? applicationTips : product.applicationTips,
+        qualification: qualification !== undefined ? qualification : product.qualification,
+        linkedProfile: linkedProfile !== undefined ? linkedProfile : product.linkedProfile,
+        contactNumber: contactNumber !== undefined ? contactNumber : product.contactNumber,
+        mailId: mailId !== undefined ? mailId : product.mailId,
+        department: department !== undefined ? department : product.department
       }
     }, { new: true });
 

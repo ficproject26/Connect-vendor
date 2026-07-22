@@ -3403,6 +3403,14 @@ const VendorDashboard = () => {
                                       )}
                                     </div>
                                     {(() => {
+                                      const mainCat = getProductMainCategory(item.category, vendorType);
+                                      if (mainCat === 'Jobs') {
+                                        return (
+                                          <div className="flex flex-col items-end">
+                                            <span className="text-sm font-bold text-[#0B3C7B] dark:text-[#faed26] leading-none">Salary: ₹{item.price}</span>
+                                          </div>
+                                        );
+                                      }
                                       const types = item.cardTypes || ['Silver', 'Gold', 'Diamond'];
                                       let pct = 0;
                                       let label = "";
@@ -3482,12 +3490,12 @@ const VendorDashboard = () => {
                                         </div>
                                         {shouldShowStock && item.stock !== undefined && (
                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Stock</span>
-                                            <span className="font-bold text-slate-700 dark:text-slate-300">{item.stock} {item.unit || 'count'}</span>
+                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vaccent' : 'Stock'}</span>
+                                            <span className="font-bold text-slate-700 dark:text-slate-300">{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
                                           </div>
                                         )}
                                         <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                          <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Sold</span>
+                                          <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : 'Sold'}</span>
                                           <span className="font-bold text-emerald-600 dark:text-emerald-400">{getItemSalesData(item._id).count}</span>
                                         </div>
                                       </div>
@@ -6876,6 +6884,227 @@ const VendorDashboard = () => {
         closeOnOutsideClick={false}
       >
         <form onSubmit={handleSaveItem} className="space-y-4">
+          {selectedMainCat === 'Jobs' ? (
+            <>
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Name</label>
+                <input
+                  type="text"
+                  required
+                  value={itemForm.name}
+                  onChange={e => setItemForm({ ...itemForm, name: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. Full Stack Developer"
+                />
+              </div>
+
+              {selectedMainCat && COMPLETE_CAT_TAXONOMY[selectedMainCat] && (
+                <>
+                  <div className="space-y-1 animate-fadeIn">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Category</label>
+                    <select
+                      value={selectedSubcat}
+                      onChange={e => {
+                        const newSub = e.target.value;
+                        setSelectedSubcat(newSub);
+                        const firstThird = (COMPLETE_CAT_TAXONOMY[selectedMainCat][newSub] && COMPLETE_CAT_TAXONOMY[selectedMainCat][newSub][0]) || '';
+                        setItemForm(prev => ({ ...prev, category: firstThird }));
+                      }}
+                      className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
+                    >
+                      {Object.keys(COMPLETE_CAT_TAXONOMY[selectedMainCat]).map(cat => (
+                        <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1 animate-fadeIn">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Role / Sub-Category</label>
+                    <select
+                      value={itemForm.category}
+                      onChange={e => setItemForm(prev => ({ ...prev, category: e.target.value }))}
+                      className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
+                    >
+                      {(COMPLETE_CAT_TAXONOMY[selectedMainCat][selectedSubcat] || []).map(type => (
+                        <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Type</label>
+                <input
+                  type="text"
+                  required
+                  value={itemForm.jobType}
+                  onChange={e => setItemForm({ ...itemForm, jobType: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. Full-time / Part-time / Remote"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Location</label>
+                <input
+                  type="text"
+                  required
+                  value={itemForm.jobLocation}
+                  onChange={e => setItemForm({ ...itemForm, jobLocation: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. Bangalore / Remote"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Experience Required</label>
+                <input
+                  type="text"
+                  required
+                  value={itemForm.experience}
+                  onChange={e => setItemForm({ ...itemForm, experience: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. 2-5 Years / Fresher"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Salary / Package (₹/year)</label>
+                <input
+                  type="number"
+                  required
+                  value={itemForm.price}
+                  onChange={e => setItemForm({ ...itemForm, price: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. 800000"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Skills Requirement</label>
+                <input
+                  type="text"
+                  required
+                  value={itemForm.skills}
+                  onChange={e => setItemForm({ ...itemForm, skills: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. React, Node.js, JavaScript"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Description</label>
+                <textarea
+                  required
+                  value={itemForm.description}
+                  rows={3}
+                  onChange={e => setItemForm({ ...itemForm, description: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="Describe the job roles, responsibilities..."
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Deadline Date</label>
+                <input
+                  type="text"
+                  required
+                  value={itemForm.deadline}
+                  onChange={e => setItemForm({ ...itemForm, deadline: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. Apply before 2026-08-15"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Application Tips</label>
+                <textarea
+                  value={itemForm.applicationTips}
+                  rows={2}
+                  onChange={e => setItemForm({ ...itemForm, applicationTips: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. Attach portfolio link and highlight React projects"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Qualification Required</label>
+                <input
+                  type="text"
+                  required
+                  value={itemForm.qualification}
+                  onChange={e => setItemForm({ ...itemForm, qualification: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. B.E. / B.Tech / MCA"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Linked Profile (URL)</label>
+                <input
+                  type="text"
+                  value={itemForm.linkedProfile}
+                  onChange={e => setItemForm({ ...itemForm, linkedProfile: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. https://linkedin.com/company/connect"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Contact Number</label>
+                <input
+                  type="text"
+                  required
+                  value={itemForm.contactNumber}
+                  onChange={e => setItemForm({ ...itemForm, contactNumber: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. +91 9999999999"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Mail ID</label>
+                <input
+                  type="email"
+                  required
+                  value={itemForm.mailId}
+                  onChange={e => setItemForm({ ...itemForm, mailId: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. careers@connect.com"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Department</label>
+                <input
+                  type="text"
+                  required
+                  value={itemForm.department}
+                  onChange={e => setItemForm({ ...itemForm, department: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. Engineering / HR / Design"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Vacancies / Openings</label>
+                <input
+                  type="number"
+                  required
+                  value={itemForm.stock}
+                  onChange={e => setItemForm({ ...itemForm, stock: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. 5"
+                />
+              </div>
+            </>
+          ) : (
+            <>
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">{terms.nameLabel}</label>
             <input
@@ -7133,6 +7362,9 @@ const VendorDashboard = () => {
                 </label>
               </div>
             </div>
+          )}
+
+            </>
           )}
 
           <div className="space-y-1">
@@ -8176,14 +8408,16 @@ const VendorDashboard = () => {
                               Category: {product.category}
                             </span>
                             <div className="flex items-center gap-2">
-                              {isEligible ? (
-                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
-                                  ✓ Eligible ({discountPct}% Off)
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold">
-                                  Requires {(product.cardTypes || []).join('/')} Card
-                                </span>
+                              {selectedStorefrontVendor.vendorType !== 'Jobs' && (
+                                isEligible ? (
+                                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                                    ✓ Eligible ({discountPct}% Off)
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold">
+                                    Requires {(product.cardTypes || []).join('/')} Card
+                                  </span>
+                                )
                               )}
                               
                               {product.status === 'Unavailable' || product.status === 'Out of Stock' ? (
@@ -8196,22 +8430,24 @@ const VendorDashboard = () => {
                                 </button>
                               ) : (
                                 <>
-                                  <button
-                                    type="button"
-                                    disabled={!isEligible}
-                                    onClick={() => handleAddToCart(product)}
-                                    className={`text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-[0.98] ${
-                                      !isEligible
-                                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                                        : 'bg-slate-150 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-250 dark:border-slate-700'
-                                    }`}
-                                  >
-                                    Add to Cart
-                                  </button>
+                                  {selectedStorefrontVendor.vendorType !== 'Jobs' && (
+                                    <button
+                                      type="button"
+                                      disabled={!isEligible}
+                                      onClick={() => handleAddToCart(product)}
+                                      className={`text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-[0.98] ${
+                                        !isEligible
+                                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                                          : 'bg-slate-150 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-250 dark:border-slate-700'
+                                      }`}
+                                    >
+                                      Add to Cart
+                                    </button>
+                                  )}
                                   
                                   <button
                                     type="button"
-                                    disabled={!isEligible}
+                                    disabled={selectedStorefrontVendor.vendorType !== 'Jobs' && !isEligible}
                                     onClick={() => {
                                       if (isRedeemFormOpen) {
                                         setStorefrontRedeemProduct(null);
@@ -8227,14 +8463,14 @@ const VendorDashboard = () => {
                                       }
                                     }}
                                     className={`text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-[0.98] ${
-                                      !isEligible
+                                      (selectedStorefrontVendor.vendorType !== 'Jobs' && !isEligible)
                                         ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                                         : isRedeemFormOpen
                                         ? 'bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20'
                                         : 'bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b]'
                                     }`}
                                   >
-                                    {isRedeemFormOpen ? 'Cancel' : 'Buy Now'}
+                                    {isRedeemFormOpen ? 'Cancel' : (selectedStorefrontVendor.vendorType === 'Jobs' ? 'Apply Now' : 'Buy Now')}
                                   </button>
                                 </>
                               )}
@@ -8259,7 +8495,11 @@ const VendorDashboard = () => {
                             if (!isLegacyRest && !isLegacyHotel && !isLegacyHosp && !isLegacyService) {
                               return (
                                 <p className="text-xs text-slate-650 dark:text-slate-350">
-                                  Confirm to redeem <strong>{product.name}</strong> for <strong>₹{finalPrice}</strong> (using {card?.planName} card discount).
+                                  {selectedStorefrontVendor.vendorType === 'Jobs' ? (
+                                    <>Confirm to apply for <strong>{product.name}</strong>.</>
+                                  ) : (
+                                    <>Confirm to redeem <strong>{product.name}</strong> for <strong>₹{finalPrice}</strong> (using {card?.planName} card discount).</>
+                                  )}
                                 </p>
                               );
                             }
@@ -8454,7 +8694,7 @@ const VendorDashboard = () => {
                                   Scanning...
                                 </>
                               ) : (
-                                'Confirm & Order'
+                                selectedStorefrontVendor.vendorType === 'Jobs' ? 'Confirm & Apply' : 'Confirm & Order'
                               )}
                             </button>
                           </div>

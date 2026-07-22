@@ -453,6 +453,14 @@ const ProductList = () => {
                                       )}
                                     </div>
                                     {(() => {
+                                      const mainCat = getProductMainCategory(item.category, vendorType);
+                                      if (mainCat === 'Jobs') {
+                                        return (
+                                          <div className="flex flex-col items-end">
+                                            <span className="text-sm font-bold text-[#0B3C7B] dark:text-[#faed26] leading-none">Salary: ₹{item.price}</span>
+                                          </div>
+                                        );
+                                      }
                                       const types = item.cardTypes || ['Silver', 'Gold', 'Diamond'];
                                       let pct = 0;
                                       let label = "";
@@ -529,12 +537,12 @@ const ProductList = () => {
                                         </div>
                                         {shouldShowStock && item.stock !== undefined && (
                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Stock</span>
-                                            <span className="font-bold text-slate-700 dark:text-slate-300">{item.stock} {item.unit || 'count'}</span>
+                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vaccent' : 'Stock'}</span>
+                                            <span className="font-bold text-slate-700 dark:text-slate-300">{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
                                           </div>
                                         )}
                                         <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                          <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Sold</span>
+                                          <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : 'Sold'}</span>
                                           <span className="font-bold text-emerald-600 dark:text-emerald-400">{getItemSalesData(item._id).count}</span>
                                         </div>
                                       </div>

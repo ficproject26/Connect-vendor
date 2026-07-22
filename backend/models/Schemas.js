@@ -145,7 +145,18 @@ const ProductSchema = new mongoose.Schema({
     '03:30 PM - 04:00 PM',
     '04:00 PM - 04:30 PM',
     '04:30 PM - 05:00 PM'
-  ] }
+  ] },
+  jobType: { type: String },
+  jobLocation: { type: String },
+  experience: { type: String },
+  skills: { type: String },
+  deadline: { type: String },
+  applicationTips: { type: String },
+  qualification: { type: String },
+  linkedProfile: { type: String },
+  contactNumber: { type: String },
+  mailId: { type: String },
+  department: { type: String }
 }, { timestamps: true });
 
 // --- ORDER / BOOKING SCHEMA ---
