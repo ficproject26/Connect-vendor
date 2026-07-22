@@ -416,6 +416,43 @@ const getOrders = async (req, res) => {
       });
     }
 
+    // Fetch all products for this vendor to map item product IDs to sub-businesses
+    const products = await Product.find({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ]
+    });
+
+    const productToBusinessMap = {};
+    products.forEach(p => {
+      let bizId = p.vendorId || p.vendor_id;
+      if (bizId) {
+        if (bizId.toString() === parentUserId.toString()) {
+          // Resolve correct sub-business for parent-level products using category taxonomy mapping
+          const mainCat = getProductMainCategory(p.category);
+          const matchedBiz = user.businesses?.find(b => {
+            let normalizedVendorType = b.vendorType || '';
+            if (normalizedVendorType.endsWith(' Vendor')) {
+              normalizedVendorType = normalizedVendorType.replace(' Vendor', '');
+            }
+            if (normalizedVendorType.startsWith('Restaurant')) normalizedVendorType = 'Food';
+            else if (normalizedVendorType.startsWith('Hotel')) normalizedVendorType = 'Stay';
+            else if (normalizedVendorType.startsWith('Travel Agency')) normalizedVendorType = 'Travel';
+            else if (normalizedVendorType.startsWith('Hospital') || normalizedVendorType.startsWith('Service')) normalizedVendorType = 'Services';
+            else if (normalizedVendorType.startsWith('Grocery') || normalizedVendorType.startsWith('Pharmacy')) normalizedVendorType = 'Daily Needs';
+            else if (normalizedVendorType.startsWith('Store') || normalizedVendorType.startsWith('Electronics') || normalizedVendorType.startsWith('Home & Furniture')) normalizedVendorType = 'Products';
+            
+            return mainCat.toLowerCase() === normalizedVendorType.toLowerCase();
+          });
+          if (matchedBiz) {
+            bizId = matchedBiz._id;
+          }
+        }
+        productToBusinessMap[p._id.toString()] = bizId.toString();
+      }
+    });
+
     // Fetch orders matching vendor businessIds
     const orders = await Order.find({
       $or: [
@@ -431,6 +468,16 @@ const getOrders = async (req, res) => {
       if (!obj.memberId && obj.customer_id) obj.memberId = obj.customer_id;
       if (obj.finalAmount === undefined && obj.amount !== undefined) obj.finalAmount = obj.amount;
       if (obj.totalAmount === undefined && obj.amount !== undefined) obj.totalAmount = obj.amount;
+
+      // Dynamically override parent vendorId with correct business ID if it's a legacy parent order
+      const orderVendorId = obj.vendorId ? obj.vendorId.toString() : '';
+      if (orderVendorId === parentUserId.toString() && obj.items && obj.items.length > 0) {
+        const firstItemId = obj.items[0].productId;
+        if (firstItemId && productToBusinessMap[firstItemId.toString()]) {
+          obj.vendorId = productToBusinessMap[firstItemId.toString()];
+        }
+      }
+
       return obj;
     });
 

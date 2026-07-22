@@ -257,7 +257,9 @@ const redeemDiscount = async (req, res) => {
 
     // Get item details
     const product = await Product.findById(productId);
-    if (!product || product.vendorId !== vendorId) {
+    const parentId = vendor._id.toString();
+    const isProductOwnedByVendor = product && (product.vendorId === vendorId || product.vendorId === parentId);
+    if (!product || !isProductOwnedByVendor) {
       return res.status(404).json({ success: false, message: 'Item not found at this vendor' });
     }
 
@@ -286,6 +288,27 @@ const redeemDiscount = async (req, res) => {
     const discountApplied = Math.round((totalAmount * card.discountPercent) / 100);
     const finalAmount = totalAmount - discountApplied;
 
+    // Resolve the final vendorId of the order to the correct sub-business ID
+    let finalVendorId = vendorId;
+    const mainCat = getProductMainCategory(product.category);
+    const matchedBiz = vendor.businesses?.find(b => {
+      let normalizedVendorType = b.vendorType || '';
+      if (normalizedVendorType.endsWith(' Vendor')) {
+        normalizedVendorType = normalizedVendorType.replace(' Vendor', '');
+      }
+      if (normalizedVendorType.startsWith('Restaurant')) normalizedVendorType = 'Food';
+      else if (normalizedVendorType.startsWith('Hotel')) normalizedVendorType = 'Stay';
+      else if (normalizedVendorType.startsWith('Travel Agency')) normalizedVendorType = 'Travel';
+      else if (normalizedVendorType.startsWith('Hospital') || normalizedVendorType.startsWith('Service')) normalizedVendorType = 'Services';
+      else if (normalizedVendorType.startsWith('Grocery') || normalizedVendorType.startsWith('Pharmacy')) normalizedVendorType = 'Daily Needs';
+      else if (normalizedVendorType.startsWith('Store') || normalizedVendorType.startsWith('Electronics') || normalizedVendorType.startsWith('Home & Furniture')) normalizedVendorType = 'Products';
+      
+      return mainCat.toLowerCase() === normalizedVendorType.toLowerCase();
+    });
+    if (matchedBiz) {
+      finalVendorId = matchedBiz._id.toString();
+    }
+
     // Map vendor types to order types
     let orderType = 'Order';
     const vType = vendor.baseVendorType || vendor.vendorType;
@@ -296,7 +319,7 @@ const redeemDiscount = async (req, res) => {
     // Prevent double booking for hospital doctors
     if (isHospital && appointmentDate && appointmentTimeSlot) {
       const activeAppointment = await Order.findOne({
-        vendorId,
+        vendorId: finalVendorId,
         type: 'Appointment',
         $or: [
           { 'items.productId': productId },
@@ -315,7 +338,7 @@ const redeemDiscount = async (req, res) => {
     }
 
     const orderData = {
-      vendorId,
+      vendorId: finalVendorId,
       memberId,
       memberName: req.user.name,
       type: orderType,
