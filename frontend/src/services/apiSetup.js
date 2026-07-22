@@ -124,5 +124,5 @@ export const getAdminBackendUrl = () => {
     return `http://${hostname || 'localhost'}:5001`;
   }
   
-  return import.meta.env.VITE_ADMIN_BACKEND_URL || 'https://connect-admin.onrender.com';
+  return import.meta.env.VITE_ADMIN_BACKEND_URL || 'https://connect-admin-96pc.onrender.com';
 };
