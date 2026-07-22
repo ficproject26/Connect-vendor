@@ -110,3 +110,19 @@ const wakeUpBackend = async () => {
 
 // Fire the wake-up ping immediately on import
 wakeUpBackend();
+
+export const getAdminBackendUrl = () => {
+  const hostname = window.location.hostname;
+  
+  if (
+    !hostname || 
+    hostname === 'localhost' || 
+    hostname === '127.0.0.1' || 
+    hostname.startsWith('192.168.') || 
+    hostname.startsWith('10.')
+  ) {
+    return `http://${hostname || 'localhost'}:5001`;
+  }
+  
+  return import.meta.env.VITE_ADMIN_BACKEND_URL || 'https://connect-admin.onrender.com';
+};

@@ -10,9 +10,11 @@ import {
 } from 'lucide-react';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
-import { getBackendUrl } from '../services/apiSetup';
+import { getBackendUrl, getAdminBackendUrl } from '../services/apiSetup';
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
+
+const DEFAULT_TAXONOMY = JSON.parse(JSON.stringify(COMPLETE_CAT_TAXONOMY));
 
 // Recharts imports for analytics
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
@@ -372,10 +374,19 @@ const VendorDashboard = () => {
   useEffect(() => {
     const fetchDynamicCategories = async () => {
       try {
-        const adminApiBase = import.meta.env.VITE_ADMIN_API_BASE || 'http://localhost:5001/api';
-        const res = await fetch(`${adminApiBase}/admin/categories`);
+        const adminUrl = getAdminBackendUrl();
+        const res = await fetch(`${adminUrl}/api/admin/categories`);
         if (res.ok) {
           const dbCats = await res.json();
+          
+          // Reset COMPLETE_CAT_TAXONOMY to the default static taxonomy state
+          Object.keys(COMPLETE_CAT_TAXONOMY).forEach(key => {
+            delete COMPLETE_CAT_TAXONOMY[key];
+          });
+          Object.keys(DEFAULT_TAXONOMY).forEach(key => {
+            COMPLETE_CAT_TAXONOMY[key] = JSON.parse(JSON.stringify(DEFAULT_TAXONOMY[key]));
+          });
+
           dbCats.forEach(cat => {
             let main = cat.name;
             if (main === 'Restaurants' || main === 'Food') main = 'Food';
@@ -386,11 +397,27 @@ const VendorDashboard = () => {
             const subsub = cat.subSubcategory || '';
             
             if (COMPLETE_CAT_TAXONOMY[main]) {
-              if (!COMPLETE_CAT_TAXONOMY[main][sub]) {
-                COMPLETE_CAT_TAXONOMY[main][sub] = [];
-              }
-              if (subsub && !COMPLETE_CAT_TAXONOMY[main][sub].includes(subsub)) {
-                COMPLETE_CAT_TAXONOMY[main][sub].push(subsub);
+              // If it's a deletion/inactivation marker
+              if (cat.isDeleted || cat.isActive === false || cat.description === 'DELETED_HIERARCHY_MARKER') {
+                if (cat.subcategory) {
+                  if (cat.subSubcategory) {
+                    if (COMPLETE_CAT_TAXONOMY[main][sub]) {
+                      COMPLETE_CAT_TAXONOMY[main][sub] = COMPLETE_CAT_TAXONOMY[main][sub].filter(x => x !== subsub);
+                    }
+                  } else {
+                    delete COMPLETE_CAT_TAXONOMY[main][sub];
+                  }
+                } else {
+                  delete COMPLETE_CAT_TAXONOMY[main];
+                }
+              } else {
+                // Active category addition
+                if (!COMPLETE_CAT_TAXONOMY[main][sub]) {
+                  COMPLETE_CAT_TAXONOMY[main][sub] = [];
+                }
+                if (subsub && !COMPLETE_CAT_TAXONOMY[main][sub].includes(subsub)) {
+                  COMPLETE_CAT_TAXONOMY[main][sub].push(subsub);
+                }
               }
             }
           });
