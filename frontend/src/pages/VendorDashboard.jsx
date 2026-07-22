@@ -3439,42 +3439,15 @@ const VendorDashboard = () => {
                                           </div>
                                         );
                                       }
-                                      const types = item.cardTypes || ['Silver', 'Gold', 'Diamond'];
-                                      let pct = 0;
-                                      let label = "";
-                                      
-                                      if (user?.role === 'Member') {
-                                        const isEligible = types.includes(card?.planName);
-                                        pct = isEligible && card ? card.discountPercent : 0;
-                                        label = isEligible ? `${card?.planName} Disc.` : "";
-                                      } else {
-                                        // For Vendor/Admin, show the max discount price
-                                        if (types.includes('Diamond')) {
-                                          pct = 20;
-                                          label = "Diamond Price";
-                                        } else if (types.includes('Gold')) {
-                                          pct = 15;
-                                          label = "Gold Price";
-                                        } else if (types.includes('Silver')) {
-                                          pct = 10;
-                                          label = "Silver Price";
-                                        }
-                                      }
-                                      
-                                      const discountedPrice = Math.round(item.price * (1 - pct / 100));
-                                      
                                       return (
                                         <div className="flex flex-col items-end">
-                                          {item.originalPrice ? (
-                                            <span className="text-[10px] line-through text-slate-400 dark:text-slate-500">₹{item.originalPrice}</span>
-                                          ) : null}
-                                          {pct > 0 ? (
+                                          {item.originalPrice && Number(item.originalPrice) > Number(item.price) ? (
                                             <>
-                                              <span className="text-[10px] line-through text-slate-400 dark:text-slate-500">₹{item.price}</span>
+                                              <span className="text-[10px] line-through text-slate-400 dark:text-slate-500">₹{item.originalPrice}</span>
                                               <span className="text-sm font-black text-emerald-600 dark:text-emerald-450 leading-none">
-                                                ₹{discountedPrice}
+                                                ₹{item.price}
                                                 <span className="text-[8px] font-extrabold ml-1 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-450 px-1 py-0.5 rounded align-middle">
-                                                  {label}
+                                                  {Math.round(((Number(item.originalPrice) - Number(item.price)) / Number(item.originalPrice)) * 100)}% OFF
                                                 </span>
                                               </span>
                                             </>

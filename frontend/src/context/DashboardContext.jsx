@@ -540,6 +540,29 @@ export const DashboardProvider = ({ children }) => {
   const [editingDoctorSlotsId, setEditingDoctorSlotsId] = useState(null);
   const [tempSlots, setTempSlots] = useState([]);
 
+  const [memberCategorySearch, setMemberCategorySearch] = useState('');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
+  const [selectedStorefrontVendor, setSelectedStorefrontVendor] = useState(null);
+  const [isStorefrontModalOpen, setIsStorefrontModalOpen] = useState(false);
+  const [loadingStorefront, setLoadingStorefront] = useState(false);
+  const [storefrontProducts, setStorefrontProducts] = useState([]);
+
+  const handleOpenStorefront = async (vendor) => {
+    setSelectedStorefrontVendor(vendor);
+    setIsStorefrontModalOpen(true);
+    setLoadingStorefront(true);
+    try {
+      const res = await axios.get(`http://${window.location.hostname}:8000/api/member/vendors/${vendor.id}/products`, getAxiosConfig());
+      if (res.data.success) {
+        setStorefrontProducts(res.data.data);
+      }
+    } catch (err) {
+      console.error('Error loading storefront products:', err);
+    } finally {
+      setLoadingStorefront(false);
+    }
+  };
+
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [isEditPartner, setIsEditPartner] = useState(false);
   const [partnerForm, setPartnerForm] = useState({ name: '', phone: '', vehicleNumber: '', status: 'Available', imageUrl: '' });
@@ -812,7 +835,20 @@ export const DashboardProvider = ({ children }) => {
       txSortConfig,
       user,
       vendorRequests,
-      vendorType
+      vendorType,
+      memberCategorySearch,
+      setMemberCategorySearch,
+      selectedCategoryFilter,
+      setSelectedCategoryFilter,
+      selectedStorefrontVendor,
+      setSelectedStorefrontVendor,
+      isStorefrontModalOpen,
+      setIsStorefrontModalOpen,
+      loadingStorefront,
+      setLoadingStorefront,
+      storefrontProducts,
+      setStorefrontProducts,
+      handleOpenStorefront
     }}>
       {children}
     </DashboardContext.Provider>
