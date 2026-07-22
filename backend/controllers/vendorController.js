@@ -58,7 +58,7 @@ const getVendorAnalytics = async (req, res) => {
     const completedOrders = orders.filter(o => ['Completed', 'Delivered', 'Checked Out', 'Hired', 'Enrolled'].includes(o.status));
     const pendingOrdersCount = orders.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'].includes(o.status)).length;
     
-    const totalRevenue = completedOrders.reduce((sum, o) => sum + o.finalAmount, 0);
+    const totalRevenue = completedOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
     const uniqueCustomersCount = await Customer.countDocuments({
       $or: [
         { vendorId: { $in: businessIds } },
@@ -83,10 +83,10 @@ const getVendorAnalytics = async (req, res) => {
     const todayDateString = new Date().toDateString();
     const todayRevenue = completedOrders
       .filter(o => new Date(o.createdAt).toDateString() === todayDateString)
-      .reduce((sum, o) => sum + o.finalAmount, 0);
+      .reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
 
     // Active Memberships Count
-    const memberIds = [...new Set(orders.map(o => o.memberId))];
+    const memberIds = [...new Set(orders.map(o => o.memberId).filter(Boolean))];
     const activeMembershipsCount = await MembershipCard.countDocuments({
       userId: { $in: memberIds },
       status: 'Active',
@@ -104,7 +104,7 @@ const getVendorAnalytics = async (req, res) => {
     completedOrders.forEach(o => {
       const key = new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       if (dailyRevenueMap[key] !== undefined) {
-        dailyRevenueMap[key] += o.finalAmount;
+        dailyRevenueMap[key] += Number(o.finalAmount || o.totalAmount || o.amount || 0);
       }
     });
     const revenueTrend = Object.keys(dailyRevenueMap).map(date => ({
@@ -123,7 +123,7 @@ const getVendorAnalytics = async (req, res) => {
     completedOrders.forEach(o => {
       const key = new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
       if (monthlyRevenueMap[key] !== undefined) {
-        monthlyRevenueMap[key] += o.finalAmount;
+        monthlyRevenueMap[key] += Number(o.finalAmount || o.totalAmount || o.amount || 0);
       }
     });
     const monthlyRevenue = Object.keys(monthlyRevenueMap).map(month => ({

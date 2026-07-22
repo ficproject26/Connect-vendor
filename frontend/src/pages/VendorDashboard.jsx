@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
-import { getBackendUrl, getAdminBackendUrl } from '../services/apiSetup';
+import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl } from '../services/apiSetup';
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 

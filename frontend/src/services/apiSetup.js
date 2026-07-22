@@ -126,3 +126,8 @@ export const getAdminBackendUrl = () => {
   
   return import.meta.env.VITE_ADMIN_BACKEND_URL || 'https://connect-admin-96pc.onrender.com';
 };
+
+export const getVendorBackendUrl = () => {
+  return getBackendUrl();
+};
+
