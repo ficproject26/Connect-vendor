@@ -2,6 +2,19 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const { Product, Order, Customer, DeliveryPartner, User, MembershipCard, PlatformConfig, Patient } = require('../models/Schemas');
+const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
+
+const getProductMainCategory = (category) => {
+  if (!category) return '';
+  for (const mainCat of Object.keys(COMPLETE_CAT_TAXONOMY)) {
+    for (const subCat of Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])) {
+      if (COMPLETE_CAT_TAXONOMY[mainCat][subCat].includes(category)) {
+        return mainCat;
+      }
+    }
+  }
+  return '';
+};
 
 // --- ANALYTICS ---
 // @desc    Get vendor dashboard analytics
@@ -232,19 +245,59 @@ const createProduct = async (req, res) => {
   }
 };
 
-// @desc    Get all products for the logged in vendor
-// @route   GET /api/vendor/products
-// @access  Private (Vendor)
 const getProducts = async (req, res) => {
   try {
-    const vendorId = req.user._id;
+    const parentId = req.user.parentUserId || req.user._id;
+    const activeBusinessId = req.user._id;
+    const activeVendorType = req.user.vendorType || '';
+
     const products = await Product.find({
       $or: [
-        { vendorId: vendorId },
-        { vendor_id: vendorId }
+        { vendorId: activeBusinessId },
+        { vendor_id: activeBusinessId },
+        { vendorId: parentId },
+        { vendor_id: parentId }
       ]
     });
-    res.status(200).json({ success: true, data: products });
+
+    const filtered = products.filter(p => {
+      const pVendorId = (p.vendorId || p.vendor_id || '').toString();
+      if (pVendorId === activeBusinessId.toString()) {
+        return true;
+      }
+      if (pVendorId === parentId.toString()) {
+        const mainCat = getProductMainCategory(p.category);
+        
+        // Normalize vendor types / main categories (e.g. Services, Jobs, Stay, Food, Products, Daily Needs)
+        let normalizedVendorType = activeVendorType;
+        if (activeVendorType.endsWith(' Vendor')) {
+          normalizedVendorType = activeVendorType.replace(' Vendor', '');
+        }
+        if (normalizedVendorType.startsWith('Restaurant')) {
+          normalizedVendorType = 'Food';
+        }
+        if (normalizedVendorType.startsWith('Hotel')) {
+          normalizedVendorType = 'Stay';
+        }
+        if (normalizedVendorType.startsWith('Travel Agency')) {
+          normalizedVendorType = 'Travel';
+        }
+        if (normalizedVendorType.startsWith('Hospital') || normalizedVendorType.startsWith('Service')) {
+          normalizedVendorType = 'Services';
+        }
+        if (normalizedVendorType.startsWith('Grocery') || normalizedVendorType.startsWith('Pharmacy')) {
+          normalizedVendorType = 'Daily Needs';
+        }
+        if (normalizedVendorType.startsWith('Store') || normalizedVendorType.startsWith('Electronics') || normalizedVendorType.startsWith('Home & Furniture')) {
+          normalizedVendorType = 'Products';
+        }
+
+        return mainCat.toLowerCase() === normalizedVendorType.toLowerCase();
+      }
+      return false;
+    });
+
+    res.status(200).json({ success: true, data: filtered });
   } catch (error) {
     console.error('Get Products Error:', error);
     res.status(500).json({ success: false, message: 'Server error retrieving catalog items' });
@@ -265,7 +318,11 @@ const updateProduct = async (req, res) => {
     } = req.body;
     const product = await Product.findById(req.params.id);
 
-    if (!product || product.vendorId !== req.user._id) {
+    const parentId = req.user.parentUserId || req.user._id;
+    const activeBusinessId = req.user._id;
+    const isOwner = product && (product.vendorId === activeBusinessId.toString() || product.vendorId === parentId.toString());
+
+    if (!product || !isOwner) {
       return res.status(404).json({ success: false, message: 'Catalog item not found or unauthorized' });
     }
 
@@ -274,6 +331,7 @@ const updateProduct = async (req, res) => {
 
     const updated = await Product.findByIdAndUpdate(req.params.id, {
       $set: {
+        vendorId: activeBusinessId, // Migrate legacy item to current active business ID
         name: name || product.name,
         description: description !== undefined ? description : product.description,
         price: price !== undefined ? Number(price) : product.price,
@@ -323,7 +381,11 @@ const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
 
-    if (!product || product.vendorId !== req.user._id) {
+    const parentId = req.user.parentUserId || req.user._id;
+    const activeBusinessId = req.user._id;
+    const isOwner = product && (product.vendorId === activeBusinessId.toString() || product.vendorId === parentId.toString());
+
+    if (!product || !isOwner) {
       return res.status(404).json({ success: false, message: 'Catalog item not found or unauthorized' });
     }
 

@@ -2,6 +2,19 @@ const qrcode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 const { MembershipCard, MembershipPlan, User, Order, Product, MembershipHistory } = require('../models/Schemas');
+const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
+
+const getProductMainCategory = (category) => {
+  if (!category) return '';
+  for (const mainCat of Object.keys(COMPLETE_CAT_TAXONOMY)) {
+    for (const subCat of Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])) {
+      if (COMPLETE_CAT_TAXONOMY[mainCat][subCat].includes(category)) {
+        return mainCat;
+      }
+    }
+  }
+  return '';
+};
 
 const getDaysRemaining = (expiryDate) => {
   if (!expiryDate) return null;
@@ -200,7 +213,7 @@ const getParticipatingVendors = async (req, res) => {
       }
       
       // Fallback: if primary vendor ID was not in businesses list, add it
-      if (!addedIds.has(v._id.toString())) {
+      if (!addedIds.has(v._id.toString()) && (!v.primaryBusinessId || !addedIds.has(v.primaryBusinessId.toString()))) {
         formatted.push({
           id: v._id,
           businessName: v.businessName || v.name,
@@ -466,8 +479,74 @@ const getMemberOrders = async (req, res) => {
 const getVendorProducts = async (req, res) => {
   try {
     const { vendorId } = req.params;
-    const products = await Product.find({ vendorId, status: { $ne: 'Unavailable' } });
-    res.status(200).json({ success: true, data: products });
+
+    const vendorUser = await User.findOne({
+      $or: [
+        { _id: vendorId },
+        { 'businesses._id': vendorId }
+      ]
+    });
+
+    let parentId = vendorId;
+    let activeVendorType = '';
+
+    if (vendorUser) {
+      parentId = vendorUser._id.toString();
+      const activeBiz = vendorUser.businesses?.find(b => b._id.toString() === vendorId.toString());
+      if (activeBiz) {
+        activeVendorType = activeBiz.vendorType;
+      } else {
+        activeVendorType = vendorUser.vendorType || '';
+      }
+    }
+
+    const products = await Product.find({
+      $or: [
+        { vendorId: vendorId },
+        { vendor_id: vendorId },
+        { vendorId: parentId },
+        { vendor_id: parentId }
+      ],
+      status: { $ne: 'Unavailable' }
+    });
+
+    const filtered = products.filter(p => {
+      const pVendorId = (p.vendorId || p.vendor_id || '').toString();
+      if (pVendorId === vendorId.toString()) {
+        return true;
+      }
+      if (pVendorId === parentId.toString()) {
+        const mainCat = getProductMainCategory(p.category);
+        
+        let normalizedVendorType = activeVendorType;
+        if (activeVendorType.endsWith(' Vendor')) {
+          normalizedVendorType = activeVendorType.replace(' Vendor', '');
+        }
+        if (normalizedVendorType.startsWith('Restaurant')) {
+          normalizedVendorType = 'Food';
+        }
+        if (normalizedVendorType.startsWith('Hotel')) {
+          normalizedVendorType = 'Stay';
+        }
+        if (normalizedVendorType.startsWith('Travel Agency')) {
+          normalizedVendorType = 'Travel';
+        }
+        if (normalizedVendorType.startsWith('Hospital') || normalizedVendorType.startsWith('Service')) {
+          normalizedVendorType = 'Services';
+        }
+        if (normalizedVendorType.startsWith('Grocery') || normalizedVendorType.startsWith('Pharmacy')) {
+          normalizedVendorType = 'Daily Needs';
+        }
+        if (normalizedVendorType.startsWith('Store') || normalizedVendorType.startsWith('Electronics') || normalizedVendorType.startsWith('Home & Furniture')) {
+          normalizedVendorType = 'Products';
+        }
+
+        return mainCat.toLowerCase() === normalizedVendorType.toLowerCase();
+      }
+      return false;
+    });
+
+    res.status(200).json({ success: true, data: filtered });
   } catch (error) {
     console.error('Get Vendor Products Error:', error);
     res.status(500).json({ success: false, message: 'Server error retrieving vendor products list' });
