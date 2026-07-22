@@ -788,7 +788,7 @@ const VendorDashboard = () => {
   useEffect(() => {
     const syncProfile = async () => {
       try {
-        const res = await axios.get(`http://${window.location.hostname}:8000/api/vendor/profile`, getAxiosConfig());
+        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`, getAxiosConfig());
         if (res.data.success) {
           dispatch(updateUser(res.data.user));
         }
@@ -926,7 +926,7 @@ const VendorDashboard = () => {
       return;
     }
     try {
-      const res = await axios.get(`http://${window.location.hostname}:8000/api/member/vendors/${vendorId}/products`, getAxiosConfig());
+      const res = await axios.get(`${getVendorBackendUrl()}/api/member/vendors/${vendorId}/products`, getAxiosConfig());
       if (res.data.success) {
         const selVendor = memberDiscounts.find(v => v.id === vendorId);
         let products = res.data.data;
@@ -946,7 +946,7 @@ const VendorDashboard = () => {
     setIsStorefrontModalOpen(true);
     setLoadingStorefront(true);
     try {
-      const res = await axios.get(`http://${window.location.hostname}:8000/api/member/vendors/${vendor.id}/products`, getAxiosConfig());
+      const res = await axios.get(`${getVendorBackendUrl()}/api/member/vendors/${vendor.id}/products`, getAxiosConfig());
       if (res.data.success) {
         setStorefrontProducts(res.data.data);
       }
@@ -962,7 +962,7 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/member/redeem`, {
+      const res = await axios.post(`${getVendorBackendUrl()}/api/member/redeem`, {
         vendorId: selectedStorefrontVendor.id,
         productId: product._id,
         ...storefrontRedeemForm
@@ -995,7 +995,7 @@ const VendorDashboard = () => {
 
   const handleApproveVendor = async (vendorId) => {
     try {
-      const res = await axios.put(`http://${window.location.hostname}:8000/api/admin/vendors/${vendorId}/approve`, {}, getAxiosConfig());
+      const res = await axios.put(`${getVendorBackendUrl()}/api/admin/vendors/${vendorId}/approve`, {}, getAxiosConfig());
       if (res.data.success) {
         setMessage(res.data.message || 'Vendor request approved successfully');
         setVendorRequests(prev => prev.filter(v => v._id !== vendorId));
@@ -1007,7 +1007,7 @@ const VendorDashboard = () => {
 
   const handleRejectVendor = async (vendorId) => {
     try {
-      const res = await axios.put(`http://${window.location.hostname}:8000/api/admin/vendors/${vendorId}/reject`, {}, getAxiosConfig());
+      const res = await axios.put(`${getVendorBackendUrl()}/api/admin/vendors/${vendorId}/reject`, {}, getAxiosConfig());
       if (res.data.success) {
         setMessage(res.data.message || 'Vendor request rejected successfully');
         setVendorRequests(prev => prev.filter(v => v._id !== vendorId));
@@ -1019,7 +1019,7 @@ const VendorDashboard = () => {
 
   const handleToggleVendorStatus = async (vendorId) => {
     try {
-      const res = await axios.put(`http://${window.location.hostname}:8000/api/admin/vendors/${vendorId}/toggle-status`, {}, getAxiosConfig());
+      const res = await axios.put(`${getVendorBackendUrl()}/api/admin/vendors/${vendorId}/toggle-status`, {}, getAxiosConfig());
       if (res.data.success) {
         setMessage(res.data.message);
         setAdminVendors(prev => prev.map(v => v._id === vendorId ? { ...v, status: res.data.data.status } : v));
@@ -1031,7 +1031,7 @@ const VendorDashboard = () => {
 
   const handleUpdatePlan = async (planId, price, discountPercent, validityDays) => {
     try {
-      const res = await axios.put(`http://${window.location.hostname}:8000/api/admin/membership-plans/${planId}`, {
+      const res = await axios.put(`${getVendorBackendUrl()}/api/admin/membership-plans/${planId}`, {
         price: Number(price),
         discountPercent: Number(discountPercent),
         validityDays: Number(validityDays)
@@ -1050,12 +1050,12 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/member/renew`, { planName }, getAxiosConfig());
+      const res = await axios.post(`${getVendorBackendUrl()}/api/member/renew`, { planName }, getAxiosConfig());
       if (res.data.success) {
         setMessage('Membership upgraded successfully!');
         dispatch(updateCard(res.data.data));
         try {
-          const histRes = await axios.get(`http://${window.location.hostname}:8000/api/member/history`, getAxiosConfig());
+          const histRes = await axios.get(`${getVendorBackendUrl()}/api/member/history`, getAxiosConfig());
           if (histRes.data.success) {
             setMembershipHistory(histRes.data.data);
           }
@@ -1089,7 +1089,7 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/member/redeem`, {
+      const res = await axios.post(`${getVendorBackendUrl()}/api/member/redeem`, {
         vendorId: selectedRedeemVendorId,
         productId: selectedRedeemProductId,
         ...redeemForm
@@ -1130,7 +1130,7 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/vendor/appointments`, {
+      const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/appointments`, {
         ...appointmentForm
       }, getAxiosConfig());
 
@@ -1138,7 +1138,7 @@ const VendorDashboard = () => {
         setMessage(res.data.message || 'Appointment scheduled successfully!');
         setIsAddAppointmentModalOpen(false);
         // Refresh orders list
-        const ordersRes = await axios.get(`http://${window.location.hostname}:8000/api/vendor/orders`, getAxiosConfig());
+        const ordersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
         if (ordersRes.data.success) {
           setOrders(ordersRes.data.data);
         }
@@ -1183,7 +1183,7 @@ const VendorDashboard = () => {
     setMessage('');
     try {
       const endpoint = terms.ordersName === 'Orders' ? 'orders' : 'bookings';
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/vendor/${endpoint}`, {
+      const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/${endpoint}`, {
         ...bookingForm
       }, getAxiosConfig());
 
@@ -1191,7 +1191,7 @@ const VendorDashboard = () => {
         setMessage(res.data.message || `${terms.orderItem} added successfully!`);
         setIsAddBookingModalOpen(false);
         // Refresh orders list
-        const ordersRes = await axios.get(`http://${window.location.hostname}:8000/api/vendor/orders`, getAxiosConfig());
+        const ordersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
         if (ordersRes.data.success) {
           setOrders(ordersRes.data.data);
         }
@@ -1232,7 +1232,7 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/vendor/business`, {
+      const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/business`, {
         businessName: addBizForm.businessName,
         vendorType: addBizForm.vendorType,
         category: addBizForm.category,
@@ -1266,7 +1266,7 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.delete(`http://${window.location.hostname}:8000/api/vendor/business/${bizId}`, getAxiosConfig());
+      const res = await axios.delete(`${getVendorBackendUrl()}/api/vendor/business/${bizId}`, getAxiosConfig());
       if (res.data.success) {
         setMessage('Business profile deleted successfully!');
         dispatch(updateUser(res.data.user));
@@ -1293,7 +1293,7 @@ const VendorDashboard = () => {
         if (activeTab === 'dashboard') {
           let res;
           if (user?.role === 'Admin') {
-            res = await axios.get(`http://${window.location.hostname}:8000/api/admin/stats`, getAxiosConfig());
+            res = await axios.get(`${getVendorBackendUrl()}/api/admin/stats`, getAxiosConfig());
             if (res.data.success) {
               setAnalytics({
                 customersCount: res.data.data.totalMembers,
@@ -1304,62 +1304,62 @@ const VendorDashboard = () => {
               });
             }
           } else {
-            res = await axios.get(`http://${window.location.hostname}:8000/api/vendor/analytics`, getAxiosConfig());
+            res = await axios.get(`${getVendorBackendUrl()}/api/vendor/analytics`, getAxiosConfig());
             if (res.data.success) setAnalytics(res.data.data);
             
             // Fetch extra collections for client-side widgets
             try {
-              const ordersRes = await axios.get(`http://${window.location.hostname}:8000/api/vendor/orders`, getAxiosConfig());
+              const ordersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
               if (ordersRes.data.success) setOrders(ordersRes.data.data);
             } catch (err) {
               console.error('Failed to load orders for vendor dashboard:', err);
             }
             try {
-              const productsRes = await axios.get(`http://${window.location.hostname}:8000/api/vendor/products`, getAxiosConfig());
+              const productsRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/products`, getAxiosConfig());
               if (productsRes.data.success) setCatalog(productsRes.data.data);
             } catch (err) {
               console.error('Failed to load products for vendor dashboard:', err);
             }
             try {
-              const customersRes = await axios.get(`http://${window.location.hostname}:8000/api/vendor/customers`, getAxiosConfig());
+              const customersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig());
               if (customersRes.data.success) setCustomers(customersRes.data.data);
             } catch (err) {
               console.error('Failed to load customers for vendor dashboard:', err);
             }
           }
         } else if (activeTab === 'catalog') {
-          const res = await axios.get(`http://${window.location.hostname}:8000/api/vendor/products`, getAxiosConfig());
+          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/products`, getAxiosConfig());
           if (res.data.success) setCatalog(res.data.data);
           try {
-            const ordersRes = await axios.get(`http://${window.location.hostname}:8000/api/vendor/orders`, getAxiosConfig());
+            const ordersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
             if (ordersRes.data.success) setOrders(ordersRes.data.data);
           } catch (err) {
             console.error('Failed to load orders for catalog sales analysis:', err);
           }
         } else if (activeTab === 'orders') {
-          const res = await axios.get(`http://${window.location.hostname}:8000/api/vendor/orders`, getAxiosConfig());
+          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
           if (res.data.success) setOrders(res.data.data);
           
           // Also fetch delivery partners for quick assignment
-          const partnersRes = await axios.get(`http://${window.location.hostname}:8000/api/vendor/delivery-partners`, getAxiosConfig());
+          const partnersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig());
           if (partnersRes.data.success) setPartners(partnersRes.data.data);
 
           // Also fetch catalog items for scheduling
           try {
-            const productsRes = await axios.get(`http://${window.location.hostname}:8000/api/vendor/products`, getAxiosConfig());
+            const productsRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/products`, getAxiosConfig());
             if (productsRes.data.success) setCatalog(productsRes.data.data);
           } catch (err) {
             console.error('Failed to load products for orders tab:', err);
           }
         } else if (activeTab === 'delivery') {
-          const res = await axios.get(`http://${window.location.hostname}:8000/api/vendor/delivery-partners`, getAxiosConfig());
+          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig());
           if (res.data.success) setPartners(res.data.data);
         } else if (activeTab === 'customers') {
-          const res = await axios.get(`http://${window.location.hostname}:8000/api/vendor/customers`, getAxiosConfig());
+          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig());
           if (res.data.success) setCustomers(res.data.data);
         } else if (activeTab === 'card') {
           try {
-            const res = await axios.get(`http://${window.location.hostname}:8000/api/member/card`, getAxiosConfig());
+            const res = await axios.get(`${getVendorBackendUrl()}/api/member/card`, getAxiosConfig());
             if (res.data.success) {
               dispatch(updateCard(res.data.data));
             }
@@ -1369,7 +1369,7 @@ const VendorDashboard = () => {
             }
           }
           try {
-            const histRes = await axios.get(`http://${window.location.hostname}:8000/api/member/history`, getAxiosConfig());
+            const histRes = await axios.get(`${getVendorBackendUrl()}/api/member/history`, getAxiosConfig());
             if (histRes.data.success) {
               setMembershipHistory(histRes.data.data);
             }
@@ -1377,7 +1377,7 @@ const VendorDashboard = () => {
             console.error('Failed to load membership history:', err);
           }
           try {
-            const plansRes = await axios.get(`http://${window.location.hostname}:8000/api/member/plans`, getAxiosConfig());
+            const plansRes = await axios.get(`${getVendorBackendUrl()}/api/member/plans`, getAxiosConfig());
             if (plansRes.data.success) {
               setMembershipPlans(plansRes.data.data);
             }
@@ -1385,11 +1385,11 @@ const VendorDashboard = () => {
             console.error('Failed to load membership plans:', err);
           }
         } else if (activeTab === 'payments') {
-          let url = `http://${window.location.hostname}:8000/api/vendor/orders`;
+          let url = `${getVendorBackendUrl()}/api/vendor/orders`;
           if (user?.role === 'Admin') {
-            url = `http://${window.location.hostname}:8000/api/admin/orders`;
+            url = `${getVendorBackendUrl()}/api/admin/orders`;
           } else if (user?.role === 'Member') {
-            url = `http://${window.location.hostname}:8000/api/member/orders`;
+            url = `${getVendorBackendUrl()}/api/member/orders`;
           }
           const res = await axios.get(url, getAxiosConfig());
           if (res.data.success) setOrders(res.data.data);
@@ -1398,8 +1398,8 @@ const VendorDashboard = () => {
           try {
             if (user?.role !== 'Member') {
               const settUrl = user?.role === 'Admin'
-                ? `http://${window.location.hostname}:8000/api/admin/settlements`
-                : `http://${window.location.hostname}:8000/api/vendor/settlements`;
+                ? `${getVendorBackendUrl()}/api/admin/settlements`
+                : `${getVendorBackendUrl()}/api/vendor/settlements`;
               const settRes = await axios.get(settUrl, getAxiosConfig());
               if (settRes.data.success) {
                 setSettlements(settRes.data.data);
@@ -1412,8 +1412,8 @@ const VendorDashboard = () => {
           // Dynamically fetch active commission settings
           try {
             const configUrl = user?.role === 'Admin'
-              ? `http://${window.location.hostname}:8000/api/admin/commission-config`
-              : `http://${window.location.hostname}:8000/api/vendor/commission-config`;
+              ? `${getVendorBackendUrl()}/api/admin/commission-config`
+              : `${getVendorBackendUrl()}/api/vendor/commission-config`;
             const configRes = await axios.get(configUrl, getAxiosConfig());
             if (configRes.data.success) {
               setCommissionConfig(configRes.data.data);
@@ -1423,37 +1423,37 @@ const VendorDashboard = () => {
           }
         } else if (activeTab === 'requests') {
           if (user?.role === 'Admin') {
-            const res = await axios.get(`http://${window.location.hostname}:8000/api/admin/vendors/requests`, getAxiosConfig());
+            const res = await axios.get(`${getVendorBackendUrl()}/api/admin/vendors/requests`, getAxiosConfig());
             if (res.data.success) setVendorRequests(res.data.data);
           }
         } else if (activeTab === 'vendors') {
           if (user?.role === 'Admin') {
-            const res = await axios.get(`http://${window.location.hostname}:8000/api/admin/vendors`, getAxiosConfig());
+            const res = await axios.get(`${getVendorBackendUrl()}/api/admin/vendors`, getAxiosConfig());
             if (res.data.success) setAdminVendors(res.data.data);
           }
         } else if (activeTab === 'members') {
           if (user?.role === 'Admin') {
-            const res = await axios.get(`http://${window.location.hostname}:8000/api/admin/members`, getAxiosConfig());
+            const res = await axios.get(`${getVendorBackendUrl()}/api/admin/members`, getAxiosConfig());
             if (res.data.success) setAdminMembers(res.data.data);
           }
         } else if (activeTab === 'settings') {
           if (user?.role === 'Admin') {
-            const res = await axios.get(`http://${window.location.hostname}:8000/api/admin/membership-plans`, getAxiosConfig());
+            const res = await axios.get(`${getVendorBackendUrl()}/api/admin/membership-plans`, getAxiosConfig());
             if (res.data.success) setMembershipPlans(res.data.data);
           }
         } else if (activeTab === 'discounts' || ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'].includes(activeTab)) {
           if (user?.role === 'Member') {
-            const res = await axios.get(`http://${window.location.hostname}:8000/api/member/discounts`, getAxiosConfig());
+            const res = await axios.get(`${getVendorBackendUrl()}/api/member/discounts`, getAxiosConfig());
             if (res.data.success) setMemberDiscounts(res.data.data);
           }
         } else if (activeTab === 'redeem') {
           if (user?.role === 'Member') {
-            const res = await axios.get(`http://${window.location.hostname}:8000/api/member/discounts`, getAxiosConfig());
+            const res = await axios.get(`${getVendorBackendUrl()}/api/member/discounts`, getAxiosConfig());
             if (res.data.success) setMemberDiscounts(res.data.data);
           }
         } else if (activeTab === 'renewal') {
           if (user?.role === 'Member') {
-            const res = await axios.get(`http://${window.location.hostname}:8000/api/member/plans`, getAxiosConfig());
+            const res = await axios.get(`${getVendorBackendUrl()}/api/member/plans`, getAxiosConfig());
             if (res.data.success) setMembershipPlans(res.data.data);
           }
         }
@@ -1518,7 +1518,7 @@ const VendorDashboard = () => {
 
     const fetchOrders = async () => {
       try {
-        const res = await axios.get(`http://${window.location.hostname}:8000/api/vendor/orders`, getAxiosConfig());
+        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
         if (res.data.success && Array.isArray(res.data.data)) {
           const newOrders = res.data.data;
 
@@ -1574,7 +1574,7 @@ const VendorDashboard = () => {
     if (!vendorId || !date) return;
     try {
       const config = getAxiosConfig();
-      const res = await axios.get(`http://${window.location.hostname}:8000/api/member/vendors/${vendorId}/booked-slots?date=${date}`, config);
+      const res = await axios.get(`${getVendorBackendUrl()}/api/member/vendors/${vendorId}/booked-slots?date=${date}`, config);
       if (res.data.success) {
         setBookedSlots(res.data.data);
       }
@@ -1586,7 +1586,7 @@ const VendorDashboard = () => {
   const handleSaveDoctorSlots = async (doctor, slotsArray) => {
     try {
       const config = getAxiosConfig();
-      const res = await axios.put(`http://${window.location.hostname}:8000/api/vendor/products/${doctor._id}`, {
+      const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/products/${doctor._id}`, {
         ...doctor,
         availableTimeSlots: slotsArray
       }, config);
@@ -1955,13 +1955,13 @@ const VendorDashboard = () => {
     }
     try {
       if (isEditItem) {
-        const res = await axios.put(`http://${window.location.hostname}:8000/api/vendor/products/${selectedItemId}`, itemForm, getAxiosConfig());
+        const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/products/${selectedItemId}`, itemForm, getAxiosConfig());
         if (res.data.success) {
           setCatalog(catalog.map(item => item._id === selectedItemId ? res.data.data : item));
           setMessage('Catalog item updated successfully!');
         }
       } else {
-        const res = await axios.post(`http://${window.location.hostname}:8000/api/vendor/products`, itemForm, getAxiosConfig());
+        const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/products`, itemForm, getAxiosConfig());
         if (res.data.success) {
           setCatalog([...catalog, res.data.data]);
           setMessage('Catalog item created successfully!');
@@ -1976,7 +1976,7 @@ const VendorDashboard = () => {
   const handleDeleteItem = async (id) => {
     if (!window.confirm(`Are you sure you want to delete this ${terms.catalogItem}?`)) return;
     try {
-      const res = await axios.delete(`http://${window.location.hostname}:8000/api/vendor/products/${id}`, getAxiosConfig());
+      const res = await axios.delete(`${getVendorBackendUrl()}/api/vendor/products/${id}`, getAxiosConfig());
       if (res.data.success) {
         setCatalog(catalog.filter(item => item._id !== id));
         setMessage('Catalog item deleted.');
@@ -1990,7 +1990,7 @@ const VendorDashboard = () => {
   const handleUpdateOrderStatus = async (orderId, status, partnerId = null) => {
     try {
       const res = await axios.put(
-        `http://${window.location.hostname}:8000/api/vendor/orders/${orderId}/status`, 
+        `${getVendorBackendUrl()}/api/vendor/orders/${orderId}/status`, 
         { status, deliveryPartnerId: partnerId }, 
         getAxiosConfig()
       );
@@ -2000,7 +2000,7 @@ const VendorDashboard = () => {
         
         // If partner assigned, reload partners status
         if (partnerId) {
-          const partnersRes = await axios.get(`http://${window.location.hostname}:8000/api/vendor/delivery-partners`, getAxiosConfig());
+          const partnersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig());
           if (partnersRes.data.success) setPartners(partnersRes.data.data);
         }
       }
@@ -2057,13 +2057,13 @@ const VendorDashboard = () => {
     e.preventDefault();
     try {
       if (isEditPartner) {
-        const res = await axios.put(`http://${window.location.hostname}:8000/api/vendor/delivery-partners/${selectedPartnerId}`, partnerForm, getAxiosConfig());
+        const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/delivery-partners/${selectedPartnerId}`, partnerForm, getAxiosConfig());
         if (res.data.success) {
           setPartners(partners.map(p => p._id === selectedPartnerId ? res.data.data : p));
           setMessage('Delivery partner updated successfully!');
         }
       } else {
-        const res = await axios.post(`http://${window.location.hostname}:8000/api/vendor/delivery-partners`, partnerForm, getAxiosConfig());
+        const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, partnerForm, getAxiosConfig());
         if (res.data.success) {
           setPartners([...partners, res.data.data]);
           setMessage('Delivery partner added successfully!');
@@ -2078,7 +2078,7 @@ const VendorDashboard = () => {
   const handleDeletePartner = async (id) => {
     if (!window.confirm('Delete this delivery partner?')) return;
     try {
-      const res = await axios.delete(`http://${window.location.hostname}:8000/api/vendor/delivery-partners/${id}`, getAxiosConfig());
+      const res = await axios.delete(`${getVendorBackendUrl()}/api/vendor/delivery-partners/${id}`, getAxiosConfig());
       if (res.data.success) {
         setPartners(partners.filter(p => p._id !== id));
         setMessage('Delivery partner deleted.');
@@ -2092,7 +2092,7 @@ const VendorDashboard = () => {
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.put(`http://${window.location.hostname}:8000/api/vendor/profile`, {
+      const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/profile`, {
         ...profileForm,
         activeBusinessId
       }, getAxiosConfig());
@@ -2109,7 +2109,7 @@ const VendorDashboard = () => {
     e.preventDefault();
     if (!passwordForm.newPassword) return;
     try {
-      const res = await axios.put(`http://${window.location.hostname}:8000/api/vendor/change-password`, passwordForm, getAxiosConfig());
+      const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/change-password`, passwordForm, getAxiosConfig());
       if (res.data.success) {
         setMessage('Password updated successfully!');
         setPasswordForm({ currentPassword: '', newPassword: '' });
@@ -2123,7 +2123,7 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/vendor/forgot-password-otp`, {}, getAxiosConfig());
+      const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/forgot-password-otp`, {}, getAxiosConfig());
       if (res.data.success) {
         setMessage('OTP sent to your registered email address!');
         setShowForgotFlow(true);
@@ -2142,7 +2142,7 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/vendor/reset-password-otp`, {
+      const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/reset-password-otp`, {
         otp,
         newPassword: passwordForm.newPassword
       }, getAxiosConfig());
@@ -2161,7 +2161,7 @@ const VendorDashboard = () => {
     e.preventDefault();
     const form = e.target;
     try {
-      const res = await axios.put(`http://${window.location.hostname}:8000/api/admin/commission-config`, {
+      const res = await axios.put(`${getVendorBackendUrl()}/api/admin/commission-config`, {
         commissionRate: Number(form.commissionRate.value),
         collectionMethod: form.collectionMethod.value,
         deductionMethod: form.deductionMethod.value,
@@ -2181,7 +2181,7 @@ const VendorDashboard = () => {
     e.preventDefault();
     const form = e.target;
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/admin/settlements`, {
+      const res = await axios.post(`${getVendorBackendUrl()}/api/admin/settlements`, {
         vendorId: form.vendorId.value,
         grossAmount: Number(form.grossAmount.value),
         status: form.status.value
@@ -2198,7 +2198,7 @@ const VendorDashboard = () => {
 
   const handleUpdateSettlementStatus = async (settlementId, newStatus) => {
     try {
-      const res = await axios.put(`http://${window.location.hostname}:8000/api/admin/settlements/${settlementId}`, {
+      const res = await axios.put(`${getVendorBackendUrl()}/api/admin/settlements/${settlementId}`, {
         status: newStatus
       }, getAxiosConfig());
       if (res.data.success) {
@@ -2215,11 +2215,11 @@ const VendorDashboard = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/member/renew`, { planName }, getAxiosConfig());
+      const res = await axios.post(`${getVendorBackendUrl()}/api/member/renew`, { planName }, getAxiosConfig());
       if (res.data.success) {
         dispatch(updateCard(res.data.data));
         try {
-          const histRes = await axios.get(`http://${window.location.hostname}:8000/api/member/history`, getAxiosConfig());
+          const histRes = await axios.get(`${getVendorBackendUrl()}/api/member/history`, getAxiosConfig());
           if (histRes.data.success) {
             setMembershipHistory(histRes.data.data);
           }
@@ -9744,7 +9744,7 @@ const VendorDashboard = () => {
                         for (const item of cart) {
                           const discountPct = item.discountPercent || 0;
                           const finalPrice = Math.round((item.price || 0) * (1 - discountPct / 100));
-                          await axios.post(`http://${window.location.hostname}:8000/api/member/redeem`, {
+                          await axios.post(`${getVendorBackendUrl()}/api/member/redeem`, {
                             vendorId: item.vendorId,
                             productId: item._id,
                             tableNumber: 'Cart Order',
