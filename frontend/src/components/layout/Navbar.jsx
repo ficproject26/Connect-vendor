@@ -64,7 +64,8 @@ const Navbar = () => {
       }
     };
     fetchOrders();
-    const interval = setInterval(fetchOrders, 5000);
+    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 5000;
+    const interval = setInterval(fetchOrders, syncInterval);
     return () => clearInterval(interval);
   }, [isAuthenticated, token, user]);
 
