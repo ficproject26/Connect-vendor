@@ -3491,7 +3491,7 @@ const VendorDashboard = () => {
                                         </div>
                                         {shouldShowStock && item.stock !== undefined && (
                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vaccent' : 'Stock'}</span>
+                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
                                             <span className="font-bold text-slate-700 dark:text-slate-300">{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
                                           </div>
                                         )}
@@ -7085,17 +7085,6 @@ const VendorDashboard = () => {
                 />
               </div>
 
-              <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Department</label>
-                <input
-                  type="text"
-                  required
-                  value={itemForm.department}
-                  onChange={e => setItemForm({ ...itemForm, department: e.target.value })}
-                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                  placeholder="e.g. Engineering / HR / Design"
-                />
-              </div>
 
               <div className="space-y-1 animate-fadeIn">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Vacancies / Openings</label>
