@@ -190,6 +190,8 @@ const OrderSchema = new mongoose.Schema({
   deliveryPartnerId: { type: String },
   candidateEmail: { type: String },
   candidateResume: { type: String },
+  experience: { type: String },
+  candidateEducation: { type: String },
   
   // Custom fields based on Vendor Type
   appointmentDate: { type: String },         // Hospital
