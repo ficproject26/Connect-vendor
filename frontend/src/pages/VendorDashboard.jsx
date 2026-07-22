@@ -387,36 +387,68 @@ const VendorDashboard = () => {
             COMPLETE_CAT_TAXONOMY[key] = JSON.parse(JSON.stringify(DEFAULT_TAXONOMY[key]));
           });
 
+          const resolveCategoryHierarchy = (c, taxonomyObj) => {
+            let main = (c.name || '').trim();
+            let sub = (c.subcategory || '').trim();
+            let subsub = (c.subSubcategory || '').trim();
+
+            const mainLower = main.toLowerCase();
+            if (mainLower === 'stores' || mainLower === 'products' || mainLower === 'product' || mainLower === 'store') main = 'Products';
+            else if (mainLower === 'hotels' || mainLower === 'stay' || mainLower === 'hotel') main = 'Stay';
+            else if (mainLower === 'restaurants' || mainLower === 'food' || mainLower === 'restaurant') main = 'Food';
+            else if (mainLower === 'daily need' || mainLower === 'daily needs') main = 'Daily Needs';
+            else if (mainLower === 'job' || mainLower === 'jobs') main = 'Jobs';
+            else if (mainLower === 'service' || mainLower === 'services') main = 'Services';
+            else if (mainLower === 'travel') main = 'Travel';
+
+            if (taxonomyObj && !taxonomyObj[main]) {
+              for (const topKey of Object.keys(taxonomyObj)) {
+                if (taxonomyObj[topKey] && Object.keys(taxonomyObj[topKey]).some(k => k.toLowerCase() === main.toLowerCase())) {
+                  subsub = sub;
+                  sub = main;
+                  main = topKey;
+                  break;
+                }
+              }
+            }
+
+            if (taxonomyObj && taxonomyObj[main] && !sub) {
+              sub = 'General';
+            }
+
+            return { main, sub, subsub };
+          };
+
           dbCats.forEach(cat => {
-            let main = cat.name;
-            if (main === 'Restaurants' || main === 'Food') main = 'Food';
-            if (main === 'Hotels' || main === 'Stay') main = 'Stay';
-            if (main === 'Stores' || main === 'Products') main = 'Products';
-            
-            const sub = cat.subcategory || 'General';
-            const subsub = cat.subSubcategory || '';
+            const { main, sub, subsub } = resolveCategoryHierarchy(cat, COMPLETE_CAT_TAXONOMY);
             
             if (COMPLETE_CAT_TAXONOMY[main]) {
               // If it's a deletion/inactivation marker
               if (cat.isDeleted || cat.isActive === false || cat.description === 'DELETED_HIERARCHY_MARKER') {
-                if (cat.subcategory) {
-                  if (cat.subSubcategory) {
-                    if (COMPLETE_CAT_TAXONOMY[main][sub]) {
-                      COMPLETE_CAT_TAXONOMY[main][sub] = COMPLETE_CAT_TAXONOMY[main][sub].filter(x => x !== subsub);
+                if (sub && sub !== 'General') {
+                  const matchedSubKey = Object.keys(COMPLETE_CAT_TAXONOMY[main]).find(k => k.toLowerCase() === sub.toLowerCase());
+                  const actualSub = matchedSubKey || sub;
+                  if (subsub) {
+                    if (COMPLETE_CAT_TAXONOMY[main][actualSub]) {
+                      COMPLETE_CAT_TAXONOMY[main][actualSub] = COMPLETE_CAT_TAXONOMY[main][actualSub].filter(
+                        x => x.toLowerCase() !== subsub.toLowerCase()
+                      );
                     }
                   } else {
-                    delete COMPLETE_CAT_TAXONOMY[main][sub];
+                    delete COMPLETE_CAT_TAXONOMY[main][actualSub];
                   }
                 } else {
                   delete COMPLETE_CAT_TAXONOMY[main];
                 }
               } else {
                 // Active category addition
-                if (!COMPLETE_CAT_TAXONOMY[main][sub]) {
-                  COMPLETE_CAT_TAXONOMY[main][sub] = [];
+                const matchedSubKey = Object.keys(COMPLETE_CAT_TAXONOMY[main]).find(k => k.toLowerCase() === sub.toLowerCase());
+                const actualSub = matchedSubKey || sub;
+                if (!COMPLETE_CAT_TAXONOMY[main][actualSub]) {
+                  COMPLETE_CAT_TAXONOMY[main][actualSub] = [];
                 }
-                if (subsub && !COMPLETE_CAT_TAXONOMY[main][sub].includes(subsub)) {
-                  COMPLETE_CAT_TAXONOMY[main][sub].push(subsub);
+                if (subsub && !COMPLETE_CAT_TAXONOMY[main][actualSub].some(x => x.toLowerCase() === subsub.toLowerCase())) {
+                  COMPLETE_CAT_TAXONOMY[main][actualSub].push(subsub);
                 }
               }
             }
