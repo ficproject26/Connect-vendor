@@ -187,7 +187,7 @@ const getVendorSubcategory = (user) => {
 const createProduct = async (req, res) => {
   try {
     const { 
-      name, description, price, originalPrice, category, stock, unit, warranty, 
+      name, description, price, originalPrice, category, subcategory: bodySubcategory, stock, unit, warranty, 
       specialization, pinCode, duration, roomType, guests, amenities, imageUrl, 
       imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
@@ -198,8 +198,8 @@ const createProduct = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Name and price are required' });
     }
 
-    const subcategory = getVendorSubcategory(req.user);
-    const finalCategory = category || subcategory || 'General';
+    const vendorSubcategory = getVendorSubcategory(req.user);
+    const finalCategory = category || vendorSubcategory || 'General';
     const vendorId = req.user._id;
 
     const product = await Product.create({
@@ -209,6 +209,7 @@ const createProduct = async (req, res) => {
       price: Number(price),
       originalPrice: originalPrice ? Number(originalPrice) : undefined,
       category: finalCategory,
+      subcategory: bodySubcategory || '',
       stock: stock !== undefined ? Number(stock) : 0,
       unit: unit || 'count',
       warranty,
@@ -310,7 +311,7 @@ const getProducts = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { 
-      name, description, price, originalPrice, category, stock, unit, warranty, 
+      name, description, price, originalPrice, category, subcategory: bodySubcategory, stock, unit, warranty, 
       specialization, pinCode, duration, roomType, guests, amenities, status, 
       imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
@@ -326,8 +327,8 @@ const updateProduct = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Catalog item not found or unauthorized' });
     }
 
-    const subcategory = getVendorSubcategory(req.user);
-    const finalCategory = category || product.category || subcategory || 'General';
+    const vendorSubcategory = getVendorSubcategory(req.user);
+    const finalCategory = category || product.category || vendorSubcategory || 'General';
 
     const updated = await Product.findByIdAndUpdate(req.params.id, {
       $set: {
@@ -337,6 +338,7 @@ const updateProduct = async (req, res) => {
         price: price !== undefined ? Number(price) : product.price,
         originalPrice: originalPrice !== undefined ? (originalPrice ? Number(originalPrice) : null) : product.originalPrice,
         category: finalCategory,
+        subcategory: bodySubcategory !== undefined ? bodySubcategory : product.subcategory,
         stock: stock !== undefined ? Number(stock) : product.stock,
         unit: unit !== undefined ? unit : product.unit,
         warranty: warranty !== undefined ? warranty : product.warranty,
