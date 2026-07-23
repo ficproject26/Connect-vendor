@@ -441,6 +441,7 @@ const getOrders = async (req, res) => {
             else if (normalizedVendorType.startsWith('Travel Agency')) normalizedVendorType = 'Travel';
             else if (normalizedVendorType.startsWith('Hospital') || normalizedVendorType.startsWith('Service')) normalizedVendorType = 'Services';
             else if (normalizedVendorType.startsWith('Grocery') || normalizedVendorType.startsWith('Pharmacy')) normalizedVendorType = 'Daily Needs';
+            else if (normalizedVendorType.startsWith('Job')) normalizedVendorType = 'Jobs';
             else if (normalizedVendorType.startsWith('Store') || normalizedVendorType.startsWith('Electronics') || normalizedVendorType.startsWith('Home & Furniture')) normalizedVendorType = 'Products';
             
             return mainCat.toLowerCase() === normalizedVendorType.toLowerCase();

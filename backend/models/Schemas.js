@@ -167,7 +167,7 @@ const OrderSchema = new mongoose.Schema({
   vendorId: { type: String, required: true },
   memberId: { type: String, required: true },
   memberName: { type: String, required: true },
-  type: { type: String, enum: ['Order', 'Booking', 'Appointment'], default: 'Order' },
+  type: { type: String, default: 'Order' },
   items: [{
     productId: { type: String },
     name: { type: String },

@@ -1807,9 +1807,10 @@ const VendorDashboard = () => {
 
     setItemForm({
       name: '', description: '', price: '', originalPrice: '', category: thirdCatVal, stock: '10', unit: 'count',
-      warranty: '', specialization: '', pinCode: '', duration: '1 hour', roomType: 'Standard', guests: '2', amenities: [], imageUrl: '', imageUrls: [],
+      warranty: '', specialization: '', pinCode: '', duration: '', roomType: 'Standard', guests: '2', amenities: [], imageUrl: '', imageUrls: [],
       foodType: 'Veg', status: terms.catalogStatuses[0],
-      cardTypes: ['Silver', 'Gold', 'Diamond']
+      cardTypes: ['Silver', 'Gold', 'Diamond'],
+      jobType: 'Full-time', jobLocation: '', experience: '', skills: '', qualification: '', linkedProfile: '', contactNumber: '', mailId: '', department: ''
     });
     setIsEditItem(false);
     setIsItemModalOpen(true);
@@ -1835,9 +1836,9 @@ const VendorDashboard = () => {
     setSelectedSubcat(subcatVal);
 
     setItemForm({
-      name: item.name,
+      name: item.name || '',
       description: item.description || '',
-      price: item.price.toString(),
+      price: item.price ? item.price.toString() : '',
       originalPrice: item.originalPrice ? item.originalPrice.toString() : '',
       category: item.category || '',
       stock: (item.stock || 0).toString(),
@@ -1853,7 +1854,16 @@ const VendorDashboard = () => {
       imageUrls: item.imageUrls || (item.imageUrl ? [item.imageUrl] : []),
       foodType: item.foodType || 'Veg',
       status: item.status || terms.catalogStatuses[0],
-      cardTypes: item.cardTypes || ['Silver', 'Gold', 'Diamond']
+      cardTypes: item.cardTypes || ['Silver', 'Gold', 'Diamond'],
+      jobType: item.jobType || 'Full-time',
+      jobLocation: item.jobLocation || '',
+      experience: item.experience || '',
+      skills: item.skills || '',
+      qualification: item.qualification || '',
+      linkedProfile: item.linkedProfile || '',
+      contactNumber: item.contactNumber || '',
+      mailId: item.mailId || '',
+      department: item.department || ''
     });
     setSelectedItemId(item._id);
     setIsEditItem(true);
@@ -3429,131 +3439,156 @@ const VendorDashboard = () => {
 
                         return (
                           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                            {sortedCatalog.map(item => (
-                              <div 
-                                key={item._id} 
-                                onClick={(e) => {
-                                  if (e.target.closest('button')) return;
-                                  handleOpenSalesDetails(item);
-                                }}
-                                className="glass-card rounded-2xl p-4 flex flex-col justify-between hover-card cursor-pointer"
-                              >
-                                <div>
-                                  <div className="mb-3 rounded-xl overflow-hidden aspect-video bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
-                                    <img
-                                      src={item.imageUrl ? (item.imageUrl.startsWith('http') ? item.imageUrl : `${getBackendUrl()}${item.imageUrl}`) : getFallbackImageUrl(item, vendorType)}
-                                      alt={item.name}
-                                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                    />
-                                  </div>
-                                  <div className="flex justify-between items-start mb-1.5">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase flex items-center gap-1.5">
-                                        <span>{item.category}</span>
-                                      </span>
-                                      {vendorType.startsWith('Restaurant') && item.foodType && (
-                                        <div 
-                                          className={`w-3.5 h-3.5 border flex items-center justify-center p-0.5 rounded shrink-0 ${
-                                            item.foodType === 'Veg' ? 'border-emerald-600' : 'border-red-600'
-                                          }`}
-                                          title={item.foodType}
-                                        >
-                                          <div className={`w-1 h-1 rounded-full ${item.foodType === 'Veg' ? 'bg-emerald-600' : 'bg-red-600'}`} />
+                            {sortedCatalog.map(item => {
+                              const isOutOfStock = (item.status && (
+                                item.status.toLowerCase().includes('out') ||
+                                item.status.toLowerCase().includes('un') ||
+                                item.status.toLowerCase().includes('closed')
+                              )) || (item.stock !== undefined && Number(item.stock) <= 0);
+
+                              return (
+                                <div 
+                                  key={item._id} 
+                                  onClick={(e) => {
+                                    if (e.target.closest('button')) return;
+                                    handleOpenSalesDetails(item);
+                                  }}
+                                  className={`glass-card rounded-2xl p-4 flex flex-col justify-between hover-card cursor-pointer transition-all ${
+                                    isOutOfStock ? 'bg-slate-50/80 dark:bg-slate-900/40 border-slate-200/80 opacity-90' : ''
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="mb-3 rounded-xl overflow-hidden aspect-video bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
+                                      {isOutOfStock && (
+                                        <div className="absolute top-4 -left-9 -rotate-45 bg-[#4a5568]/90 text-white text-[9px] font-extrabold uppercase tracking-widest py-1 px-8 shadow-md z-10 pointer-events-none text-center min-w-[140px]">
+                                          {item.status && item.status.toLowerCase().includes('service') ? 'OUT OF SERVICE' : 'OUT OF STOCK'}
                                         </div>
                                       )}
+                                      <img
+                                        src={item.imageUrl ? (item.imageUrl.startsWith('http') ? item.imageUrl : `${getBackendUrl()}${item.imageUrl}`) : getFallbackImageUrl(item, vendorType)}
+                                        alt={item.name}
+                                        className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
+                                          isOutOfStock ? 'grayscale opacity-50' : ''
+                                        }`}
+                                      />
                                     </div>
-                                    {(() => {
-                                      const mainCat = getProductMainCategory(item.category, vendorType);
-                                      if (mainCat === 'Jobs') {
+                                    <div className="flex justify-between items-start mb-1.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase flex items-center gap-1.5">
+                                          <span>{item.category}</span>
+                                        </span>
+                                        {vendorType.startsWith('Restaurant') && item.foodType && (
+                                          <div 
+                                            className={`w-3.5 h-3.5 border flex items-center justify-center p-0.5 rounded shrink-0 ${
+                                              item.foodType === 'Veg' ? 'border-emerald-600' : 'border-red-600'
+                                            }`}
+                                            title={item.foodType}
+                                          >
+                                            <div className={`w-1 h-1 rounded-full ${item.foodType === 'Veg' ? 'bg-emerald-600' : 'bg-red-600'}`} />
+                                          </div>
+                                        )}
+                                      </div>
+                                      {(() => {
+                                        const mainCat = getProductMainCategory(item.category, vendorType);
+                                        if (mainCat === 'Jobs') {
+                                          return (
+                                            <div className="flex flex-col items-end">
+                                              <span className="text-sm font-bold text-[#0B3C7B] dark:text-[#faed26] leading-none">Salary: ₹{item.price}</span>
+                                            </div>
+                                          );
+                                        }
                                         return (
                                           <div className="flex flex-col items-end">
-                                            <span className="text-sm font-bold text-[#0B3C7B] dark:text-[#faed26] leading-none">Salary: ₹{item.price}</span>
+                                            {item.originalPrice && Number(item.originalPrice) > Number(item.price) ? (
+                                              <>
+                                                <span className="text-[10px] line-through text-slate-400 dark:text-slate-500">₹{item.originalPrice}</span>
+                                                <span className={`text-sm font-black leading-none ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-emerald-600 dark:text-emerald-450'}`}>
+                                                  ₹{item.price}
+                                                  <span className="text-[8px] font-extrabold ml-1 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-450 px-1 py-0.5 rounded align-middle">
+                                                    {Math.round(((Number(item.originalPrice) - Number(item.price)) / Number(item.originalPrice)) * 100)}% OFF
+                                                  </span>
+                                                </span>
+                                              </>
+                                            ) : (
+                                              <span className={`text-sm font-bold leading-none ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>₹{item.price}</span>
+                                            )}
                                           </div>
                                         );
-                                      }
+                                      })()}
+                                    </div>
+                                    <h3 className={`text-sm font-bold mt-0.5 leading-snug ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>{item.name}</h3>
+                                    
+                                    {/* Item Rating */}
+                                    {(() => {
+                                      const { rating, reviews } = getItemRating(item);
                                       return (
-                                        <div className="flex flex-col items-end">
-                                          {item.originalPrice && Number(item.originalPrice) > Number(item.price) ? (
-                                            <>
-                                              <span className="text-[10px] line-through text-slate-400 dark:text-slate-500">₹{item.originalPrice}</span>
-                                              <span className="text-sm font-black text-emerald-600 dark:text-emerald-450 leading-none">
-                                                ₹{item.price}
-                                                <span className="text-[8px] font-extrabold ml-1 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-450 px-1 py-0.5 rounded align-middle">
-                                                  {Math.round(((Number(item.originalPrice) - Number(item.price)) / Number(item.originalPrice)) * 100)}% OFF
-                                                </span>
+                                        <div className="flex items-center gap-1 mt-1 mb-1.5">
+                                          <div className={`flex ${isOutOfStock ? 'text-slate-300 dark:text-slate-600' : 'text-amber-500'}`}>
+                                            {[...Array(5)].map((_, i) => (
+                                              <span key={i} className="text-[10px]">
+                                                {i < Math.floor(rating) ? '★' : '☆'}
                                               </span>
-                                            </>
-                                          ) : (
-                                            <span className="text-sm font-bold text-slate-900 dark:text-white leading-none">₹{item.price}</span>
+                                            ))}
+                                          </div>
+                                          <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-350">{rating}</span>
+                                          <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500">({reviews})</span>
+                                        </div>
+                                      );
+                                    })()}
+                                    <p className="text-slate-600 dark:text-slate-400 text-[11px] mt-1 line-clamp-1 leading-normal">{item.description}</p>
+                                    
+                                    {/* Compact metadata fields grid */}
+                                    {(() => {
+                                      const mainCat = getProductMainCategory(item.category, vendorType);
+                                      const shouldShowStock = ['Products', 'Daily Needs', 'Food', 'Stay', 'Jobs', 'Education'].includes(mainCat);
+                                      return (
+                                        <div className={`mt-2.5 grid gap-1 text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                          <div className="text-center">
+                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
+                                            <span className={`font-bold ${isOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.status}</span>
+                                          </div>
+                                          {shouldShowStock && item.stock !== undefined && (
+                                            <div className="text-center border-l border-slate-200 dark:border-slate-800">
+                                              <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
+                                              <span className={`font-bold ${isOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
+                                            </div>
                                           )}
+                                          <div className="text-center border-l border-slate-200 dark:border-slate-800">
+                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : 'Sold'}</span>
+                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{getItemSalesData(item._id).count}</span>
+                                          </div>
                                         </div>
                                       );
                                     })()}
                                   </div>
-                                  <h3 className="text-sm font-bold text-slate-900 dark:text-white mt-0.5 leading-snug">{item.name}</h3>
-                                  
-                                  {/* Item Rating */}
-                                  {(() => {
-                                    const { rating, reviews } = getItemRating(item);
-                                    return (
-                                      <div className="flex items-center gap-1 mt-1 mb-1.5">
-                                        <div className="flex text-amber-500">
-                                          {[...Array(5)].map((_, i) => (
-                                            <span key={i} className="text-[10px]">
-                                              {i < Math.floor(rating) ? '★' : '☆'}
-                                            </span>
-                                          ))}
-                                        </div>
-                                        <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-350">{rating}</span>
-                                        <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500">({reviews})</span>
-                                      </div>
-                                    );
-                                  })()}
-                                  <p className="text-slate-600 dark:text-slate-400 text-[11px] mt-1 line-clamp-1 leading-normal">{item.description}</p>
-                                  
-                                  {/* Compact metadata fields grid */}
-                                  {(() => {
-                                    const mainCat = getProductMainCategory(item.category, vendorType);
-                                    const shouldShowStock = ['Products', 'Daily Needs', 'Food', 'Stay', 'Jobs', 'Education'].includes(mainCat);
-                                    return (
-                                      <div className={`mt-2.5 grid gap-1 text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                                        <div className="text-center">
-                                          <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
-                                          <span className={`font-bold ${item.status.includes('Out') || item.status.includes('Un') ? 'text-red-500' : 'text-slate-700 dark:text-slate-300'}`}>{item.status}</span>
-                                        </div>
-                                        {shouldShowStock && item.stock !== undefined && (
-                                          <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
-                                            <span className="font-bold text-slate-700 dark:text-slate-300">{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
-                                          </div>
-                                        )}
-                                        <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                          <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : 'Sold'}</span>
-                                          <span className="font-bold text-emerald-600 dark:text-emerald-400">{getItemSalesData(item._id).count}</span>
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
+
+                                  <div className="flex justify-end gap-1.5 mt-3 pt-2">
+                                    <button
+                                      onClick={() => handleOpenEditItem(item)}
+                                      className={`p-2 rounded-lg border transition-colors ${
+                                        isOutOfStock 
+                                          ? 'bg-slate-100/50 dark:bg-slate-800/30 text-slate-300 dark:text-slate-600 border-slate-200/50 dark:border-slate-800/30' 
+                                          : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700/50'
+                                      }`}
+                                      title="Edit Item"
+                                    >
+                                      <Edit2 size={12} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteItem(item._id)}
+                                      className={`p-2 rounded-lg border transition-colors ${
+                                        isOutOfStock 
+                                          ? 'bg-red-50/40 dark:bg-red-950/10 text-red-300 dark:text-red-800/50 border-red-100 dark:border-red-950/20' 
+                                          : 'bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/30'
+                                      }`}
+                                      title="Delete Item"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </div>
                                 </div>
- 
-                                <div className="flex justify-end gap-1.5 mt-3 pt-2">
-                                  <button
-                                    onClick={() => handleOpenEditItem(item)}
-                                    className="bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 p-2 rounded-lg border border-slate-200 dark:border-slate-700/50 transition-colors"
-                                    title="Edit Item"
-                                  >
-                                    <Edit2 size={12} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteItem(item._id)}
-                                    className="bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 p-2 rounded-lg border border-red-200 dark:border-red-900/30 transition-colors"
-                                    title="Delete Item"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         );
                       })()
@@ -6986,6 +7021,20 @@ const VendorDashboard = () => {
                   <option value="Hybrid" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Hybrid</option>
                 </select>
               </div>
+
+              {itemForm.jobType === 'Internship' && (
+                <div className="space-y-1 animate-fadeIn">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Duration</label>
+                  <input
+                    type="text"
+                    required
+                    value={itemForm.duration || ''}
+                    onChange={e => setItemForm({ ...itemForm, duration: e.target.value })}
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                    placeholder="e.g. 3 Months / 6 Months"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1 animate-fadeIn">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Location</label>

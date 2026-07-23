@@ -295,9 +295,10 @@ const Orders = () => {
                 ) : (
                   (() => {
                     const savedActiveId = localStorage.getItem('active_business_id') || activeBusinessId || user?.activeBusinessId;
+                    const userBizIds = [user?._id, user?.parentUserId, activeBusinessId, savedActiveId, ...(user?.businesses?.map(b => b._id ? b._id.toString() : '') || [])].filter(Boolean);
 
                     const filteredOrders = orders.filter(order => {
-                      const matchesBusiness = !savedActiveId || order.vendorId === savedActiveId || order.vendor_id === savedActiveId;
+                      const matchesBusiness = !savedActiveId || order.vendorId === savedActiveId || order.vendor_id === savedActiveId || userBizIds.includes(order.vendorId) || userBizIds.includes(order.vendor_id);
                       const matchesStatus = orderStatusFilter === 'All' || order.status === orderStatusFilter;
                       const matchesSearch = (order.memberName || order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) || 
                                             (order.memberId || order.id || '').toLowerCase().includes(orderSearchQuery.toLowerCase());
@@ -337,7 +338,7 @@ const Orders = () => {
                     if (filteredOrders.length === 0) {
                       return (
                         <div className="glass-card p-12 text-center rounded-3xl">
-                          <p className="text-slate-800 dark:text-slate-200 font-medium">No orders match your filter criteria.</p>
+                          <p className="text-slate-800 dark:text-slate-200 font-medium">No {terms.ordersName.toLowerCase()} match your filter criteria.</p>
                         </div>
                       );
                     }
@@ -347,7 +348,7 @@ const Orders = () => {
                         <table className="w-full text-left border-collapse min-w-[800px]">
                           <thead>
                             <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/30 text-slate-600 dark:text-slate-400 text-xs uppercase font-bold">
-                              {vendorType.startsWith('Job') ? (
+                              {(vendorType.startsWith('Job') || terms.ordersName === 'Applications') ? (
                                 <>
                                   <th className="px-6 py-4">Candidate Name</th>
                                   <th className="px-6 py-4">Education</th>
@@ -378,7 +379,7 @@ const Orders = () => {
                           </thead>
                           <tbody>
                             {filteredOrders.map(order => {
-                              const isJob = vendorType.startsWith('Job');
+                              const isJob = vendorType.startsWith('Job') || terms.ordersName === 'Applications' || order.type === 'Job Application' || Boolean(order.candidateResume || order.candidateEmail);
                               const isService = vendorType.startsWith('Hospital') || vendorType.startsWith('Service') || vendorType.startsWith('Education') || terms.ordersName !== 'Orders';
 
                               return (
