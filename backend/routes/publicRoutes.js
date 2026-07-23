@@ -102,7 +102,7 @@ router.get('/products', async (req, res) => {
       .filter(p => vendorMap[p.vendorId]) // only include products from approved vendors
       .map(p => {
         const vendor = vendorMap[p.vendorId];
-        const subNavbarCategory = getSubNavbarCategory(vendor.baseVendorType, p.category);
+        const subNavbarCategory = p.subNavbarCategory || p.mainCategory || getSubNavbarCategory(vendor.baseVendorType, p.category);
         
         return {
           id: p._id,
@@ -115,6 +115,8 @@ router.get('/products', async (req, res) => {
           guests: p.guests || 2,
           amenities: p.amenities || [],
           category: p.category || vendor.category || 'General',
+          subcategory: p.subcategory || '',
+          subSubcategory: p.subSubcategory || '',
           subNavbarCategory: subNavbarCategory,
           image: p.imageUrl 
             ? (p.imageUrl.startsWith('/uploads') ? `${baseUrl}${p.imageUrl}` : p.imageUrl)
