@@ -1806,7 +1806,7 @@ const VendorDashboard = () => {
         catalogItem: 'Product',
         ordersName: 'Orders',
         orderItem: 'Order',
-        categories: ['Groceries', 'Fresh Produce', 'Packaged Foods', 'Dairy & Eggs'],
+        categories: ['Grocery', 'Fruits & Vegetables', 'Dairy', 'Water & Beverages', 'Household Essentials', 'Personal Care', 'Baby Care', 'Pharmacy'],
         nameLabel: 'Product Name',
         priceLabel: 'Price (₹)',
         imageLabel: 'Product Image / Photo',
@@ -1824,7 +1824,7 @@ const VendorDashboard = () => {
         catalogItem: 'Product',
         ordersName: 'Orders',
         orderItem: 'Order',
-        categories: ['Groceries', 'Clothing', 'Kitchen', 'Home Decor', 'Gadgets', 'Accessories', 'Mobiles', 'Hardware', 'Fresh Produce', 'Packaged Foods', 'Dairy & Eggs', 'Furniture', 'Home Appliances', 'Office Supplies'],
+        categories: ['Electronics', 'IT & Office', 'Home Appliances', 'Furniture', 'Fashion', 'Beauty', 'Home & Kitchen', 'Pet Care', 'Gardening', 'Healthcare', 'Business Products'],
         nameLabel: 'Product Name',
         priceLabel: 'Price (₹)',
         imageLabel: 'Product Image / Photo',
@@ -7041,14 +7041,14 @@ const VendorDashboard = () => {
                       {(() => {
                         const currentTax = getCategoryTaxonomy();
                         const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
+                        const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+                        
                         const parentKeys = [
                           ...new Set([
                             ...taxParentKeys,
-                            ...(terms.categories || []),
-                            ...catalog.map(item => item.category).filter(Boolean),
                             itemForm.category
                           ])
-                        ].filter(Boolean);
+                        ].filter(cat => cat && !mainCatNames.includes(cat));
 
                         return parentKeys.map(cat => (
                           <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
@@ -7331,14 +7331,14 @@ const VendorDashboard = () => {
                   {(() => {
                     const currentTax = getCategoryTaxonomy();
                     const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
+                    const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+                    
                     const parentKeys = [
                       ...new Set([
                         ...taxParentKeys,
-                        ...(terms.categories || []),
-                        ...catalog.map(item => item.category).filter(Boolean),
                         itemForm.category
                       ])
-                    ].filter(Boolean);
+                    ].filter(cat => cat && !mainCatNames.includes(cat));
 
                     return parentKeys.map(cat => (
                       <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
