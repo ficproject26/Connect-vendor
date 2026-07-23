@@ -636,7 +636,8 @@ const VendorDashboard = () => {
   const [itemForm, setItemForm] = useState({
     name: '', description: '', price: '', category: '', stock: '0', unit: 'count',
     warranty: '', specialization: '', pinCode: '', duration: '', roomType: '', guests: '2', amenities: [], imageUrl: '', imageUrls: [], status: 'Available',
-    cardTypes: ['Silver', 'Gold', 'Diamond']
+    cardTypes: ['Silver', 'Gold', 'Diamond'],
+    boardingPoint: '', boardingTime: '', dropPoint: '', arrivalTime: '', distance: '', busTiming: '', stoppings: []
   });
   const [selectedMainCat, setSelectedMainCat] = useState('');
   const [selectedSubcat, setSelectedSubcat] = useState('');
@@ -1881,7 +1882,8 @@ const VendorDashboard = () => {
       warranty: '', specialization: '', pinCode: '', duration: '', roomType: 'Standard', guests: '2', amenities: [], imageUrl: '', imageUrls: [],
       foodType: 'Veg', status: terms.catalogStatuses[0],
       cardTypes: ['Silver', 'Gold', 'Diamond'],
-      jobType: 'Full-time', jobLocation: '', experience: '', skills: '', qualification: '', linkedProfile: '', contactNumber: '', mailId: '', department: ''
+      jobType: 'Full-time', jobLocation: '', experience: '', skills: '', qualification: '', linkedProfile: '', contactNumber: '', mailId: '', department: '',
+      boardingPoint: '', boardingTime: '', dropPoint: '', arrivalTime: '', distance: '', busTiming: '', stoppings: []
     });
     setIsEditItem(false);
     setIsItemModalOpen(true);
@@ -1933,7 +1935,14 @@ const VendorDashboard = () => {
       linkedProfile: item.linkedProfile || '',
       contactNumber: item.contactNumber || '',
       mailId: item.mailId || '',
-      department: item.department || ''
+      department: item.department || '',
+      boardingPoint: item.boardingPoint || '',
+      boardingTime: item.boardingTime || '',
+      dropPoint: item.dropPoint || '',
+      arrivalTime: item.arrivalTime || '',
+      distance: item.distance || '',
+      busTiming: item.busTiming || '',
+      stoppings: item.stoppings || []
     });
     setSelectedItemId(item._id);
     setIsEditItem(true);
@@ -7421,7 +7430,7 @@ const VendorDashboard = () => {
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Room Class / Type</label>
                 <input
                   type="text"
-                  required
+required
                   value={itemForm.roomType}
                   onChange={e => setItemForm({ ...itemForm, roomType: e.target.value })}
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -7469,6 +7478,170 @@ const VendorDashboard = () => {
                     </label>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Bus Route, Boarding, Drop, Stoppings & Bus Timing Details */}
+          {(vendorType.startsWith('Travel') || selectedMainCat === 'Travel' ||
+            ['Bus Booking', 'Travels', 'Travel', 'Bus'].includes(itemForm.category) ||
+            ['Sleeper Buses', 'Seater Buses', 'AC Buses', 'Non-AC Buses', 'Volvo Buses', 'Luxury Coaches', 'Intercity Buses'].includes(itemForm.subcategory)) && (
+            <div className="space-y-4 bg-slate-50/80 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800 animate-fadeIn">
+              <div className="flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800 pb-2">
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>🚌</span> Bus Route & Timing Details
+                </h4>
+              </div>
+
+              {/* Boarding Point & Departure Time */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider pl-1">Boarding Point (From)</label>
+                  <input
+                    type="text"
+                    value={itemForm.boardingPoint || ''}
+                    onChange={e => setItemForm({ ...itemForm, boardingPoint: e.target.value })}
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                    placeholder="e.g. Bangalore (Majestic / E-City)"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider pl-1">Boarding / Departure Time</label>
+                  <input
+                    type="text"
+                    value={itemForm.boardingTime || ''}
+                    onChange={e => setItemForm({ ...itemForm, boardingTime: e.target.value })}
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                    placeholder="e.g. 21:30 PM"
+                  />
+                </div>
+              </div>
+
+              {/* Drop Point & Arrival Time */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider pl-1">Drop Point (To)</label>
+                  <input
+                    type="text"
+                    value={itemForm.dropPoint || ''}
+                    onChange={e => setItemForm({ ...itemForm, dropPoint: e.target.value })}
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                    placeholder="e.g. Chennai (Koyambedu / CMBT)"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider pl-1">Drop / Arrival Time</label>
+                  <input
+                    type="text"
+                    value={itemForm.arrivalTime || ''}
+                    onChange={e => setItemForm({ ...itemForm, arrivalTime: e.target.value })}
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                    placeholder="e.g. 06:00 AM"
+                  />
+                </div>
+              </div>
+
+              {/* Distance & Bus Timing / Duration */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider pl-1">Total Distance</label>
+                  <input
+                    type="text"
+                    value={itemForm.distance || ''}
+                    onChange={e => setItemForm({ ...itemForm, distance: e.target.value })}
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                    placeholder="e.g. 350 km"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider pl-1">Bus Timing / Schedule</label>
+                  <input
+                    type="text"
+                    value={itemForm.busTiming || ''}
+                    onChange={e => setItemForm({ ...itemForm, busTiming: e.target.value })}
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                    placeholder="e.g. 8h 30m (Daily 21:30 - 06:00)"
+                  />
+                </div>
+              </div>
+
+              {/* Intermediate Stoppings & Timings */}
+              <div className="space-y-2 pt-2 border-t border-slate-200/50 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider pl-1">
+                    Route Stoppings & Timings
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const currentStops = itemForm.stoppings || [];
+                      setItemForm({
+                        ...itemForm,
+                        stoppings: [...currentStops, { stopName: '', time: '', distance: '' }]
+                      });
+                    }}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors flex items-center gap-1 border border-indigo-200/30"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Stop
+                  </button>
+                </div>
+
+                {(itemForm.stoppings || []).length === 0 ? (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 italic pl-1">
+                    No intermediate stops added yet. Click "+ Add Stop" to specify route stops and timings.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {(itemForm.stoppings || []).map((stop, sIdx) => (
+                      <div key={sIdx} className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                        <input
+                          type="text"
+                          placeholder="Stop Name (e.g. Hosur)"
+                          value={stop.stopName || ''}
+                          onChange={e => {
+                            const updated = [...(itemForm.stoppings || [])];
+                            updated[sIdx] = { ...updated[sIdx], stopName: e.target.value };
+                            setItemForm({ ...itemForm, stoppings: updated });
+                          }}
+                          className="flex-1 glass-input rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Time (e.g. 22:30)"
+                          value={stop.time || ''}
+                          onChange={e => {
+                            const updated = [...(itemForm.stoppings || [])];
+                            updated[sIdx] = { ...updated[sIdx], time: e.target.value };
+                            setItemForm({ ...itemForm, stoppings: updated });
+                          }}
+                          className="w-28 glass-input rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Dist (e.g. 40 km)"
+                          value={stop.distance || ''}
+                          onChange={e => {
+                            const updated = [...(itemForm.stoppings || [])];
+                            updated[sIdx] = { ...updated[sIdx], distance: e.target.value };
+                            setItemForm({ ...itemForm, stoppings: updated });
+                          }}
+                          className="w-24 glass-input rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = (itemForm.stoppings || []).filter((_, idx) => idx !== sIdx);
+                            setItemForm({ ...itemForm, stoppings: updated });
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                          title="Remove Stop"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

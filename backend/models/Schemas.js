@@ -159,7 +159,20 @@ const ProductSchema = new mongoose.Schema({
   linkedProfile: { type: String },
   contactNumber: { type: String },
   mailId: { type: String },
-  department: { type: String }
+  department: { type: String },
+
+  // Travel / Bus Booking fields
+  boardingPoint: { type: String },
+  boardingTime: { type: String },
+  dropPoint: { type: String },
+  arrivalTime: { type: String },
+  distance: { type: String },
+  busTiming: { type: String },
+  stoppings: [{
+    stopName: { type: String },
+    time: { type: String },
+    distance: { type: String }
+  }]
 }, { timestamps: true });
 
 // --- ORDER / BOOKING SCHEMA ---
