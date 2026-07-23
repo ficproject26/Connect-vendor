@@ -626,6 +626,63 @@ const VendorDashboard = () => {
   });
   const [selectedMainCat, setSelectedMainCat] = useState('');
   const [selectedSubcat, setSelectedSubcat] = useState('');
+  const [dbCategories, setDbCategories] = useState([]);
+
+  useEffect(() => {
+    const fetchDynamicCategories = async () => {
+      try {
+        const res = await axios.get(`${getBackendUrl()}/api/public/categories`);
+        if (res.data && res.data.success && Array.isArray(res.data.data)) {
+          setDbCategories(res.data.data);
+        }
+      } catch (err) {
+        console.log('Categories fetch error:', err);
+      }
+    };
+    fetchDynamicCategories();
+  }, []);
+
+  const getCategoryTaxonomy = () => {
+    const tax = JSON.parse(JSON.stringify(COMPLETE_CAT_TAXONOMY));
+    
+    if (Array.isArray(dbCategories) && dbCategories.length > 0) {
+      const filteredForMain = dbCategories.filter(c => {
+        const main = (c.mainCategory || c.category || c.name || '').trim().toLowerCase();
+        const target = (selectedMainCat || '').trim().toLowerCase();
+        return main === target && c.isActive !== false && !c.isDeleted;
+      });
+
+      if (filteredForMain.length > 0) {
+        const dbSubMap = {};
+        filteredForMain.forEach(item => {
+          const sub = (item.subcategory || item.name || '').trim();
+          if (!sub || sub === 'ALL_SUBCATEGORIES_DELETED_MARKER') return;
+          if (!dbSubMap[sub]) {
+            dbSubMap[sub] = [];
+          }
+          if (item.subSubcategory && item.subSubcategory.trim()) {
+            const child = item.subSubcategory.trim();
+            if (!dbSubMap[sub].includes(child)) {
+              dbSubMap[sub].push(child);
+            }
+          } else if (Array.isArray(item.children)) {
+            item.children.forEach(ch => {
+              const chName = (typeof ch === 'string' ? ch : ch.name || '').trim();
+              if (chName && !dbSubMap[sub].includes(chName)) {
+                dbSubMap[sub].push(chName);
+              }
+            });
+          }
+        });
+
+        if (Object.keys(dbSubMap).length > 0) {
+          tax[selectedMainCat] = dbSubMap;
+        }
+      }
+    }
+
+    return tax;
+  };
   const [imageUploading, setImageUploading] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [selectedSoldItem, setSelectedSoldItem] = useState(null);
@@ -6974,16 +7031,19 @@ const VendorDashboard = () => {
                       value={itemForm.category}
                       onChange={e => {
                         const newCat = e.target.value;
-                        const subOpts = (COMPLETE_CAT_TAXONOMY[selectedMainCat] && COMPLETE_CAT_TAXONOMY[selectedMainCat][newCat]) || [];
+                        const currentTax = getCategoryTaxonomy();
+                        const subOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][newCat]) || [];
                         const firstChild = subOpts.length > 0 ? subOpts[0] : '';
                         setItemForm(prev => ({ ...prev, category: newCat, subcategory: firstChild }));
                       }}
                       className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                     >
                       {(() => {
+                        const currentTax = getCategoryTaxonomy();
+                        const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
                         const parentKeys = [
                           ...new Set([
-                            ...(selectedMainCat && COMPLETE_CAT_TAXONOMY[selectedMainCat] ? Object.keys(COMPLETE_CAT_TAXONOMY[selectedMainCat]) : []),
+                            ...taxParentKeys,
                             ...(terms.categories || []),
                             ...catalog.map(item => item.category).filter(Boolean),
                             itemForm.category
@@ -7007,7 +7067,8 @@ const VendorDashboard = () => {
                       className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                     >
                       {(() => {
-                        const taxonomySubOpts = (COMPLETE_CAT_TAXONOMY[selectedMainCat] && COMPLETE_CAT_TAXONOMY[selectedMainCat][itemForm.category]) || [];
+                        const currentTax = getCategoryTaxonomy();
+                        const taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
                         const allSubOpts = taxonomySubOpts.length > 0 
                           ? (taxonomySubOpts.includes(itemForm.subcategory) ? taxonomySubOpts : [...taxonomySubOpts, itemForm.subcategory].filter(Boolean))
                           : (itemForm.subcategory ? [itemForm.subcategory] : []);
@@ -7260,16 +7321,19 @@ const VendorDashboard = () => {
                   value={itemForm.category}
                   onChange={e => {
                     const newCat = e.target.value;
-                    const subOpts = (COMPLETE_CAT_TAXONOMY[selectedMainCat] && COMPLETE_CAT_TAXONOMY[selectedMainCat][newCat]) || [];
+                    const currentTax = getCategoryTaxonomy();
+                    const subOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][newCat]) || [];
                     const firstChild = subOpts.length > 0 ? subOpts[0] : '';
                     setItemForm(prev => ({ ...prev, category: newCat, subcategory: firstChild }));
                   }}
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                 >
                   {(() => {
+                    const currentTax = getCategoryTaxonomy();
+                    const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
                     const parentKeys = [
                       ...new Set([
-                        ...(selectedMainCat && COMPLETE_CAT_TAXONOMY[selectedMainCat] ? Object.keys(COMPLETE_CAT_TAXONOMY[selectedMainCat]) : []),
+                        ...taxParentKeys,
                         ...(terms.categories || []),
                         ...catalog.map(item => item.category).filter(Boolean),
                         itemForm.category
@@ -7293,7 +7357,8 @@ const VendorDashboard = () => {
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                 >
                   {(() => {
-                    const taxonomySubOpts = (COMPLETE_CAT_TAXONOMY[selectedMainCat] && COMPLETE_CAT_TAXONOMY[selectedMainCat][itemForm.category]) || [];
+                    const currentTax = getCategoryTaxonomy();
+                    const taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
                     const allSubOpts = taxonomySubOpts.length > 0 
                       ? (taxonomySubOpts.includes(itemForm.subcategory) ? taxonomySubOpts : [...taxonomySubOpts, itemForm.subcategory].filter(Boolean))
                       : (itemForm.subcategory ? [itemForm.subcategory] : []);

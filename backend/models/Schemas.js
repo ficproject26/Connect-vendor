@@ -329,6 +329,19 @@ const PatientSchema = new mongoose.Schema({
   assignedDoctor: { type: String }
 }, { timestamps: true });
 
+// --- CATEGORY SCHEMA (Admin Category Management) ---
+const CategorySchema = new mongoose.Schema({
+  _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+  name: { type: String },
+  mainCategory: { type: String },
+  subcategory: { type: String },
+  subSubcategory: { type: String },
+  level: { type: String },
+  isActive: { type: Boolean, default: true },
+  isDeleted: { type: Boolean, default: false },
+  children: [{ type: mongoose.Schema.Types.Mixed }]
+}, { timestamps: true, strict: false });
+
 // Compile and export models using the getModel wrapper
 module.exports = {
   User: getModel('User', UserSchema),
@@ -341,6 +354,7 @@ module.exports = {
   Customer: getModel('Customer', CustomerSchema),
   PlatformConfig: getModel('PlatformConfig', PlatformConfigSchema),
   Settlement: getModel('Settlement', SettlementSchema),
-  Patient: getModel('Patient', PatientSchema)
+  Patient: getModel('Patient', PatientSchema),
+  Category: getModel('Category', CategorySchema)
 };
 

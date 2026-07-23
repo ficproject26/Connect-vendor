@@ -1,5 +1,5 @@
 const express = require('express');
-const { Product, User, Order } = require('../models/Schemas');
+const { Product, User, Order, Category } = require('../models/Schemas');
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
 
 const router = express.Router();
@@ -270,6 +270,18 @@ router.post('/orders', async (req, res) => {
   } catch (error) {
     console.error('Create Public Order Error:', error);
     res.status(500).json({ success: false, message: 'Server error creating order in vendor dashboard' });
+  }
+});
+
+// @route   GET /api/public/categories
+// @desc    Get dynamic admin categories and base taxonomy
+router.get('/categories', async (req, res) => {
+  try {
+    const dbCats = await Category.find({ isDeleted: { $ne: true } }).lean();
+    res.status(200).json({ success: true, data: dbCats || [], taxonomy: COMPLETE_CAT_TAXONOMY });
+  } catch (error) {
+    console.error('Get Public Categories Error:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching categories', taxonomy: COMPLETE_CAT_TAXONOMY });
   }
 });
 

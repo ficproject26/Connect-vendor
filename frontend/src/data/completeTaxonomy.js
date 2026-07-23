@@ -23,7 +23,7 @@ export const COMPLETE_CAT_TAXONOMY = {
     "Security": ["Security Guards", "CCTV Monitoring", "Cyber Security", "Home Security", "Office Security"]
   },
   "Products": {
-    "Electronics": ["Smartphones", "Tablets", "Laptops", "Desktop Computers", "Smart Watches", "Headphones", "Earbuds", "Speakers", "Cameras", "Printers", "Computer Accessories"],
+    "Electronics": ["Mobiles"],
     "IT & Office": ["Monitors", "Keyboards", "Mouse", "Webcams", "Routers", "Networking Devices", "Storage Devices", "Office Printers", "Projectors", "UPS & Power Backup"],
     "Home Appliances": ["Refrigerators", "Washing Machines", "Air Conditioners", "Televisions", "Microwave Ovens", "Water Purifiers", "Vacuum Cleaners", "Air Coolers", "Fans", "Geysers"],
     "Furniture": ["Sofas", "Dining Tables", "Beds", "Mattresses", "Wardrobes", "Office Chairs", "Office Tables", "Study Tables", "TV Units", "Shoe Racks"],
