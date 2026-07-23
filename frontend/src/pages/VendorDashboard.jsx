@@ -1794,14 +1794,20 @@ const VendorDashboard = () => {
     let thirdCatVal = vendorCategory;
     if (defaultMain && COMPLETE_CAT_TAXONOMY[defaultMain]) {
       const foundSub = Object.keys(COMPLETE_CAT_TAXONOMY[defaultMain]).find(k => 
-        COMPLETE_CAT_TAXONOMY[defaultMain][k].includes(vendorCategory)
+        COMPLETE_CAT_TAXONOMY[defaultMain][k].includes(vendorCategory) || k === vendorCategory
       );
       if (foundSub) {
         subcatVal = foundSub;
+        if (subcatVal === vendorCategory && COMPLETE_CAT_TAXONOMY[defaultMain][foundSub]) {
+          thirdCatVal = COMPLETE_CAT_TAXONOMY[defaultMain][foundSub][0] || vendorCategory;
+        }
       } else {
-        subcatVal = Object.keys(COMPLETE_CAT_TAXONOMY[defaultMain])[0] || '';
-        thirdCatVal = (COMPLETE_CAT_TAXONOMY[defaultMain][subcatVal] && COMPLETE_CAT_TAXONOMY[defaultMain][subcatVal][0]) || '';
+        subcatVal = Object.keys(COMPLETE_CAT_TAXONOMY[defaultMain])[0] || vendorCategory || 'General';
+        thirdCatVal = (COMPLETE_CAT_TAXONOMY[defaultMain][subcatVal] && COMPLETE_CAT_TAXONOMY[defaultMain][subcatVal][0]) || subcatVal;
       }
+    } else {
+      subcatVal = vendorCategory || 'General';
+      thirdCatVal = subcatVal;
     }
     setSelectedSubcat(subcatVal);
 
@@ -1822,17 +1828,21 @@ const VendorDashboard = () => {
 
     let subcatVal = '';
     if (mainCat && COMPLETE_CAT_TAXONOMY[mainCat]) {
-      mainCatKeysLoop:
       for (const k of Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])) {
         if (COMPLETE_CAT_TAXONOMY[mainCat][k].includes(item.category)) {
           subcatVal = k;
-          break mainCatKeysLoop;
+          break;
         }
       }
-      if (!subcatVal) {
-        subcatVal = Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])[0] || '';
+      if (!subcatVal && COMPLETE_CAT_TAXONOMY[mainCat][item.category]) {
+        subcatVal = item.category;
       }
     }
+
+    if (!subcatVal) {
+      subcatVal = item.category || (mainCat && COMPLETE_CAT_TAXONOMY[mainCat] ? Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])[0] : 'General');
+    }
+
     setSelectedSubcat(subcatVal);
 
     setItemForm({
@@ -1840,7 +1850,7 @@ const VendorDashboard = () => {
       description: item.description || '',
       price: item.price ? item.price.toString() : '',
       originalPrice: item.originalPrice ? item.originalPrice.toString() : '',
-      category: item.category || '',
+      category: item.category || subcatVal,
       stock: (item.stock || 0).toString(),
       unit: item.unit || 'count',
       warranty: item.warranty || '',
@@ -6966,7 +6976,7 @@ const VendorDashboard = () => {
                 />
               </div>
 
-              {selectedMainCat && COMPLETE_CAT_TAXONOMY[selectedMainCat] && (
+              {selectedMainCat && (
                 <>
                   <div className="space-y-1 animate-fadeIn">
                     <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Category</label>
@@ -6975,16 +6985,26 @@ const VendorDashboard = () => {
                       onChange={e => {
                         const newSub = e.target.value;
                         setSelectedSubcat(newSub);
-                        const firstThird = (COMPLETE_CAT_TAXONOMY[selectedMainCat][newSub] && COMPLETE_CAT_TAXONOMY[selectedMainCat][newSub][0]) || '';
+                        const subOptions = (COMPLETE_CAT_TAXONOMY[selectedMainCat] && COMPLETE_CAT_TAXONOMY[selectedMainCat][newSub]) || [];
+                        const firstThird = subOptions.length > 0 ? subOptions[0] : newSub;
                         setItemForm(prev => ({ ...prev, category: firstThird }));
                       }}
                       className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                     >
-                      {Object.keys(COMPLETE_CAT_TAXONOMY[selectedMainCat]).map(cat => (
-                        <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                          {cat}
-                        </option>
-                      ))}
+                      {(() => {
+                        const categoryKeys = [
+                          ...new Set([
+                            ...Object.keys(COMPLETE_CAT_TAXONOMY[selectedMainCat] || {}),
+                            ...(terms.categories || []),
+                            ...catalog.map(item => item.category).filter(Boolean)
+                          ])
+                        ];
+                        return categoryKeys.map(cat => (
+                          <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {cat}
+                          </option>
+                        ));
+                      })()}
                     </select>
                   </div>
 
@@ -6995,11 +7015,19 @@ const VendorDashboard = () => {
                       onChange={e => setItemForm(prev => ({ ...prev, category: e.target.value }))}
                       className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                     >
-                      {(COMPLETE_CAT_TAXONOMY[selectedMainCat][selectedSubcat] || []).map(type => (
-                        <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                          {type}
-                        </option>
-                      ))}
+                      {(() => {
+                        const taxonomySubOpts = (COMPLETE_CAT_TAXONOMY[selectedMainCat] && COMPLETE_CAT_TAXONOMY[selectedMainCat][selectedSubcat]) || [];
+                        const allSubOpts = taxonomySubOpts.length > 0 
+                          ? (taxonomySubOpts.includes(itemForm.category) ? taxonomySubOpts : [...taxonomySubOpts, itemForm.category].filter(Boolean))
+                          : [selectedSubcat, itemForm.category].filter(Boolean);
+                        const uniqueOpts = [...new Set(allSubOpts)];
+
+                        return uniqueOpts.map(type => (
+                          <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {type}
+                          </option>
+                        ));
+                      })()}
                     </select>
                   </div>
                 </>
@@ -7228,7 +7256,7 @@ const VendorDashboard = () => {
             </div>
           )}
 
-          {selectedMainCat && COMPLETE_CAT_TAXONOMY[selectedMainCat] && (
+          {selectedMainCat && (
             <>
               <div className="space-y-1 animate-fadeIn">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Category</label>
@@ -7237,16 +7265,26 @@ const VendorDashboard = () => {
                   onChange={e => {
                     const newSub = e.target.value;
                     setSelectedSubcat(newSub);
-                    const firstThird = (COMPLETE_CAT_TAXONOMY[selectedMainCat][newSub] && COMPLETE_CAT_TAXONOMY[selectedMainCat][newSub][0]) || '';
+                    const subOptions = (COMPLETE_CAT_TAXONOMY[selectedMainCat] && COMPLETE_CAT_TAXONOMY[selectedMainCat][newSub]) || [];
+                    const firstThird = subOptions.length > 0 ? subOptions[0] : newSub;
                     setItemForm(prev => ({ ...prev, category: firstThird }));
                   }}
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                 >
-                  {Object.keys(COMPLETE_CAT_TAXONOMY[selectedMainCat]).map(cat => (
-                    <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                      {cat}
-                    </option>
-                  ))}
+                  {(() => {
+                    const categoryKeys = [
+                      ...new Set([
+                        ...Object.keys(COMPLETE_CAT_TAXONOMY[selectedMainCat] || {}),
+                        ...(terms.categories || []),
+                        ...catalog.map(item => item.category).filter(Boolean)
+                      ])
+                    ];
+                    return categoryKeys.map(cat => (
+                      <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                        {cat}
+                      </option>
+                    ));
+                  })()}
                 </select>
               </div>
 
@@ -7257,11 +7295,19 @@ const VendorDashboard = () => {
                   onChange={e => setItemForm(prev => ({ ...prev, category: e.target.value }))}
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                 >
-                  {(COMPLETE_CAT_TAXONOMY[selectedMainCat][selectedSubcat] || []).map(type => (
-                    <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                      {type}
-                    </option>
-                  ))}
+                  {(() => {
+                    const taxonomySubOpts = (COMPLETE_CAT_TAXONOMY[selectedMainCat] && COMPLETE_CAT_TAXONOMY[selectedMainCat][selectedSubcat]) || [];
+                    const allSubOpts = taxonomySubOpts.length > 0 
+                      ? (taxonomySubOpts.includes(itemForm.category) ? taxonomySubOpts : [...taxonomySubOpts, itemForm.category].filter(Boolean))
+                      : [selectedSubcat, itemForm.category].filter(Boolean);
+                    const uniqueOpts = [...new Set(allSubOpts)];
+
+                    return uniqueOpts.map(type => (
+                      <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                        {type}
+                      </option>
+                    ));
+                  })()}
                 </select>
               </div>
             </>
