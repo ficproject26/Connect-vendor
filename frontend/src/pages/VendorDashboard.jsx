@@ -2019,15 +2019,20 @@ const VendorDashboard = () => {
       setError('Category cannot be empty');
       return;
     }
+    const payload = {
+      ...itemForm,
+      subNavbarCategory: selectedMainCat || activeTab || 'Products',
+      mainCategory: selectedMainCat || activeTab || 'Products'
+    };
     try {
       if (isEditItem) {
-        const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/products/${selectedItemId}`, itemForm, getAxiosConfig());
+        const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/products/${selectedItemId}`, payload, getAxiosConfig());
         if (res.data.success) {
           setCatalog(catalog.map(item => item._id === selectedItemId ? res.data.data : item));
           setMessage('Catalog item updated successfully!');
         }
       } else {
-        const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/products`, itemForm, getAxiosConfig());
+        const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/products`, payload, getAxiosConfig());
         if (res.data.success) {
           setCatalog([...catalog, res.data.data]);
           setMessage('Catalog item created successfully!');

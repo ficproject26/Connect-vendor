@@ -114,6 +114,8 @@ const ProductSchema = new mongoose.Schema({
   originalPrice: { type: Number },
   category: { type: String },
   subcategory: { type: String },
+  subNavbarCategory: { type: String },
+  mainCategory: { type: String },
   unit: { type: String, default: 'count', enum: ['count', 'milligram', 'gram', 'kg', 'litre', 'ml', 'piece', 'dozen', 'pack', 'box'] },
   
   // Custom fields based on Vendor Type

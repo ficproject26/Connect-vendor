@@ -187,7 +187,7 @@ const getVendorSubcategory = (user) => {
 const createProduct = async (req, res) => {
   try {
     const { 
-      name, description, price, originalPrice, category, subcategory: bodySubcategory, stock, unit, warranty, 
+      name, description, price, originalPrice, category, subcategory: bodySubcategory, subNavbarCategory, mainCategory, stock, unit, warranty, 
       specialization, pinCode, duration, roomType, guests, amenities, imageUrl, 
       imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
@@ -210,6 +210,8 @@ const createProduct = async (req, res) => {
       originalPrice: originalPrice ? Number(originalPrice) : undefined,
       category: finalCategory,
       subcategory: bodySubcategory || '',
+      subNavbarCategory: subNavbarCategory || mainCategory || '',
+      mainCategory: mainCategory || subNavbarCategory || '',
       stock: stock !== undefined ? Number(stock) : 0,
       unit: unit || 'count',
       warranty,
@@ -311,7 +313,7 @@ const getProducts = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { 
-      name, description, price, originalPrice, category, subcategory: bodySubcategory, stock, unit, warranty, 
+      name, description, price, originalPrice, category, subcategory: bodySubcategory, subNavbarCategory, mainCategory, stock, unit, warranty, 
       specialization, pinCode, duration, roomType, guests, amenities, status, 
       imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
@@ -339,6 +341,8 @@ const updateProduct = async (req, res) => {
         originalPrice: originalPrice !== undefined ? (originalPrice ? Number(originalPrice) : null) : product.originalPrice,
         category: finalCategory,
         subcategory: bodySubcategory !== undefined ? bodySubcategory : product.subcategory,
+        subNavbarCategory: subNavbarCategory || mainCategory || product.subNavbarCategory || '',
+        mainCategory: mainCategory || subNavbarCategory || product.mainCategory || '',
         stock: stock !== undefined ? Number(stock) : product.stock,
         unit: unit !== undefined ? unit : product.unit,
         warranty: warranty !== undefined ? warranty : product.warranty,
