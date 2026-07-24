@@ -287,19 +287,7 @@ const Orders = () => {
                     </select>
                   </div>
 
-                  {/* Vendor Type filter */}
-                  <div className="w-full sm:w-48 shrink-0">
-                    <select
-                      value={orderVendorTypeFilter}
-                      onChange={(e) => setOrderVendorTypeFilter(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 animate-fadeIn"
-                    >
-                      <option value="All">All Vendor Types</option>
-                      {getAvailableVendorTypes().map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
-                  </div>
+
                 </div>
 
                 {loading ? <p className="text-slate-800 dark:text-slate-200">Loading orders...</p> : orders.length === 0 ? (

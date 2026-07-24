@@ -20,7 +20,7 @@ import {
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
-  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar
+  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download
 } from 'lucide-react';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
@@ -3333,6 +3333,12 @@ const VendorDashboard = () => {
                   else if (type.startsWith('Education')) pendingLabel = 'Pending Enrollments';
                   else if (type.startsWith('Restaurant')) pendingLabel = 'Pending Orders';
 
+                  let soldLabel = 'sold';
+                  if (type.startsWith('Job')) soldLabel = 'applied';
+                  else if (type.startsWith('Service') || type.startsWith('Hospital') || type.startsWith('Hotel')) soldLabel = 'booked';
+                  else if (type.startsWith('Education')) soldLabel = 'enrolled';
+
+
                   return (
                     <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                       {/* Total Items */}
@@ -3372,7 +3378,7 @@ const VendorDashboard = () => {
                             <p className="text-sm font-extrabold text-amber-900 dark:text-amber-100 tracking-tight truncate" title={topSelling ? topSelling[0] : 'N/A'}>
                               {topSelling ? topSelling[0] : 'N/A'}
                             </p>
-                            {topSelling && <p className="text-[10px] text-amber-500 dark:text-amber-400/70 font-semibold">{topSelling[1]} sold</p>}
+                            {topSelling && <p className="text-[10px] text-amber-500 dark:text-amber-400/70 font-semibold">{topSelling[1]} {soldLabel}</p>}
                           </div>
                         </div>
                       </div>
@@ -3785,19 +3791,7 @@ const VendorDashboard = () => {
                     </select>
                   </div>
 
-                  {/* Vendor Type filter */}
-                  <div className="w-full sm:w-48 shrink-0">
-                    <select
-                      value={orderVendorTypeFilter}
-                      onChange={(e) => setOrderVendorTypeFilter(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 animate-fadeIn"
-                    >
-                      <option value="All">All Vendor Types</option>
-                      {getAvailableVendorTypes().map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
-                  </div>
+
                 </div>
 
                 {loading ? <p className="text-slate-800 dark:text-slate-200">Loading orders...</p> : orders.length === 0 ? (
@@ -3925,8 +3919,26 @@ const VendorDashboard = () => {
                                       {/* CV / Resume */}
                                       <td className="px-6 py-4 text-xs">
                                         {order.candidateResume && (
-                                          <div className="text-[10px] text-slate-500 font-medium bg-slate-50/70 dark:bg-slate-950/60 p-2 rounded-lg border border-slate-200/50 dark:border-slate-800 max-w-xs break-words text-left">
-                                            {order.candidateResume}
+                                          <div className="flex gap-2 items-center">
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); setSelectedBillOrder(order); setIsResumeViewerOpen(true); }}
+                                              className="text-[10px] text-slate-500 font-medium bg-slate-50/70 hover:bg-slate-100 dark:bg-slate-950/60 dark:hover:bg-slate-900 p-2 rounded-lg border border-slate-200/50 dark:border-slate-800 max-w-xs break-words text-left transition-colors cursor-pointer"
+                                              title="View Resume"
+                                            >
+                                              📄 {order.candidateResume.split('/').pop().substring(0, 20)}...
+                                            </button>
+                                            <a
+                                              href={order.candidateResume.startsWith('http') ? order.candidateResume : `${getBackendUrl()}${order.candidateResume.startsWith('/') ? '' : '/'}${order.candidateResume}`}
+                                              download
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              onClick={(e) => e.stopPropagation()}
+                                              className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-md transition-colors"
+                                              title="Download Resume"
+                                            >
+                                              <Download size={14} />
+                                            </a>
                                           </div>
                                         )}
                                       </td>
@@ -4367,7 +4379,7 @@ const VendorDashboard = () => {
             <div className="space-y-6">
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Ecosystem {terms.customersName}</h2>
-                  <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">{terms.customersSub}</p>
+                  <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">Customers who interacted with your business (purchased products, booked services, or applied for jobs)</p>
                 </div>
 
             {/* Filter controls */}
