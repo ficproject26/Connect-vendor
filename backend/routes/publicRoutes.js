@@ -190,7 +190,8 @@ router.post('/orders', async (req, res) => {
     doctorName,
     tableNumber,
     roomNumber,
-    prescriptionUrl
+    prescriptionUrl,
+    customerDisplayId
   } = req.body;
 
   if (!vendorId || !memberName || finalAmount === undefined || finalAmount === null) {
@@ -233,7 +234,8 @@ router.post('/orders', async (req, res) => {
       doctorName,
       tableNumber,
       roomNumber,
-      prescriptionUrl
+      prescriptionUrl,
+      customerDisplayId
     };
 
     // If order already exists in the shared database (created by customer backend), update and return it

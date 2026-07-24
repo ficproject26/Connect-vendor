@@ -183,6 +183,7 @@ const OrderSchema = new mongoose.Schema({
   vendorId: { type: String, required: true },
   memberId: { type: String, required: true },
   memberName: { type: String, required: true },
+  customerDisplayId: { type: String },
   type: { type: String, default: 'Order' },
   items: [{
     productId: { type: String },
@@ -199,7 +200,8 @@ const OrderSchema = new mongoose.Schema({
       'Pending', 'Accepted', 'Out for Delivery', 'Delivered', 'Completed', 'Cancelled', 
       'Checked In', 'Checked Out', 'Shortlisted', 'Interviewing', 'Hired', 'Rejected', 
       'Approved', 'Enrolled', 'Order Received', 'Order Placed', 'Preparing', 
-      'Ready for Pickup', 'Ready For Pickup', 'Assigned To Delivery Partner', 'Delivery Partner Accepted'
+      'Ready for Pickup', 'Ready For Pickup', 'Assigned To Delivery Partner', 'Delivery Partner Accepted',
+      'Application Received', 'Resume Screening', 'Interview Scheduled', 'Selected / Offered'
     ], 
     default: 'Pending' 
   },

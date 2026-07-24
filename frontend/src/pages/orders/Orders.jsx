@@ -420,7 +420,7 @@ const Orders = () => {
                                       {/* Customer Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                         <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
+                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {order.customerDisplayId || formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
                                         <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">Order ID: #{order.order_number || order.id || order._id}</div>
                                       </td>
                                       {/* Service Type */}
@@ -456,7 +456,7 @@ const Orders = () => {
                                       {/* Customer Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                          <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                         <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
+                                         <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {order.customerDisplayId || formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
                                       </td>
                                       {/* Address */}
                                       <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
