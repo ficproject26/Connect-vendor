@@ -604,13 +604,63 @@ const getCustomers = async (req, res) => {
       });
     }
 
-    const customers = await Customer.find({
+    const dbCustomers = await Customer.find({
       $or: [
         { vendorId: { $in: businessIds } },
         { vendor_id: { $in: businessIds } }
       ]
     });
-    res.status(200).json({ success: true, data: customers });
+
+    const rawOrders = await Order.find({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ]
+    });
+
+    const customerMap = {};
+
+    // Add existing Customer collection entries
+    dbCustomers.forEach(c => {
+      const obj = c.toObject ? c.toObject() : c;
+      const key = (obj.email || obj.memberId || obj.name || obj._id).toString().toLowerCase();
+      customerMap[key] = {
+        _id: obj._id,
+        name: obj.name || 'Customer',
+        email: obj.email || '',
+        phone: obj.phone || '',
+        ordersCount: obj.ordersCount || 0,
+        totalSpent: obj.totalSpent || 0
+      };
+    });
+
+    // Aggregate all customers who have placed orders / applied / booked
+    rawOrders.forEach(o => {
+      const name = o.memberName || o.customer_name || 'Customer';
+      const email = o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+      const key = (email || name || o.memberId).toString().toLowerCase();
+
+      const amount = Number(o.finalAmount || o.totalAmount || o.amount || 0);
+
+      if (customerMap[key]) {
+        customerMap[key].ordersCount += 1;
+        customerMap[key].totalSpent += amount;
+        if (!customerMap[key].name || customerMap[key].name === 'Customer') customerMap[key].name = name;
+        if (!customerMap[key].email) customerMap[key].email = email;
+      } else {
+        customerMap[key] = {
+          _id: o.memberId || o._id,
+          name: name,
+          email: email,
+          phone: o.customer_phone || '+91 9876543210',
+          ordersCount: 1,
+          totalSpent: amount
+        };
+      }
+    });
+
+    const finalCustomers = Object.values(customerMap);
+    res.status(200).json({ success: true, data: finalCustomers });
   } catch (error) {
     console.error('Get Customers Error:', error);
     res.status(500).json({ success: false, message: 'Server error retrieving customers list' });
