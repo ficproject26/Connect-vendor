@@ -90,8 +90,8 @@ router.get('/products', async (req, res) => {
       }
     });
 
-    // 2. Fetch all products
-    const products = await Product.find({ status: { $ne: 'Unavailable' } });
+    // 2. Fetch all products (including Unavailable items so customers can see them as disabled)
+    const products = await Product.find({});
 
     const host = req.get('host');
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
@@ -111,6 +111,8 @@ router.get('/products', async (req, res) => {
           description: p.description || '',
           price: p.price,
           unit: p.unit || 'count',
+          stock: p.stock,
+          status: p.status || 'Available',
           originalPrice: p.originalPrice || Math.round(p.price * 1.25),
           guests: p.guests || 2,
           amenities: p.amenities || [],
@@ -143,7 +145,7 @@ router.get('/products', async (req, res) => {
             if (pin.startsWith('64')) return 'Coimbatore';
             return vendor.city || 'Bangalore';
           })(),
-          tag: p.status === 'Low Stock' ? 'Low Stock' : 'Verified Partner',
+          tag: p.status === 'Unavailable' ? 'Unavailable' : (p.status === 'Low Stock' ? 'Low Stock' : 'Verified Partner'),
           discount: '20% off',
           delivery: 'Free Delivery'
         };
