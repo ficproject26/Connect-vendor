@@ -31,6 +31,15 @@ function App() {
       document.documentElement.classList.add('dark');
       if (!savedTheme) localStorage.setItem('theme', 'dark');
     }
+
+    // Disable mouse scroll wheel changing input[type=number] values globally
+    const handleWheel = () => {
+      if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'number') {
+        document.activeElement.blur();
+      }
+    };
+    window.addEventListener('wheel', handleWheel, { passive: true });
+    return () => window.removeEventListener('wheel', handleWheel);
   }, []);
 
   return (

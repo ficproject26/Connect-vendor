@@ -20,7 +20,7 @@ import {
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
-  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star
+  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar
 } from 'lucide-react';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
@@ -384,6 +384,7 @@ const getCategoryIcon = (category) => {
 const VendorDashboard = () => {
   const { user, token, card, sidebarCollapsed, activeBusinessId } = useSelector(state => state.auth);
   const [, setCategoryTrigger] = useState(0);
+  const deadlineInputRef = useRef(null);
 
   useEffect(() => {
     const fetchDynamicCategories = async () => {
@@ -7210,14 +7211,32 @@ const VendorDashboard = () => {
 
               <div className="space-y-1 animate-fadeIn">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Deadline Date</label>
-                <input
-                  type="text"
-                  required
-                  value={itemForm.deadline}
-                  onChange={e => setItemForm({ ...itemForm, deadline: e.target.value })}
-                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                  placeholder="e.g. Apply before 2026-08-15"
-                />
+                <div className="relative flex items-center">
+                  <input
+                    type="date"
+                    required
+                    ref={deadlineInputRef}
+                    value={itemForm.deadline || ''}
+                    onChange={e => setItemForm({ ...itemForm, deadline: e.target.value })}
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none pr-11 text-slate-800 dark:text-slate-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (deadlineInputRef.current) {
+                        if (typeof deadlineInputRef.current.showPicker === 'function') {
+                          deadlineInputRef.current.showPicker();
+                        } else {
+                          deadlineInputRef.current.focus();
+                        }
+                      }
+                    }}
+                    className="absolute right-3 p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                    title="Choose date from calendar"
+                  >
+                    <Calendar className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1 animate-fadeIn">
@@ -7323,6 +7342,7 @@ const VendorDashboard = () => {
               required
               value={itemForm.price}
               onChange={e => setItemForm({ ...itemForm, price: e.target.value })}
+              onWheel={e => e.target.blur()}
               className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
             />
           </div>
@@ -7334,6 +7354,7 @@ const VendorDashboard = () => {
                 type="number"
                 value={itemForm.originalPrice || ''}
                 onChange={e => setItemForm({ ...itemForm, originalPrice: e.target.value })}
+                onWheel={e => e.target.blur()}
                 className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                 placeholder="e.g. 399 (optional)"
               />
