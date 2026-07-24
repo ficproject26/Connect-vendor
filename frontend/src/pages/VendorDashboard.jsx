@@ -1,12 +1,11 @@
 
 const formatCustomerId = (memberId) => {
-  if (!memberId || memberId === 'N/A') return 'FIC-CUST-750684';
-  if (memberId.startsWith('FIC-CUST-')) return memberId;
-  if (memberId.toLowerCase().includes('dhanush') || memberId === 'cust_dhanush') return 'FIC-CUST-750684';
+  const idStr = String(memberId || 'N/A');
+  if (idStr.startsWith('FIC-CUST-')) return idStr;
   
   let hash = 0;
-  for (let i = 0; i < memberId.length; i++) {
-    hash = ((hash << 5) - hash) + memberId.charCodeAt(i);
+  for (let i = 0; i < idStr.length; i++) {
+    hash = ((hash << 5) - hash) + idStr.charCodeAt(i);
     hash |= 0;
   }
   const num = Math.abs(hash % 900000) + 100000;
@@ -1742,7 +1741,7 @@ const VendorDashboard = () => {
         priceLabel: 'Salary / Package (₹/year)',
         imageLabel: 'Company Logo / Banner',
         catalogStatuses: ['Available', 'Out of Stock'],
-        orderStatuses: ['Pending', 'Shortlisted', 'Interviewing', 'Hired', 'Rejected'],
+        orderStatuses: ['Application Received', 'Resume Screening', 'Shortlisted', 'Interview Scheduled', 'Selected / Offered', 'Rejected'],
         customersName: 'Customers',
         customersSub: 'Candidates who applied for job postings',
         customerSpentLabel: 'Total Application Fees Paid (₹)',
@@ -1833,6 +1832,23 @@ const VendorDashboard = () => {
         customerSpentLabel: 'Total Spent (₹)',
         itemsHeaderLabel: 'Items Ordered'
       };
+    } else if (type.startsWith('Travel')) {
+      return {
+        catalogName: 'Travel Routes',
+        catalogItem: 'Travel Route',
+        ordersName: 'Bookings',
+        orderItem: 'Booking',
+        categories: ['Bus Booking', 'Travels', 'Taxi Service', 'Tour Packages'],
+        nameLabel: 'Service / Route Name',
+        priceLabel: 'Ticket Price (₹)',
+        imageLabel: 'Vehicle / Route Photo',
+        catalogStatuses: ['Available', 'Out of Stock'],
+        orderStatuses: ['Pending', 'Confirmed', 'Completed', 'Cancelled'],
+        customersName: 'Customers',
+        customersSub: 'Customers who booked travel services',
+        customerSpentLabel: 'Total Ticket Fare (₹)',
+        itemsHeaderLabel: 'Travel Booked'
+      };
     } else {
       // Stores, Grocery, Furniture, Electronics
       return {
@@ -1884,6 +1900,7 @@ const VendorDashboard = () => {
       foodType: 'Veg', status: terms.catalogStatuses[0],
       cardTypes: ['Silver', 'Gold', 'Diamond'],
       jobType: 'Full-time', jobLocation: '', experience: '', skills: '', qualification: '', linkedProfile: '', contactNumber: '', mailId: '', department: '',
+      deadline: '', applicationTips: '',
       boardingPoint: '', boardingTime: '', dropPoint: '', arrivalTime: '', distance: '', busTiming: '', stoppings: []
     });
     setIsEditItem(false);
@@ -1937,6 +1954,8 @@ const VendorDashboard = () => {
       contactNumber: item.contactNumber || '',
       mailId: item.mailId || '',
       department: item.department || '',
+      deadline: item.deadline || '',
+      applicationTips: item.applicationTips || '',
       boardingPoint: item.boardingPoint || '',
       boardingTime: item.boardingTime || '',
       dropPoint: item.dropPoint || '',
@@ -3631,7 +3650,7 @@ const VendorDashboard = () => {
                                     {/* Compact metadata fields grid */}
                                     {(() => {
                                       const mainCat = getProductMainCategory(item.category, vendorType);
-                                      const shouldShowStock = ['Products', 'Daily Needs', 'Food', 'Stay', 'Jobs', 'Education'].includes(mainCat);
+                                      const shouldShowStock = ['Products', 'Daily Needs', 'Food', 'Jobs', 'Education'].includes(mainCat);
                                       return (
                                         <div className={`mt-2.5 grid gap-1 text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                           <div className="text-center">
@@ -3952,7 +3971,7 @@ const VendorDashboard = () => {
                                       {/* Customer Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                         <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order.memberId || order.customerId || order.id)}</div>
+                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
                                       </td>
                                       {/* Service Type */}
                                       <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
@@ -3987,7 +4006,7 @@ const VendorDashboard = () => {
                                       {/* Customer Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                         <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order.memberId || order.customerId || order.id)}</div>
+                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
                                       </td>
                                       {/* Address */}
                                       <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
@@ -7230,24 +7249,8 @@ const VendorDashboard = () => {
                     ref={deadlineInputRef}
                     value={itemForm.deadline || ''}
                     onChange={e => setItemForm({ ...itemForm, deadline: e.target.value })}
-                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none pr-11 text-slate-800 dark:text-slate-200"
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-800 dark:text-slate-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (deadlineInputRef.current) {
-                        if (typeof deadlineInputRef.current.showPicker === 'function') {
-                          deadlineInputRef.current.showPicker();
-                        } else {
-                          deadlineInputRef.current.focus();
-                        }
-                      }
-                    }}
-                    className="absolute right-3 p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                    title="Choose date from calendar"
-                  >
-                    <Calendar className="w-4 h-4" />
-                  </button>
                 </div>
               </div>
 
@@ -7729,12 +7732,11 @@ required
             </div>
           )}
 
-          {(selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || selectedMainCat === 'Food' || selectedMainCat === 'Stay' || selectedMainCat === 'Jobs' || selectedMainCat === 'Education') && (
+          {(selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || selectedMainCat === 'Food' || selectedMainCat === 'Jobs' || selectedMainCat === 'Education') && (
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
                 {selectedMainCat === 'Education' ? 'Batch Size / Seats' :
                  selectedMainCat === 'Jobs' ? 'Openings / Vacancies' :
-                 selectedMainCat === 'Stay' ? 'Available Rooms' :
                  selectedMainCat === 'Food' ? 'Available Servings' :
                  'Available Quantity / Stock'}
               </label>

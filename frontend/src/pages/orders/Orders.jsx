@@ -1,12 +1,11 @@
 
 const formatCustomerId = (memberId) => {
-  if (!memberId || memberId === 'N/A') return 'FIC-CUST-750684';
-  if (memberId.startsWith('FIC-CUST-')) return memberId;
-  if (memberId.toLowerCase().includes('dhanush') || memberId === 'cust_dhanush') return 'FIC-CUST-750684';
+  const idStr = String(memberId || 'N/A');
+  if (idStr.startsWith('FIC-CUST-')) return idStr;
   
   let hash = 0;
-  for (let i = 0; i < memberId.length; i++) {
-    hash = ((hash << 5) - hash) + memberId.charCodeAt(i);
+  for (let i = 0; i < idStr.length; i++) {
+    hash = ((hash << 5) - hash) + idStr.charCodeAt(i);
     hash |= 0;
   }
   const num = Math.abs(hash % 900000) + 100000;
@@ -421,7 +420,7 @@ const Orders = () => {
                                       {/* Customer Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                         <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order.memberId || order.customerId || order.id)}</div>
+                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
                                         <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">Order ID: #{order.order_number || order.id || order._id}</div>
                                       </td>
                                       {/* Service Type */}
@@ -457,7 +456,7 @@ const Orders = () => {
                                       {/* Customer Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                          <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                         <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order.memberId || order.customerId || order.id)}</div>
+                                         <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
                                       </td>
                                       {/* Address */}
                                       <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
