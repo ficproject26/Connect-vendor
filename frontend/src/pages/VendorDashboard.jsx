@@ -1889,9 +1889,7 @@ const VendorDashboard = () => {
         catVal = keys[0];
       }
     }
-    if (defaultMain === 'Services') {
-      catVal = 'Video Consulting';
-    } else if (!catVal) catVal = (terms.categories && terms.categories[0]) || 'General';
+    if (!catVal) catVal = (terms.categories && terms.categories[0]) || 'General';
 
     const subOpts = (defaultMain && COMPLETE_CAT_TAXONOMY[defaultMain] && COMPLETE_CAT_TAXONOMY[defaultMain][catVal]) || [];
     const childVal = subOpts.length > 0 ? (subOpts.includes(vendorCategory) ? vendorCategory : subOpts[0]) : '';
@@ -7408,21 +7406,17 @@ const VendorDashboard = () => {
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                 >
                   {(() => {
-                    let parentKeys = [];
-                    if (selectedMainCat === 'Services') {
-                      parentKeys = ['Video Consulting', 'Realtime Visit'];
-                    } else {
-                      const currentTax = getCategoryTaxonomy();
-                      const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
-                      const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
-                      
-                      parentKeys = [
-                        ...new Set([
-                          ...taxParentKeys,
-                          itemForm.category
-                        ])
-                      ].filter(cat => cat && !mainCatNames.includes(cat));
-                    }
+                    const currentTax = getCategoryTaxonomy();
+                    const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
+                    const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+                    
+                    const parentKeys = [
+                      ...new Set([
+                        ...(selectedMainCat === 'Services' ? ['Video Consulting', 'Realtime Visit'] : []),
+                        ...taxParentKeys,
+                        itemForm.category
+                      ])
+                    ].filter(cat => cat && !mainCatNames.includes(cat));
 
                     return parentKeys.map(cat => (
                       <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
