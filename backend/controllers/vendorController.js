@@ -191,7 +191,8 @@ const createProduct = async (req, res) => {
       specialization, pinCode, duration, roomType, guests, amenities, imageUrl, 
       imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
-      qualification, linkedProfile, contactNumber, mailId, department
+      qualification, linkedProfile, contactNumber, mailId, department,
+      boardingPoint, boardingTime, dropPoint, arrivalTime, distance, busTiming, stoppings
     } = req.body;
 
     if (!name || price === undefined) {
@@ -238,7 +239,14 @@ const createProduct = async (req, res) => {
       linkedProfile,
       contactNumber,
       mailId,
-      department
+      department,
+      boardingPoint,
+      boardingTime,
+      dropPoint,
+      arrivalTime,
+      distance,
+      busTiming,
+      stoppings: stoppings || []
     });
 
     res.status(201).json({ success: true, message: 'Item created successfully', data: product });
@@ -317,7 +325,8 @@ const updateProduct = async (req, res) => {
       specialization, pinCode, duration, roomType, guests, amenities, status, 
       imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
-      qualification, linkedProfile, contactNumber, mailId, department
+      qualification, linkedProfile, contactNumber, mailId, department,
+      boardingPoint, boardingTime, dropPoint, arrivalTime, distance, busTiming, stoppings
     } = req.body;
     const product = await Product.findById(req.params.id);
 
@@ -369,7 +378,14 @@ const updateProduct = async (req, res) => {
         linkedProfile: linkedProfile !== undefined ? linkedProfile : product.linkedProfile,
         contactNumber: contactNumber !== undefined ? contactNumber : product.contactNumber,
         mailId: mailId !== undefined ? mailId : product.mailId,
-        department: department !== undefined ? department : product.department
+        department: department !== undefined ? department : product.department,
+        boardingPoint: boardingPoint !== undefined ? boardingPoint : product.boardingPoint,
+        boardingTime: boardingTime !== undefined ? boardingTime : product.boardingTime,
+        dropPoint: dropPoint !== undefined ? dropPoint : product.dropPoint,
+        arrivalTime: arrivalTime !== undefined ? arrivalTime : product.arrivalTime,
+        distance: distance !== undefined ? distance : product.distance,
+        busTiming: busTiming !== undefined ? busTiming : product.busTiming,
+        stoppings: stoppings !== undefined ? stoppings : product.stoppings
       }
     }, { new: true });
 

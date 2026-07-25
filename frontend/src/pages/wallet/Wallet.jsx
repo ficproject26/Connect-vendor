@@ -545,7 +545,7 @@ const Wallet = () => {
                                       width={barWidth} 
                                       height={barHeight} 
                                       rx="6"
-                                      className="fill-indigo-550 dark:fill-indigo-650 transition-all duration-300 group-hover:fill-indigo-400"
+                                      className="fill-indigo-600 dark:fill-indigo-500 transition-all duration-300 group-hover:fill-indigo-400"
                                     />
                                     {/* Top marker label */}
                                     {d.value > 0 && (

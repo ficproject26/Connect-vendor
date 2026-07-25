@@ -402,14 +402,34 @@ const Orders = () => {
                                       <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
                                         {order.product_details || (order.items && order.items[0]?.name) || 'Job Role'}
                                       </td>
-                                      {/* CV / Resume */}
-                                      <td className="px-6 py-4 text-xs">
-                                        {order.candidateResume && (
-                                          <div className="text-[10px] text-slate-500 font-medium bg-slate-50/70 dark:bg-slate-950/60 p-2 rounded-lg border border-slate-200/50 dark:border-slate-800 max-w-xs break-words text-left">
-                                            {order.candidateResume}
-                                          </div>
-                                        )}
-                                      </td>
+                                       {/* CV / Resume */}
+                                       <td className="px-6 py-4 text-xs">
+                                         {order.candidateResume && (() => {
+                                           const raw = order.candidateResume.trim();
+                                           const isUrlOrFile = raw.startsWith('http') || raw.startsWith('/') || raw.includes('/uploads/') || raw.includes('\\') || /\.(pdf|png|jpg|jpeg|doc|docx)$/i.test(raw);
+                                           const resumeUrl = isUrlOrFile ? (raw.startsWith('http') ? raw : `${getBackendUrl()}${raw.startsWith('/') ? '' : '/'}${raw.replace(/\\/g, '/')}`) : null;
+
+                                           return (
+                                             <div className="flex gap-2 items-center">
+                                               {resumeUrl ? (
+                                                 <a
+                                                   href={resumeUrl}
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   className="text-[10px] font-semibold text-indigo-650 dark:text-indigo-400 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 px-2.5 py-1.5 rounded-lg border border-indigo-200/50 dark:border-indigo-800 flex items-center gap-1 transition-colors"
+                                                   title="View Original Resume"
+                                                 >
+                                                   📄 {raw.split('/').pop().substring(0, 18)}...
+                                                 </a>
+                                               ) : (
+                                                 <div className="text-[10px] text-slate-500 font-medium bg-slate-50/70 dark:bg-slate-950/60 p-2 rounded-lg border border-slate-200/50 dark:border-slate-800 max-w-xs break-words text-left">
+                                                   {order.candidateResume}
+                                                 </div>
+                                               )}
+                                             </div>
+                                           );
+                                         })()}
+                                       </td>
                                       {/* Job Location */}
                                       <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
                                         {order.customer_address || 'Koramangala, Bangalore'}

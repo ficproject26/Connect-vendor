@@ -19,7 +19,7 @@ import {
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
-  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download
+  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink
 } from 'lucide-react';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
@@ -1889,7 +1889,9 @@ const VendorDashboard = () => {
         catVal = keys[0];
       }
     }
-    if (!catVal) catVal = (terms.categories && terms.categories[0]) || 'General';
+    if (defaultMain === 'Services') {
+      catVal = 'Video Consulting';
+    } else if (!catVal) catVal = (terms.categories && terms.categories[0]) || 'General';
 
     const subOpts = (defaultMain && COMPLETE_CAT_TAXONOMY[defaultMain] && COMPLETE_CAT_TAXONOMY[defaultMain][catVal]) || [];
     const childVal = subOpts.length > 0 ? (subOpts.includes(vendorCategory) ? vendorCategory : subOpts[0]) : '';
@@ -2871,9 +2873,15 @@ const VendorDashboard = () => {
           const getTopSellingData = () => {
             const itemMap = {};
             orders.forEach(o => {
-              if (o.status !== 'Cancelled') {
-                o.items?.forEach(item => {
-                  const name = item.name || 'Unknown Item';
+              if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+                const itemList = (o.items && o.items.length > 0) ? o.items : (o.product_details ? [{ name: o.product_details, productId: o.productId, quantity: 1 }] : []);
+                itemList.forEach(item => {
+                  const catMatch = catalog.find(c => 
+                    (item.productId && String(c._id) === String(item.productId)) ||
+                    (item.id && String(c._id) === String(item.id)) ||
+                    c.name === item.name
+                  );
+                  const name = catMatch ? catMatch.name : (item.name || o.product_details || 'Unknown Item');
                   itemMap[name] = (itemMap[name] || 0) + (item.quantity || 1);
                 });
               }
@@ -3334,8 +3342,15 @@ const VendorDashboard = () => {
                   const itemSalesMap = {};
                   bizOrders.forEach(o => {
                     if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
-                      o.items?.forEach(item => {
-                        const name = item.name || 'Unknown';
+                      const itemList = (o.items && o.items.length > 0) ? o.items : (o.product_details ? [{ name: o.product_details, productId: o.productId, quantity: 1 }] : []);
+                      itemList.forEach(item => {
+                        const catMatch = catalog.find(c => 
+                          (item.productId && String(c._id) === String(item.productId)) ||
+                          (item.id && String(c._id) === String(item.id)) ||
+                          c.name === item.name
+                        );
+                        const rawName = item.name || o.product_details || 'Unknown';
+                        const name = catMatch ? catMatch.name : rawName;
                         itemSalesMap[name] = (itemSalesMap[name] || 0) + (item.quantity || 1);
                       });
                     }
@@ -5939,7 +5954,7 @@ const VendorDashboard = () => {
                                       width={barWidth} 
                                       height={barHeight} 
                                       rx="6"
-                                      className="fill-indigo-550 dark:fill-indigo-650 transition-all duration-300 group-hover:fill-indigo-400"
+                                      className="fill-indigo-600 dark:fill-indigo-500 transition-all duration-300 group-hover:fill-indigo-400"
                                     />
                                     {/* Top marker label */}
                                     {d.value > 0 && (
@@ -7393,16 +7408,21 @@ const VendorDashboard = () => {
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                 >
                   {(() => {
-                    const currentTax = getCategoryTaxonomy();
-                    const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
-                    const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
-                    
-                    const parentKeys = [
-                      ...new Set([
-                        ...taxParentKeys,
-                        itemForm.category
-                      ])
-                    ].filter(cat => cat && !mainCatNames.includes(cat));
+                    let parentKeys = [];
+                    if (selectedMainCat === 'Services') {
+                      parentKeys = ['Video Consulting', 'Realtime Visit'];
+                    } else {
+                      const currentTax = getCategoryTaxonomy();
+                      const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
+                      const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+                      
+                      parentKeys = [
+                        ...new Set([
+                          ...taxParentKeys,
+                          itemForm.category
+                        ])
+                      ].filter(cat => cat && !mainCatNames.includes(cat));
+                    }
 
                     return parentKeys.map(cat => (
                       <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
@@ -9642,25 +9662,61 @@ required
                 Resume Content / Cover Letter
               </span>
               
-              {selectedBillOrder.candidateResume?.trim().startsWith('http') ? (
-                <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-2xl text-center space-y-3">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-350">
-                    The candidate provided a web link to their resume:
-                  </p>
-                  <a 
-                    href={selectedBillOrder.candidateResume.trim()} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-block text-xs font-bold text-indigo-650 dark:text-indigo-400 hover:underline bg-indigo-50 dark:bg-indigo-950/40 px-4 py-2.5 rounded-xl border border-indigo-500/10"
-                  >
-                    🔗 Open Uploaded Resume Link
-                  </a>
-                </div>
-              ) : (
-                <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 p-4 rounded-2xl break-words whitespace-pre-line text-xs leading-relaxed max-h-96 overflow-y-auto">
-                  {selectedBillOrder.candidateResume || 'No resume content provided.'}
-                </div>
-              )}
+              {(() => {
+                const rawResume = selectedBillOrder.candidateResume?.trim() || '';
+                const isUrlOrFile = rawResume.startsWith('http') || rawResume.startsWith('/') || rawResume.includes('/uploads/') || rawResume.includes('\\') || /\.(pdf|png|jpg|jpeg|doc|docx)$/i.test(rawResume);
+                const resumeUrl = isUrlOrFile ? (rawResume.startsWith('http') ? rawResume : `${getBackendUrl()}${rawResume.startsWith('/') ? '' : '/'}${rawResume.replace(/\\/g, '/')}`) : null;
+
+                if (resumeUrl) {
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl">
+                        <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200">
+                          <FileText size={16} className="text-indigo-600 dark:text-indigo-400" />
+                          <span>Candidate Original Uploaded Resume Document</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={resumeUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5 transition-colors shadow-sm"
+                          >
+                            <ExternalLink size={14} /> Open Original File
+                          </a>
+                          <a
+                            href={resumeUrl}
+                            download
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors shadow-sm"
+                          >
+                            <Download size={14} /> Download
+                          </a>
+                        </div>
+                      </div>
+
+                      <div className="w-full h-[450px] bg-slate-100 dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-inner">
+                        {/\.(png|jpg|jpeg|webp)$/i.test(rawResume) ? (
+                          <img src={resumeUrl} alt="Candidate Resume" className="w-full h-full object-contain p-2" />
+                        ) : (
+                          <iframe
+                            src={resumeUrl}
+                            title="Candidate Uploaded Resume"
+                            className="w-full h-full border-none"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 p-4 rounded-2xl break-words whitespace-pre-line text-xs leading-relaxed max-h-96 overflow-y-auto">
+                    {rawResume || 'No resume content provided.'}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-slate-800/80">

@@ -1,5 +1,7 @@
 export const COMPLETE_CAT_TAXONOMY = {
   "Services": {
+    "Video Consulting": ["Online Video Call", "Teleconsultation", "Virtual Appointment", "Remote Guidance"],
+    "Realtime Visit": ["In-Person Visit", "Clinic Visit", "Home Visit", "On-Site Service"],
     "Healthcare": ["Hospitals", "Clinics", "Diagnostic Centers", "Pharmacies", "Dental Care", "Eye Care", "Ambulance Services", "Home Nursing", "Health Checkups", "Telemedicine", "Physiotherapy", "Medical Equipment"],
     "Education": ["Schools", "Colleges", "Universities", "Online Courses", "Training Institutes", "Skill Development", "Computer Training", "AI & IT Training", "Language Classes", "Competitive Exam Coaching", "Certification Programs"],
     "Employment": ["Job Portal", "Recruitment Services", "Resume Building", "Interview Preparation", "Career Guidance", "Placement Services", "Internship Programs", "Freelancing Opportunities", "Overseas Jobs"],
