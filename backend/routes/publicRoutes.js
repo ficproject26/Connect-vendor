@@ -69,11 +69,16 @@ router.get('/products', async (req, res) => {
     const vendorMap = {};
     approvedVendors.forEach(vendor => {
       const vendorIdStr = vendor._id.toString();
+      const vCity = vendor.city || vendor.bankCity || 'Bangalore';
       vendorMap[vendorIdStr] = {
         name: vendor.businessName || vendor.name,
         baseVendorType: vendor.baseVendorType || vendor.vendorType,
         category: vendor.category,
-        city: vendor.bankCity || 'Bangalore'
+        city: vCity,
+        address: vendor.address || '',
+        logo: vendor.logo || '',
+        mobileNumber: vendor.mobileNumber || vendor.telephone || '',
+        operatingHours: vendor.operatingHours || ''
       };
 
       if (vendor.businesses && Array.isArray(vendor.businesses)) {
@@ -83,7 +88,11 @@ router.get('/products', async (req, res) => {
               name: biz.businessName || vendor.businessName || vendor.name,
               baseVendorType: biz.baseVendorType || biz.vendorType || vendor.baseVendorType || vendor.vendorType,
               category: biz.category || vendor.category,
-              city: vendor.bankCity || 'Bangalore'
+              city: biz.city || vCity,
+              address: vendor.address || '',
+              logo: biz.logo || vendor.logo || '',
+              mobileNumber: vendor.mobileNumber || vendor.telephone || '',
+              operatingHours: vendor.operatingHours || ''
             };
           }
         });
@@ -120,6 +129,33 @@ router.get('/products', async (req, res) => {
           subcategory: p.subcategory || '',
           subSubcategory: p.subSubcategory || '',
           subNavbarCategory: subNavbarCategory,
+          warranty: p.warranty,
+          specialization: p.specialization,
+          pinCode: p.pinCode,
+          duration: p.duration,
+          roomType: p.roomType,
+          foodType: p.foodType,
+          bookingType: p.bookingType || 'Slot booking',
+          cardTypes: p.cardTypes || ['Silver', 'Gold', 'Diamond'],
+          availableTimeSlots: p.availableTimeSlots,
+          jobType: p.jobType,
+          jobLocation: p.jobLocation,
+          experience: p.experience,
+          skills: p.skills,
+          deadline: p.deadline,
+          applicationTips: p.applicationTips,
+          qualification: p.qualification,
+          linkedProfile: p.linkedProfile,
+          contactNumber: p.contactNumber || vendor.mobileNumber,
+          mailId: p.mailId,
+          department: p.department,
+          boardingPoint: p.boardingPoint,
+          boardingTime: p.boardingTime,
+          dropPoint: p.dropPoint,
+          arrivalTime: p.arrivalTime,
+          distance: p.distance,
+          busTiming: p.busTiming,
+          stoppings: p.stoppings || [],
           image: p.imageUrl 
             ? (p.imageUrl.startsWith('/uploads') ? `${baseUrl}${p.imageUrl}` : p.imageUrl)
             : (subNavbarCategory === 'Services' 
@@ -135,6 +171,9 @@ router.get('/products', async (req, res) => {
           rating: 4.5,
           reviews: 120,
           vendorName: vendor.name,
+          vendorLogo: vendor.logo,
+          vendorAddress: vendor.address,
+          vendorOperatingHours: vendor.operatingHours,
           vendorCity: (() => {
             const pin = String(p.pinCode || '').trim();
             if (pin.startsWith('56')) return 'Bangalore';
