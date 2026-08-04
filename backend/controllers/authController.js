@@ -326,19 +326,21 @@ const loginVendor = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please enter email and password' });
     }
 
-    // Find user by email
-    const user = await User.findOne({ email });
+    // Find user by email (case-insensitive)
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: { $regex: new RegExp('^' + cleanEmail + '$', 'i') } });
     if (!user || (user.role !== 'Vendor' && user.role !== 'Admin')) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
     // Check Vendor status
-    if (user.status === 'Pending') {
+    const vendorStatus = (user.status || '').toLowerCase();
+    if (vendorStatus === 'pending') {
       return res.status(403).json({ 
         success: false, 
         message: 'Your account is pending approval by the Admin. Please try again later.' 
       });
-    } else if (user.status === 'Rejected') {
+    } else if (vendorStatus === 'rejected') {
       return res.status(403).json({ 
         success: false, 
         message: 'Your account application has been rejected by the Admin.' 
