@@ -272,6 +272,10 @@ const Navbar = () => {
         <div className="space-y-4">
           <div className="space-y-3 text-sm">
             <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/40">
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Vendor ID:</span>
+              <span className="font-semibold text-slate-900 dark:text-white font-mono text-xs">{user?.vendorId || user?.registrationId || user?._id || user?.id}</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/40">
               <span className="text-slate-500 dark:text-slate-400 font-medium">Name:</span>
               <span className="font-semibold text-slate-900 dark:text-white">{user?.name}</span>
             </div>
