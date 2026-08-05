@@ -11,6 +11,14 @@ const formatCustomerId = (memberId) => {
   const num = Math.abs(hash % 900000) + 100000;
   return `FIC-CUST-${num}`;
 };
+
+const formatVendorId = (vendorId, index = 0) => {
+  const idStr = String(vendorId || '').trim();
+  if (/^ven-fic-2026-v\d+$/i.test(idStr)) return idStr.toLowerCase();
+  if (idStr.startsWith('ven-fic-')) return idStr;
+  const num = String(index + 1).padStart(3, '0');
+  return `ven-fic-2026-v${num}`;
+};
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useSelector, useDispatch } from 'react-redux';
@@ -6413,7 +6421,7 @@ const VendorDashboard = () => {
               </div>
             ) : (
               <div className="grid md:grid-cols-2 gap-6">
-                {vendorRequests.map(req => (
+                {vendorRequests.map((req, idx) => (
                   <div key={req._id} className="glass-card p-6 rounded-3xl space-y-4 hover-card border border-slate-200 dark:border-slate-800">
                     <div className="flex justify-between items-start">
                       <div>
@@ -6421,11 +6429,11 @@ const VendorDashboard = () => {
                         <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-2">{req.businessName}</h3>
                         <p className="text-xs text-slate-500 mt-0.5">Contact: {req.name}</p>
                       </div>
-                      <span className="text-xs text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-semibold">{req.vendorId || req.registrationId || req._id}</span>
+                      <span className="text-xs text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-semibold">{formatVendorId(req.vendorId || req.registrationId || req._id, idx)}</span>
                     </div>
 
                     <div className="border-t border-slate-200/50 dark:border-slate-800/50 pt-3 space-y-1.5 text-xs text-slate-800 dark:text-slate-200">
-                      <div><span className="font-semibold text-slate-600 dark:text-slate-400">Vendor ID:</span> <span className="font-mono text-xs font-semibold">{req.vendorId || req.registrationId || req._id}</span></div>
+                      <div><span className="font-semibold text-slate-600 dark:text-slate-400">Vendor ID:</span> <span className="font-mono text-xs font-semibold">{formatVendorId(req.vendorId || req.registrationId || req._id, idx)}</span></div>
                       <div><span className="font-semibold text-slate-600 dark:text-slate-400">Email:</span> {req.email}</div>
                       <div><span className="font-semibold text-slate-600 dark:text-slate-400">Mobile:</span> {req.mobileNumber}</div>
                       <div><span className="font-semibold text-slate-600 dark:text-slate-400">Address:</span> {req.address}</div>
@@ -6478,9 +6486,9 @@ const VendorDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {adminVendors.map(vendor => (
+                      {adminVendors.map((vendor, idx) => (
                         <tr key={vendor._id} className="border-b border-slate-100 dark:border-slate-900/60 hover:bg-slate-50/50 dark:hover:bg-slate-900/20 text-slate-800 dark:text-slate-200">
-                          <td className="py-3.5 px-2 font-mono font-semibold text-primary-600 dark:text-primary-400 text-xs">{vendor.vendorId || vendor.registrationId || vendor._id}</td>
+                          <td className="py-3.5 px-2 font-mono font-semibold text-primary-600 dark:text-primary-400 text-xs">{formatVendorId(vendor.vendorId || vendor.registrationId || vendor._id, idx)}</td>
                           <td className="py-3.5 px-2 font-bold">{vendor.businessName}</td>
                           <td className="py-3.5 px-2">{vendor.vendorType}</td>
                           <td className="py-3.5 px-2">{vendor.name}</td>
@@ -9211,7 +9219,7 @@ required
           <div className="space-y-3 text-sm">
             <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/40">
               <span className="text-slate-500 dark:text-slate-400 font-medium">Vendor ID:</span>
-              <span className="font-semibold text-slate-900 dark:text-white font-mono text-xs">{user?.vendorId || user?.registrationId || user?._id || user?.id}</span>
+              <span className="font-semibold text-slate-900 dark:text-white font-mono text-xs">{formatVendorId(user?.vendorId || user?.registrationId || user?._id || user?.id, 0)}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/40">
               <span className="text-slate-500 dark:text-slate-400 font-medium">Name:</span>

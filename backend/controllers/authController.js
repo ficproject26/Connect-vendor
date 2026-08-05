@@ -252,7 +252,16 @@ const registerVendor = async (req, res) => {
     const finalCategoryId = categoryId || category.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
     const newVendorObjectId = new mongoose.Types.ObjectId().toString();
-    const generatedVendorId = `VND-${newVendorObjectId.slice(-6).toUpperCase()}`;
+    const currentYear = new Date().getFullYear();
+    const vendorCount = await User.countDocuments({ role: 'Vendor' });
+    let seqNum = vendorCount + 1;
+    let generatedVendorId = `ven-fic-${currentYear}-v${String(seqNum).padStart(3, '0')}`;
+    let existingV = await User.findOne({ $or: [{ vendorId: generatedVendorId }, { registrationId: generatedVendorId }] });
+    while (existingV) {
+      seqNum++;
+      generatedVendorId = `ven-fic-${currentYear}-v${String(seqNum).padStart(3, '0')}`;
+      existingV = await User.findOne({ $or: [{ vendorId: generatedVendorId }, { registrationId: generatedVendorId }] });
+    }
 
     // Create vendor user
     const vendor = await User.create({
@@ -363,8 +372,12 @@ const loginVendor = async (req, res) => {
     const userResponse = user.toObject ? user.toObject() : { ...user };
     delete userResponse.password;
     userResponse.id = user._id;
-    if (!userResponse.vendorId) {
-      userResponse.vendorId = user.vendorId || user.registrationId || user._id;
+    if (!userResponse.vendorId || !/^ven-fic-/i.test(userResponse.vendorId)) {
+      const currentYear = new Date().getFullYear();
+      const count = await User.countDocuments({ role: 'Vendor' });
+      const formatted = `ven-fic-${currentYear}-v${String(count || 1).padStart(3, '0')}`;
+      userResponse.vendorId = user.vendorId && /^ven-fic-/i.test(user.vendorId) ? user.vendorId : formatted;
+      userResponse.registrationId = user.registrationId && /^ven-fic-/i.test(user.registrationId) ? user.registrationId : formatted;
     }
 
     res.status(200).json({
