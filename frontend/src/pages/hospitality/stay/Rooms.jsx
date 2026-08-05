@@ -271,6 +271,7 @@ const Rooms = () => {
                             <span className="bg-[#faed26]/20 text-[#0B3C7B] dark:bg-[#faed26]/10 dark:text-[#faed26] text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">{vendor.vendorType}</span>
                             <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-2 leading-tight">{vendor.businessName}</h3>
                             <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
+                              <div>Vendor ID: <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-350">{vendor.vendorId || vendor.registrationId || vendor.id || vendor._id}</span></div>
                               {vendor.category && (
                                 <div>Category: <span className="font-semibold text-slate-700 dark:text-slate-350">{vendor.category}</span></div>
                               )}

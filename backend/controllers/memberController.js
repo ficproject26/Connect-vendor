@@ -194,12 +194,14 @@ const getParticipatingVendors = async (req, res) => {
     
     vendors.forEach(v => {
       const addedIds = new Set();
+      const vId = v.vendorId || v.registrationId || v._id;
       
       // Add all sub-businesses
       if (v.businesses && v.businesses.length > 0) {
         v.businesses.forEach(b => {
           formatted.push({
             id: b._id,
+            vendorId: vId,
             businessName: b.businessName || v.businessName || v.name,
             vendorType: b.vendorType,
             baseVendorType: b.baseVendorType || b.vendorType,
@@ -216,6 +218,7 @@ const getParticipatingVendors = async (req, res) => {
       if (!addedIds.has(v._id.toString()) && (!v.primaryBusinessId || !addedIds.has(v.primaryBusinessId.toString()))) {
         formatted.push({
           id: v._id,
+          vendorId: vId,
           businessName: v.businessName || v.name,
           vendorType: v.vendorType,
           baseVendorType: v.baseVendorType || v.vendorType,

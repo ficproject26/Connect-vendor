@@ -251,8 +251,14 @@ const registerVendor = async (req, res) => {
     // Compute categoryId fallback if not explicitly provided
     const finalCategoryId = categoryId || category.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
+    const newVendorObjectId = new mongoose.Types.ObjectId().toString();
+    const generatedVendorId = `VND-${newVendorObjectId.slice(-6).toUpperCase()}`;
+
     // Create vendor user
     const vendor = await User.create({
+      _id: newVendorObjectId,
+      vendorId: generatedVendorId,
+      registrationId: generatedVendorId,
       name: contactPerson, // Set name to contactPerson for general dashboard usage
       email,
       password: hashedPassword,
@@ -304,6 +310,7 @@ const registerVendor = async (req, res) => {
       message: 'Vendor registered successfully! You can log in now.',
       data: {
         id: vendor._id,
+        vendorId: vendor.vendorId,
         businessName: vendor.businessName,
         status: vendor.status
       }
@@ -356,6 +363,9 @@ const loginVendor = async (req, res) => {
     const userResponse = user.toObject ? user.toObject() : { ...user };
     delete userResponse.password;
     userResponse.id = user._id;
+    if (!userResponse.vendorId) {
+      userResponse.vendorId = user.vendorId || user.registrationId || user._id;
+    }
 
     res.status(200).json({
       success: true,

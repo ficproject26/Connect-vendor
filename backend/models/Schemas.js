@@ -11,6 +11,8 @@ const UserSchema = new mongoose.Schema({
   status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
   
   // Vendor-specific fields
+  vendorId: { type: String },
+  registrationId: { type: String },
   vendorType: { type: String }, // e.g. Hospital, Restaurant, etc.
   category: { type: String },
   categoryId: { type: String },

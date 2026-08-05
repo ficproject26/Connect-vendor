@@ -6402,10 +6402,11 @@ const VendorDashboard = () => {
                         <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-2">{req.businessName}</h3>
                         <p className="text-xs text-slate-500 mt-0.5">Contact: {req.name}</p>
                       </div>
-                      <span className="text-xs text-slate-400 font-mono">{req._id.slice(-6).toUpperCase()}</span>
+                      <span className="text-xs text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-semibold">{req.vendorId || req.registrationId || req._id}</span>
                     </div>
 
                     <div className="border-t border-slate-200/50 dark:border-slate-800/50 pt-3 space-y-1.5 text-xs text-slate-800 dark:text-slate-200">
+                      <div><span className="font-semibold text-slate-600 dark:text-slate-400">Vendor ID:</span> <span className="font-mono text-xs font-semibold">{req.vendorId || req.registrationId || req._id}</span></div>
                       <div><span className="font-semibold text-slate-600 dark:text-slate-400">Email:</span> {req.email}</div>
                       <div><span className="font-semibold text-slate-600 dark:text-slate-400">Mobile:</span> {req.mobileNumber}</div>
                       <div><span className="font-semibold text-slate-600 dark:text-slate-400">Address:</span> {req.address}</div>
@@ -6448,6 +6449,7 @@ const VendorDashboard = () => {
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase tracking-wider">
+                        <th className="py-3 px-2">Vendor ID</th>
                         <th className="py-3 px-2">Business Name</th>
                         <th className="py-3 px-2">Category</th>
                         <th className="py-3 px-2">Contact Person</th>
@@ -6459,6 +6461,7 @@ const VendorDashboard = () => {
                     <tbody>
                       {adminVendors.map(vendor => (
                         <tr key={vendor._id} className="border-b border-slate-100 dark:border-slate-900/60 hover:bg-slate-50/50 dark:hover:bg-slate-900/20 text-slate-800 dark:text-slate-200">
+                          <td className="py-3.5 px-2 font-mono font-semibold text-primary-600 dark:text-primary-400 text-xs">{vendor.vendorId || vendor.registrationId || vendor._id}</td>
                           <td className="py-3.5 px-2 font-bold">{vendor.businessName}</td>
                           <td className="py-3.5 px-2">{vendor.vendorType}</td>
                           <td className="py-3.5 px-2">{vendor.name}</td>
@@ -6699,6 +6702,7 @@ const VendorDashboard = () => {
                             <span className="bg-[#faed26]/20 text-[#0B3C7B] dark:bg-[#faed26]/10 dark:text-[#faed26] text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">{vendor.vendorType}</span>
                             <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-2 leading-tight">{vendor.businessName}</h3>
                             <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
+                              <div>Vendor ID: <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-350">{vendor.vendorId || vendor.registrationId || vendor.id || vendor._id}</span></div>
                               {vendor.category && (
                                 <div>Category: <span className="font-semibold text-slate-700 dark:text-slate-350">{vendor.category}</span></div>
                               )}
