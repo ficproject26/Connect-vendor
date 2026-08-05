@@ -70,7 +70,7 @@ router.get('/products', async (req, res) => {
     approvedVendors.forEach(vendor => {
       const vendorIdStr = vendor._id.toString();
       const vCity = vendor.city || vendor.bankCity || 'Bangalore';
-      vendorMap[vendorIdStr] = {
+      const vData = {
         name: vendor.businessName || vendor.name,
         baseVendorType: vendor.baseVendorType || vendor.vendorType,
         category: vendor.category,
@@ -80,6 +80,9 @@ router.get('/products', async (req, res) => {
         mobileNumber: vendor.mobileNumber || vendor.telephone || '',
         operatingHours: vendor.operatingHours || ''
       };
+      vendorMap[vendorIdStr] = vData;
+      if (vendor.vendorId) vendorMap[vendor.vendorId.toString()] = vData;
+      if (vendor.registrationId) vendorMap[vendor.registrationId.toString()] = vData;
 
       if (vendor.businesses && Array.isArray(vendor.businesses)) {
         vendor.businesses.forEach(biz => {
@@ -106,89 +109,97 @@ router.get('/products', async (req, res) => {
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const baseUrl = `${protocol}://${host}`;
 
-    // 3. Filter and map products to customer app format
-    const mappedProducts = products
-      .filter(p => vendorMap[p.vendorId]) // only include products from approved vendors
-      .map(p => {
-        const vendor = vendorMap[p.vendorId];
-        const subNavbarCategory = p.subNavbarCategory || p.mainCategory || getSubNavbarCategory(vendor.baseVendorType, p.category);
-        
-        return {
-          id: p._id,
-          vendorId: p.vendorId,
-          name: p.name,
-          description: p.description || '',
-          price: p.price,
-          unit: p.unit || 'count',
-          stock: p.stock,
-          status: p.status || 'Available',
-          originalPrice: p.originalPrice || Math.round(p.price * 1.25),
-          guests: p.guests || 2,
-          amenities: p.amenities || [],
-          category: p.category || vendor.category || 'General',
-          subcategory: p.subcategory || '',
-          subSubcategory: p.subSubcategory || '',
-          subNavbarCategory: subNavbarCategory,
-          warranty: p.warranty,
-          specialization: p.specialization,
-          pinCode: p.pinCode,
-          duration: p.duration,
-          roomType: p.roomType,
-          foodType: p.foodType,
-          bookingType: p.bookingType || 'Slot booking',
-          cardTypes: p.cardTypes || ['Silver', 'Gold', 'Diamond'],
-          availableTimeSlots: p.availableTimeSlots,
-          jobType: p.jobType,
-          jobLocation: p.jobLocation,
-          experience: p.experience,
-          skills: p.skills,
-          deadline: p.deadline,
-          applicationTips: p.applicationTips,
-          qualification: p.qualification,
-          linkedProfile: p.linkedProfile,
-          contactNumber: p.contactNumber || vendor.mobileNumber,
-          mailId: p.mailId,
-          department: p.department,
-          boardingPoint: p.boardingPoint,
-          boardingTime: p.boardingTime,
-          dropPoint: p.dropPoint,
-          arrivalTime: p.arrivalTime,
-          distance: p.distance,
-          busTiming: p.busTiming,
-          stoppings: p.stoppings || [],
-          image: p.imageUrl 
-            ? (p.imageUrl.startsWith('/uploads') ? `${baseUrl}${p.imageUrl}` : p.imageUrl)
-            : (subNavbarCategory === 'Services' 
-                ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
-                : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60'),
-          images: p.imageUrls && p.imageUrls.length > 0
-            ? p.imageUrls.map(img => img.startsWith('/uploads') ? `${baseUrl}${img}` : img)
-            : [p.imageUrl 
-                ? (p.imageUrl.startsWith('/uploads') ? `${baseUrl}${p.imageUrl}` : p.imageUrl)
-                : (subNavbarCategory === 'Services' 
-                    ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
-                    : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60')],
-          rating: 4.5,
-          reviews: 120,
-          vendorName: vendor.name,
-          vendorLogo: vendor.logo,
-          vendorAddress: vendor.address,
-          vendorOperatingHours: vendor.operatingHours,
-          vendorCity: (() => {
-            const pin = String(p.pinCode || '').trim();
-            if (pin.startsWith('56')) return 'Bangalore';
-            if (pin.startsWith('60')) return 'Chennai';
-            if (pin.startsWith('50')) return 'Hyderabad';
-            if (pin.startsWith('40')) return 'Mumbai';
-            if (pin.startsWith('11')) return 'Delhi';
-            if (pin.startsWith('64')) return 'Coimbatore';
-            return vendor.city || 'Bangalore';
-          })(),
-          tag: p.status === 'Unavailable' ? 'Unavailable' : (p.status === 'Low Stock' ? 'Low Stock' : 'Verified Partner'),
-          discount: '20% off',
-          delivery: 'Free Delivery'
-        };
-      });
+    // 3. Map products to customer app format (ensure no products are dropped)
+    const mappedProducts = products.map(p => {
+      const vIdStr = (p.vendorId || p.vendor_id || '').toString();
+      const vendor = vendorMap[vIdStr] || {
+        name: 'Store Vendor',
+        baseVendorType: 'Store Vendor',
+        category: p.category || 'General',
+        city: 'Bangalore',
+        address: '',
+        logo: '',
+        mobileNumber: '',
+        operatingHours: ''
+      };
+      const subNavbarCategory = p.subNavbarCategory || p.mainCategory || getSubNavbarCategory(vendor.baseVendorType, p.category);
+      
+      return {
+        id: p._id,
+        vendorId: vIdStr || p._id,
+        name: p.name,
+        description: p.description || '',
+        price: p.price,
+        unit: p.unit || 'count',
+        stock: p.stock,
+        status: p.status || 'Available',
+        originalPrice: p.originalPrice || Math.round(p.price * 1.25),
+        guests: p.guests || 2,
+        amenities: p.amenities || [],
+        category: p.category || vendor.category || 'General',
+        subcategory: p.subcategory || '',
+        subSubcategory: p.subSubcategory || '',
+        subNavbarCategory: subNavbarCategory,
+        warranty: p.warranty,
+        specialization: p.specialization,
+        pinCode: p.pinCode,
+        duration: p.duration,
+        roomType: p.roomType,
+        foodType: p.foodType,
+        bookingType: p.bookingType || 'Slot booking',
+        cardTypes: p.cardTypes || ['Silver', 'Gold', 'Diamond'],
+        availableTimeSlots: p.availableTimeSlots,
+        jobType: p.jobType,
+        jobLocation: p.jobLocation,
+        experience: p.experience,
+        skills: p.skills,
+        deadline: p.deadline,
+        applicationTips: p.applicationTips,
+        qualification: p.qualification,
+        linkedProfile: p.linkedProfile,
+        contactNumber: p.contactNumber || vendor.mobileNumber,
+        mailId: p.mailId,
+        department: p.department,
+        boardingPoint: p.boardingPoint,
+        boardingTime: p.boardingTime,
+        dropPoint: p.dropPoint,
+        arrivalTime: p.arrivalTime,
+        distance: p.distance,
+        busTiming: p.busTiming,
+        stoppings: p.stoppings || [],
+        image: p.imageUrl 
+          ? (p.imageUrl.startsWith('/uploads') ? `${baseUrl}${p.imageUrl}` : p.imageUrl)
+          : (subNavbarCategory === 'Services' 
+              ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
+              : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60'),
+        images: p.imageUrls && p.imageUrls.length > 0
+          ? p.imageUrls.map(img => img.startsWith('/uploads') ? `${baseUrl}${img}` : img)
+          : [p.imageUrl 
+              ? (p.imageUrl.startsWith('/uploads') ? `${baseUrl}${p.imageUrl}` : p.imageUrl)
+              : (subNavbarCategory === 'Services' 
+                  ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
+                  : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60')],
+        rating: 4.5,
+        reviews: 120,
+        vendorName: vendor.name,
+        vendorLogo: vendor.logo,
+        vendorAddress: vendor.address,
+        vendorOperatingHours: vendor.operatingHours,
+        vendorCity: (() => {
+          const pin = String(p.pinCode || '').trim();
+          if (pin.startsWith('56')) return 'Bangalore';
+          if (pin.startsWith('60')) return 'Chennai';
+          if (pin.startsWith('50')) return 'Hyderabad';
+          if (pin.startsWith('40')) return 'Mumbai';
+          if (pin.startsWith('11')) return 'Delhi';
+          if (pin.startsWith('64')) return 'Coimbatore';
+          return vendor.city || 'Bangalore';
+        })(),
+        tag: p.status === 'Unavailable' ? 'Unavailable' : (p.status === 'Low Stock' ? 'Low Stock' : 'Verified Partner'),
+        discount: '20% off',
+        delivery: 'Free Delivery'
+      };
+    });
 
     res.status(200).json({ success: true, products: mappedProducts });
   } catch (error) {

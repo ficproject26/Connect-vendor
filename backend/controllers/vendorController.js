@@ -201,10 +201,11 @@ const createProduct = async (req, res) => {
 
     const vendorSubcategory = getVendorSubcategory(req.user);
     const finalCategory = category || vendorSubcategory || 'General';
-    const vendorId = req.user._id;
+    const vendorId = (req.body.vendorId || req.user._id).toString();
 
     const product = await Product.create({
       vendorId,
+      vendor_id: vendorId,
       name,
       description,
       price: Number(price),
