@@ -1300,6 +1300,25 @@ const VendorDashboard = () => {
       return;
     }
 
+    const registeredTypes = new Set();
+    if (user) {
+      if (user.vendorType) registeredTypes.add(user.vendorType);
+      if (user.category) registeredTypes.add(user.category);
+      if (user.baseVendorType) registeredTypes.add(user.baseVendorType);
+      if (user.businesses && Array.isArray(user.businesses)) {
+        user.businesses.forEach(b => {
+          if (b.vendorType) registeredTypes.add(b.vendorType);
+          if (b.category) registeredTypes.add(b.category);
+          if (b.baseVendorType) registeredTypes.add(b.baseVendorType);
+        });
+      }
+    }
+
+    if (registeredTypes.has(addBizForm.vendorType)) {
+      setError(`You have already registered the ${addBizForm.vendorType} business profile.`);
+      return;
+    }
+
     setAddingBizLoading(true);
     setError('');
     setMessage('');
@@ -1321,7 +1340,7 @@ const VendorDashboard = () => {
         // Add a notification
         const newNotification = {
           id: Date.now() + Math.random(),
-          text: `Successfully added and switched to new business: ${addBizForm.vendorType} - ${addBizForm.subcategory}!`
+          text: `Successfully added and switched to new business: ${addBizForm.vendorType}!`
         };
         setNotifications(prev => [newNotification, ...prev]);
       }
@@ -7909,6 +7928,12 @@ required
       {/* Add Business Modal */}
       <Modal isOpen={isAddBusinessModalOpen} onClose={() => setIsAddBusinessModalOpen(false)} title="+ Add Business">
         <form onSubmit={handleAddBusinessSubmit} className="space-y-4">
+          {error && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-xs font-semibold rounded-xl">
+              {error}
+            </div>
+          )}
+
           {/* Business Name */}
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Business Name (Optional)</label>
@@ -7931,18 +7956,37 @@ required
               className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white [&>option]:bg-slate-50 dark:[&>option]:bg-slate-950"
             >
               <option value="" disabled>Select Product or Service or etc</option>
-              {Object.keys(vendorTaxonomy).map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
+              {(() => {
+                const registeredTypes = new Set();
+                if (user) {
+                  if (user.vendorType) registeredTypes.add(user.vendorType);
+                  if (user.category) registeredTypes.add(user.category);
+                  if (user.baseVendorType) registeredTypes.add(user.baseVendorType);
+                  if (user.businesses && Array.isArray(user.businesses)) {
+                    user.businesses.forEach(b => {
+                      if (b.vendorType) registeredTypes.add(b.vendorType);
+                      if (b.category) registeredTypes.add(b.category);
+                      if (b.baseVendorType) registeredTypes.add(b.baseVendorType);
+                    });
+                  }
+                }
+
+                return Object.keys(vendorTaxonomy).map((type) => {
+                  const isAlreadyRegistered = registeredTypes.has(type);
+                  return (
+                    <option key={type} value={type} disabled={isAlreadyRegistered}>
+                      {type} {isAlreadyRegistered ? '(Already Registered)' : ''}
+                    </option>
+                  );
+                });
+              })()}
             </select>
           </div>
 
           <button
             type="submit"
             disabled={addingBizLoading}
-            className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 disabled:from-yellow-800/40 disabled:to-yellow-700/40 disabled:text-slate-400 text-slate-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-yellow-500/15"
+            className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 disabled:from-yellow-800/40 disabled:to-yellow-700/40 disabled:text-slate-400 text-slate-950 font-bold py-3 rounded-xl transition-all shadow-lg shadow-yellow-500/15 cursor-pointer disabled:cursor-not-allowed"
           >
             {addingBizLoading ? 'Saving Business...' : 'Save Business'}
           </button>

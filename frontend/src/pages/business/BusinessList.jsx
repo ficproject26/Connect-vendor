@@ -1,6 +1,8 @@
 import React from 'react';
 import axios from 'axios';
+import { useSelector } from 'react-redux';
 import { useDashboard } from '../../context/DashboardContext';
+import { getVendorBackendUrl } from '../../services/apiSetup';
 import { 
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
@@ -13,6 +15,7 @@ import { updateUser, switchBusinessSuccess } from '../../store/authSlice';
 import { vendorTaxonomy } from '../../data/servicesData';
 
 const BusinessList = () => {
+  const { user } = useSelector((state) => state.auth);
   const {
     activeBusinessId,
     activeTab,
@@ -116,6 +119,7 @@ const BusinessList = () => {
     setIsPartnerModalOpen,
     setIsProfileModalOpen,
     setIsSoldDetailsModalOpen,
+    setIsUserInfoOpen,
     setItemForm,
     setLanguage,
     setLoading,
@@ -134,6 +138,7 @@ const BusinessList = () => {
     setPasswordForm,
     setProfileForm,
     setRedeemForm,
+    setSearchParams,
     setSelectedBillOrder,
     setSelectedItemId,
     setSelectedMainCat,
@@ -165,7 +170,6 @@ const BusinessList = () => {
     txItemsPerPage,
     txSearchQuery,
     txSortConfig,
-    user,
     validationErrors,
     vendorType,
     handleSaveItem,
@@ -177,13 +181,30 @@ const BusinessList = () => {
     getAxiosConfig
   } = useDashboard();
 
+  // Compute registered business types for current user
+  const registeredTypes = React.useMemo(() => {
+    const set = new Set();
+    if (!user) return set;
+    if (user.vendorType) set.add(user.vendorType);
+    if (user.category) set.add(user.category);
+    if (user.baseVendorType) set.add(user.baseVendorType);
+    if (user.businesses && Array.isArray(user.businesses)) {
+      user.businesses.forEach(b => {
+        if (b.vendorType) set.add(b.vendorType);
+        if (b.category) set.add(b.category);
+        if (b.baseVendorType) set.add(b.baseVendorType);
+      });
+    }
+    return set;
+  }, [user]);
+
   const handleDeleteBusiness = async (bizId) => {
     if (!window.confirm('Are you sure you want to delete this business profile?')) return;
 
     setError('');
     setMessage('');
     try {
-      const res = await axios.delete(`http://${window.location.hostname}:8000/api/vendor/business/${bizId}`, getAxiosConfig());
+      const res = await axios.delete(`${getVendorBackendUrl()}/api/vendor/business/${bizId}`, getAxiosConfig());
       if (res.data.success) {
         setMessage('Business profile deleted successfully!');
         dispatch(updateUser(res.data.user));
@@ -207,11 +228,16 @@ const BusinessList = () => {
       return;
     }
 
+    if (registeredTypes.has(addBizForm.vendorType)) {
+      setError(`You have already registered the ${addBizForm.vendorType} business profile.`);
+      return;
+    }
+
     setAddingBizLoading(true);
     setError('');
     setMessage('');
     try {
-      const res = await axios.post(`http://${window.location.hostname}:8000/api/vendor/business`, {
+      const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/business`, {
         businessName: addBizForm.businessName,
         vendorType: addBizForm.vendorType,
         category: addBizForm.category,
@@ -243,20 +269,36 @@ const BusinessList = () => {
     <div className="space-y-6 animate-fadeIn">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Business Profiles</h2>
+          <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Business Profiles</h2>
           <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">Manage multiple business profiles under a single account or register a new store</p>
         </div>
+
         <button
-          type="button"
-          onClick={() => setIsAddBusinessModalOpen(true)}
-          className="bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-sm px-5 py-3 rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-yellow-500/10 active:scale-[0.98] shrink-0"
+          onClick={() => {
+            setError('');
+            setIsAddBusinessModalOpen(true);
+          }}
+          className="bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-xs px-5 py-3 rounded-2xl flex items-center gap-2 transition-all shadow-lg shadow-yellow-500/10 active:scale-[0.98]"
         >
-          <Plus size={16} /> Add Business
+          <Plus size={16} /> Add Business Profile
         </button>
       </div>
 
+      {message && (
+        <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-2xl">
+          {message}
+        </div>
+      )}
+
+      {error && !isAddBusinessModalOpen && (
+        <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-xs font-semibold rounded-2xl">
+          {error}
+        </div>
+      )}
+
+      {/* Business Cards Grid */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {user?.businesses && user.businesses.map((biz) => {
+        {(user?.businesses || [{ _id: user?._id || 'primary', vendorType: user?.vendorType || 'Store Vendor', subcategory: user?.subcategory || 'General', businessName: user?.businessName }]).map((biz) => {
           const isActive = biz._id === activeBusinessId;
           const emoji = vendorTaxonomy[biz.vendorType]?.emoji || "🏢";
           return (
@@ -265,7 +307,7 @@ const BusinessList = () => {
               onClick={() => {
                 if (!isActive) {
                   dispatch(switchBusinessSuccess(biz._id));
-                  setMessage(`Switched business profile to ${biz.subcategory}!`);
+                  setMessage(`Switched business profile to ${biz.vendorType}!`);
                 }
               }}
               className={`glass-card p-6 rounded-3xl space-y-4 border transition-all duration-300 hover:scale-[1.02] cursor-pointer flex flex-col justify-between ${
@@ -283,7 +325,7 @@ const BusinessList = () => {
                     {biz.businessName || user.businessName}
                   </h3>
                   <div className="text-xs text-slate-500 space-y-0.5">
-                    <div>Product or Service or etc: <span className="font-semibold text-slate-700 dark:text-slate-350">{biz.vendorType}</span></div>
+                    <div>Category: <span className="font-semibold text-slate-700 dark:text-slate-350">{biz.vendorType}</span></div>
                   </div>
                 </div>
                 <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 flex items-center justify-center shrink-0">
@@ -324,8 +366,11 @@ const BusinessList = () => {
 
         {/* Add Business Card */}
         <div
-          onClick={() => setIsAddBusinessModalOpen(true)}
-          className="border-2 border-dashed border-slate-300 dark:border-slate-800 hover:border-[#faed26] dark:hover:border-[#faed26] bg-slate-50/50 dark:bg-slate-900/30 hover:bg-[#faed26]/5 p-6 rounded-3xl flex flex-col items-center justify-center space-y-3 cursor-pointer transition-all duration-300 group min-h-[160px]"
+          onClick={() => {
+            setError('');
+            setIsAddBusinessModalOpen(true);
+          }}
+          className="glass-card p-6 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 hover:border-[#faed26] transition-all cursor-pointer flex flex-col items-center justify-center space-y-3 min-h-[160px] group"
         >
           <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 flex items-center justify-center group-hover:border-[#faed26] transition-all">
             <Plus size={24} className="text-slate-400 group-hover:text-[#faed26] transition-colors" />
@@ -340,6 +385,12 @@ const BusinessList = () => {
       {/* Add Business Modal */}
       <Modal isOpen={isAddBusinessModalOpen} onClose={() => setIsAddBusinessModalOpen(false)} title="+ Add Business">
         <form onSubmit={handleAddBusinessSubmit} className="space-y-4 text-left">
+          {error && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-xs font-semibold rounded-xl">
+              {error}
+            </div>
+          )}
+
           {/* Business Name */}
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Business Name (Optional)</label>
@@ -362,18 +413,21 @@ const BusinessList = () => {
               className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white [&>option]:bg-slate-50 dark:[&>option]:bg-slate-950"
             >
               <option value="" disabled>Select Product or Service or etc</option>
-              {Object.keys(vendorTaxonomy).map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
+              {Object.keys(vendorTaxonomy).map((type) => {
+                const isAlreadyRegistered = registeredTypes.has(type);
+                return (
+                  <option key={type} value={type} disabled={isAlreadyRegistered}>
+                    {type} {isAlreadyRegistered ? '(Already Registered)' : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
           <button
             type="submit"
             disabled={addingBizLoading}
-            className="w-full bg-[#faed26] hover:bg-[#faed26]/90 disabled:bg-slate-350 dark:disabled:bg-slate-800 text-[#0b3c7b] disabled:text-slate-500 font-bold py-3 rounded-xl transition-all shadow-lg shadow-yellow-500/15"
+            className="w-full bg-[#faed26] hover:bg-[#faed26]/90 disabled:bg-slate-350 dark:disabled:bg-slate-800 text-[#0b3c7b] disabled:text-slate-500 font-bold py-3 rounded-xl transition-all shadow-lg shadow-yellow-500/15 cursor-pointer disabled:cursor-not-allowed"
           >
             {addingBizLoading ? 'Saving Business...' : 'Save Business'}
           </button>
