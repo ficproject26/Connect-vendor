@@ -20,11 +20,13 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
       }
 
-      // Allow all vendors to access dashboard during testing
-      if (user.role === 'Vendor' && user.status === 'Suspended') {
+      // Deny access if vendor account status is not active (Suspended, Inactive, Rejected, Pending)
+      const statusLower = (user.status || '').toLowerCase();
+      if (user.role === 'Vendor' && ['suspended', 'inactive', 'rejected'].includes(statusLower)) {
         return res.status(403).json({ 
           success: false, 
-          message: `Access denied. Your vendor account is suspended.` 
+          isTerminated: true,
+          message: `Access denied. Your vendor account is ${user.status || 'suspended'}.` 
         });
       }
 

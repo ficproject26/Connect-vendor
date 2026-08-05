@@ -356,6 +356,16 @@ const loginVendor = async (req, res) => {
         success: false, 
         message: 'Your account is pending approval by the Admin. Please try again later.' 
       });
+    } else if (vendorStatus === 'suspended') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Your vendor account has been suspended by the Admin. Access denied.' 
+      });
+    } else if (vendorStatus === 'inactive') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Your vendor account has been deactivated by the Admin. Access denied.' 
+      });
     } else if (vendorStatus === 'rejected') {
       return res.status(403).json({ 
         success: false, 
