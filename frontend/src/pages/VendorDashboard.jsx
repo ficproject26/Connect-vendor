@@ -598,7 +598,7 @@ const VendorDashboard = () => {
       return ['dashboard', 'discounts', 'redeem', 'payments', 'renewal', 'Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'].includes(tab);
     }
     if (role === 'Vendor') {
-      const allowed = ['dashboard', 'catalog', 'orders', 'customers', 'payments', 'profile', 'business'];
+      const allowed = ['dashboard', 'catalog', 'orders', 'customers', 'payments', 'profile', 'business', 'queries'];
       if (!['Hotel Vendor', 'Education Vendor', 'Job Vendor'].includes(vType)) {
         allowed.push('delivery');
       }
