@@ -1,4 +1,21 @@
 
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
+import { useSelector, useDispatch } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
+import { 
+  LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
+  Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
+  LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
+  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink
+} from 'lucide-react';
+import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
+import Modal from '../components/common/Modal';
+import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl } from '../services/apiSetup';
+import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
+import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
+
 const formatCustomerId = (memberId) => {
   const idStr = String(memberId || 'N/A');
   if (idStr.startsWith('FIC-CUST-')) return idStr;
@@ -19,26 +36,8 @@ const formatVendorId = (vendorId, index = 0) => {
   const num = String(index + 1).padStart(3, '0');
   return `ven-fic-2026-v${num}`;
 };
-import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
-import { useSelector, useDispatch } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
-import { 
-  LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
-  Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
-  LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
-  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink
-} from 'lucide-react';
-import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
-import Modal from '../components/common/Modal';
-import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl } from '../services/apiSetup';
-import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
-import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 
 const DEFAULT_TAXONOMY = JSON.parse(JSON.stringify(COMPLETE_CAT_TAXONOMY));
-
-// Recharts imports for analytics
-import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 const getItemMainCategory = (itemCategory) => {
   if (!itemCategory) return '';
