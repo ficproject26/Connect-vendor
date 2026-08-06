@@ -8,7 +8,7 @@ import {
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
   Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink, Activity, Search,
-  LayoutGrid, List
+  LayoutGrid, List, Camera, Image as ImageIcon
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
@@ -8324,58 +8324,128 @@ required
 
 
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">{terms.imageLabel}</label>
-            <div className="grid grid-cols-3 gap-3">
-              {(itemForm.imageUrls && itemForm.imageUrls.length > 0 
-                ? itemForm.imageUrls 
-                : (itemForm.imageUrl ? [itemForm.imageUrl] : [])
-              ).map((url, idx) => (
-                <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 group">
-                  <img
-                    src={url.startsWith('http') ? url : `${getBackendUrl()}${url}`}
-                    alt={`Preview ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setItemForm(prev => {
-                        const currentUrls = prev.imageUrls && prev.imageUrls.length > 0 
-                          ? prev.imageUrls 
-                          : (prev.imageUrl ? [prev.imageUrl] : []);
-                        const newUrls = currentUrls.filter((_, i) => i !== idx);
-                        return {
-                          ...prev,
-                          imageUrls: newUrls,
-                          imageUrl: newUrls.length > 0 ? newUrls[0] : ''
-                        };
-                      });
-                    }}
-                    className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-md cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              
-              <div className="relative aspect-square rounded-xl border border-dashed border-slate-350 dark:border-slate-700 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-950/20 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  disabled={imageUploading}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                />
-                {imageUploading ? (
-                  <span className="text-[10px] text-primary-500 font-bold animate-pulse text-center px-1">Uploading...</span>
-                ) : (
-                  <>
-                    <span className="text-xl font-bold text-slate-400 dark:text-slate-500">+</span>
-                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 text-center">Add Image</span>
-                  </>
-                )}
-              </div>
+            <div className="flex items-center justify-between pl-1">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{terms.imageLabel}</label>
+              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 italic">Optional – auto image used if skipped</span>
             </div>
+
+            {/* Live image preview area */}
+            {(() => {
+              const hasImages = (itemForm.imageUrls && itemForm.imageUrls.length > 0) || itemForm.imageUrl;
+              const displayUrls = itemForm.imageUrls && itemForm.imageUrls.length > 0
+                ? itemForm.imageUrls
+                : (itemForm.imageUrl ? [itemForm.imageUrl] : []);
+
+              const autoFallback = getFallbackImageUrl(itemForm, vendorType);
+
+              return (
+                <div className="space-y-3">
+                  {/* Primary image preview (uploaded or auto fallback) */}
+                  <div className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 group">
+                    <img
+                      src={displayUrls.length > 0
+                        ? (displayUrls[0].startsWith('http') ? displayUrls[0] : `${getBackendUrl()}${displayUrls[0]}`)
+                        : autoFallback}
+                      alt="Item preview"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-102"
+                    />
+
+                    {/* Overlay badge – shows source */}
+                    <div className={`absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider shadow-sm ${
+                      displayUrls.length > 0
+                        ? 'bg-emerald-500/90 text-white'
+                        : 'bg-slate-700/80 text-white/80'
+                    }`}>
+                      {displayUrls.length > 0 ? '✓ Custom Photo' : '⚡ Auto Image'}
+                    </div>
+
+                    {/* Upload / Change button overlay */}
+                    <label className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        disabled={imageUploading}
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                      />
+                      <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                        {imageUploading
+                          ? <span className="text-[10px] font-bold text-primary-600 animate-pulse">...</span>
+                          : <Camera size={18} className="text-slate-700" />
+                        }
+                      </div>
+                      <span className="text-[11px] font-bold text-white drop-shadow">
+                        {imageUploading ? 'Uploading…' : displayUrls.length > 0 ? 'Change Photo' : 'Upload Photo'}
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Additional uploaded images grid (if more than 1) */}
+                  {displayUrls.length > 1 && (
+                    <div className="grid grid-cols-4 gap-2">
+                      {displayUrls.map((url, idx) => (
+                        <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 group">
+                          <img
+                            src={url.startsWith('http') ? url : `${getBackendUrl()}${url}`}
+                            alt={`Preview ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setItemForm(prev => {
+                                const currentUrls = prev.imageUrls && prev.imageUrls.length > 0
+                                  ? prev.imageUrls
+                                  : (prev.imageUrl ? [prev.imageUrl] : []);
+                                const newUrls = currentUrls.filter((_, i) => i !== idx);
+                                return {
+                                  ...prev,
+                                  imageUrls: newUrls,
+                                  imageUrl: newUrls.length > 0 ? newUrls[0] : ''
+                                };
+                              });
+                            }}
+                            className="absolute top-0.5 right-0.5 bg-red-500 hover:bg-red-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-md cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      {/* Add another image */}
+                      <div className="relative aspect-square rounded-xl border border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          disabled={imageUploading}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                        />
+                        <ImageIcon size={16} className="text-slate-400 dark:text-slate-500" />
+                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-1">Add</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick upload CTA when no image */}
+                  {displayUrls.length === 0 && (
+                    <div className="relative flex items-center gap-3 p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        disabled={imageUploading}
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                      />
+                      <Camera size={14} className="text-amber-500 shrink-0" />
+                      <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                        {imageUploading ? 'Uploading image...' : 'Click anywhere here to upload a custom photo, or leave blank to use the auto-selected image above.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {error && (
               <p className="text-xs text-red-500 font-bold mt-1">⚠️ {error}</p>
             )}
