@@ -54,7 +54,7 @@ function App() {
 
             {/* Protected Role-Based Dashboards */}
             <Route 
-              path="/vendor" 
+              path="/vendor/*" 
               element={
                 <ProtectedRoute allowedRoles={['Vendor', 'Admin', 'Member']}>
                   <VendorDashboard />
