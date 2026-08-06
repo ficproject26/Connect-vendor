@@ -197,7 +197,7 @@ const getParticipatingVendors = async (req, res) => {
     
     vendors.forEach(v => {
       const vStatus = (v.status || '').toLowerCase().trim();
-      if (!activeStatuses.includes(vStatus) || v.isActive === false) {
+      if (!activeStatuses.includes(vStatus) || v.isActive === false || v.isApproved === false || v.isLocked === true) {
         return; // Exclude suspended/inactive/rejected/pending vendors from customer dashboard
       }
 

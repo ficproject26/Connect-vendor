@@ -352,26 +352,35 @@ const loginVendor = async (req, res) => {
 
     // Check Vendor status
     const vendorStatus = (user.status || '').toLowerCase().trim();
-    if (vendorStatus === 'pending') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Your account is pending approval by the Admin. Please try again later.' 
-      });
-    } else if (vendorStatus === 'suspended') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'The admin has suspended your account. Please contact administration.' 
-      });
-    } else if (vendorStatus === 'inactive') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Your vendor account has been deactivated by the Admin. Access denied.' 
-      });
-    } else if (vendorStatus === 'rejected') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Your account application has been rejected by the Admin.' 
-      });
+    const isNotActive = !['approved', 'active'].includes(vendorStatus) || user.isActive === false || user.isApproved === false || user.isLocked === true;
+
+    if (userRole === 'vendor' && isNotActive) {
+      if (vendorStatus === 'suspended' || user.isActive === false || user.isLocked === true) {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'The admin has suspended your account. Please contact administration.' 
+        });
+      } else if (vendorStatus === 'pending') {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Your account is pending approval by the Admin. Please try again later.' 
+        });
+      } else if (vendorStatus === 'inactive') {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Your vendor account has been deactivated by the Admin. Access denied.' 
+        });
+      } else if (vendorStatus === 'rejected') {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Your account application has been rejected by the Admin.' 
+        });
+      } else {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'The admin has suspended your account. Please contact administration.' 
+        });
+      }
     }
 
     // Verify password
