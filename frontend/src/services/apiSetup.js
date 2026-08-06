@@ -49,15 +49,24 @@ axios.interceptors.response.use(
   async (error) => {
     const config = error.config;
 
+    const isAuthOrSuspendedError = error.response && (
+      error.response.status === 401 ||
+      error.response.status === 403 ||
+      error.response.data?.isTerminated ||
+      (error.response.data?.message && /suspended|inactive|rejected|not authorized|denied|terminated/i.test(error.response.data.message))
+    );
+
     // Don't retry if no config, or already retried max times, or it's a client error (4xx)
     if (!config || config.__retryCount >= MAX_RETRIES) {
-      // Handle auth errors
-      if (error.response && (error.response.status === 401 || error.response.data?.message === 'Not authorized, user not found')) {
-        console.warn('Session expired or user deleted, clearing storage and logging out...');
+      if (isAuthOrSuspendedError) {
+        console.warn('Session expired or account suspended, clearing storage and logging out...');
         localStorage.removeItem('vendor_user');
         localStorage.removeItem('vendor_token');
         localStorage.removeItem('vendor_card');
         localStorage.removeItem('active_business_id');
+        if (error.response?.data?.message) {
+          alert(error.response.data.message);
+        }
         window.location.href = '/';
       }
       return Promise.reject(error);
@@ -68,13 +77,15 @@ axios.interceptors.response.use(
     const isServerError = error.response && error.response.status >= 500;
 
     if (!isNetworkError && !isServerError) {
-      // 4xx errors (auth, validation, etc.) — don't retry, handle auth
-      if (error.response && (error.response.status === 401 || error.response.data?.message === 'Not authorized, user not found')) {
-        console.warn('Session expired or user deleted, clearing storage and logging out...');
+      if (isAuthOrSuspendedError) {
+        console.warn('Session expired or account suspended, clearing storage and logging out...');
         localStorage.removeItem('vendor_user');
         localStorage.removeItem('vendor_token');
         localStorage.removeItem('vendor_card');
         localStorage.removeItem('active_business_id');
+        if (error.response?.data?.message) {
+          alert(error.response.data.message);
+        }
         window.location.href = '/';
       }
       return Promise.reject(error);

@@ -126,11 +126,11 @@ const authSlice = createSlice({
     updateUser: (state, action) => {
       let payloadUser = { ...state.user, ...action.payload };
       if (payloadUser && payloadUser.role === 'Vendor' && payloadUser.businesses && payloadUser.businesses.length > 0) {
-        const activeId = state.activeBusinessId || payloadUser.primaryBusinessId || payloadUser.businesses[0]._id;
-        const activeBiz = payloadUser.businesses.find(b => b._id === activeId) || payloadUser.businesses[0];
+        const activeId = state.activeBusinessId || payloadUser.primaryBusinessId || (payloadUser.businesses[0]._id || payloadUser.businesses[0].id);
+        const activeBiz = payloadUser.businesses.find(b => (b._id || b.id) === activeId || String(b._id || b.id) === String(activeId)) || payloadUser.businesses[0];
         if (activeBiz) {
-          state.activeBusinessId = activeBiz._id;
-          localStorage.setItem('active_business_id', activeBiz._id);
+          state.activeBusinessId = activeBiz._id || activeBiz.id;
+          localStorage.setItem('active_business_id', state.activeBusinessId);
 
           payloadUser.vendorType = activeBiz.vendorType;
           payloadUser.category = activeBiz.category;
@@ -151,7 +151,7 @@ const authSlice = createSlice({
       localStorage.setItem('active_business_id', activeId);
 
       if (state.user && state.user.role === 'Vendor' && state.user.businesses) {
-        const activeBiz = state.user.businesses.find(b => b._id === activeId);
+        const activeBiz = state.user.businesses.find(b => (b._id || b.id) === activeId || String(b._id || b.id) === String(activeId));
         if (activeBiz) {
           state.user.vendorType = activeBiz.vendorType;
           state.user.category = activeBiz.category;

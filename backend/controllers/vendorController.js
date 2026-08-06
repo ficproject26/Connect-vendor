@@ -1171,7 +1171,7 @@ const getBaseVendorTypeLocal = (vendorType, category, subcategory) => {
 // @access  Private (Vendor)
 const addBusiness = async (req, res) => {
   try {
-    const parentUserId = req.user.parentUserId || req.user._id;
+    const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
     const { vendorType, category, subcategory, businessName } = req.body;
 
     if (!vendorType) {
@@ -1188,10 +1188,10 @@ const addBusiness = async (req, res) => {
 
     // Check if duplicate business exists
     const duplicate = user.businesses && user.businesses.find(
-      b => b.vendorType === vendorType && b.category === finalCategory && b.subcategory === finalSubcategory
+      b => b.vendorType === vendorType || b.category === finalCategory
     );
     if (duplicate) {
-      return res.status(400).json({ success: false, message: 'You have already registered this business' });
+      return res.status(400).json({ success: false, message: `You have already registered the ${vendorType} business profile.` });
     }
 
     // Compute baseVendorType using local helper
@@ -1204,10 +1204,10 @@ const addBusiness = async (req, res) => {
       category: finalCategory,
       subcategory: finalSubcategory,
       baseVendorType,
-      businessName: businessName || user.businessName,
-      logo: user.logo,
-      businessLicense: user.businessLicense,
-      businessImages: user.businessImages
+      businessName: businessName || user.businessName || `${vendorType} Store`,
+      logo: user.logo || '',
+      businessLicense: user.businessLicense || '',
+      businessImages: user.businessImages || []
     };
 
     if (!user.businesses) {
@@ -1229,7 +1229,7 @@ const addBusiness = async (req, res) => {
     });
   } catch (error) {
     console.error('Add Business Error:', error);
-    res.status(500).json({ success: false, message: 'Server error adding business' });
+    res.status(500).json({ success: false, message: 'Server error adding business: ' + (error.message || 'Unknown error') });
   }
 };
 

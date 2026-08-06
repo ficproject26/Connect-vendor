@@ -484,6 +484,31 @@ const VendorDashboard = () => {
     fetchDynamicCategories();
   }, []);
 
+  useEffect(() => {
+    const checkStatus = async () => {
+      if (!user || user.role !== 'Vendor') return;
+      try {
+        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`);
+        const status = (res.data?.data?.status || res.data?.user?.status || user.status || '').toLowerCase().trim();
+        if (['suspended', 'inactive', 'rejected'].includes(status)) {
+          alert(`Access denied. Your vendor account has been marked as ${res.data?.data?.status || 'Suspended'} by the Administrator.`);
+          dispatch(logout());
+          window.location.href = '/';
+        }
+      } catch (err) {
+        if (err.response?.status === 403 || err.response?.status === 401 || err.response?.data?.isTerminated) {
+          alert(err.response?.data?.message || 'Your vendor account access has been suspended or revoked. Logging out...');
+          dispatch(logout());
+          window.location.href = '/';
+        }
+      }
+    };
+
+    checkStatus();
+    const intervalId = setInterval(checkStatus, 8000);
+    return () => clearInterval(intervalId);
+  }, [user, dispatch]);
+
   const getActiveVendorType = () => {
     if (!user) return 'Store Vendor';
     const activeBiz = user.businesses?.find(b => b._id.toString() === activeBusinessId?.toString());
@@ -1310,15 +1335,14 @@ const VendorDashboard = () => {
 
     const registeredTypes = new Set();
     if (user) {
-      if (user.vendorType) registeredTypes.add(user.vendorType);
-      if (user.category) registeredTypes.add(user.category);
-      if (user.baseVendorType) registeredTypes.add(user.baseVendorType);
-      if (user.businesses && Array.isArray(user.businesses)) {
+      if (user.businesses && Array.isArray(user.businesses) && user.businesses.length > 0) {
         user.businesses.forEach(b => {
           if (b.vendorType) registeredTypes.add(b.vendorType);
           if (b.category) registeredTypes.add(b.category);
-          if (b.baseVendorType) registeredTypes.add(b.baseVendorType);
         });
+      } else {
+        if (user.vendorType) registeredTypes.add(user.vendorType);
+        if (user.category) registeredTypes.add(user.category);
       }
     }
 
@@ -1334,26 +1358,33 @@ const VendorDashboard = () => {
       const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/business`, {
         businessName: addBizForm.businessName,
         vendorType: addBizForm.vendorType,
-        category: addBizForm.category,
-        subcategory: addBizForm.subcategory
+        category: addBizForm.category || addBizForm.vendorType,
+        subcategory: addBizForm.subcategory || addBizForm.vendorType
       }, getAxiosConfig());
 
-      if (res.data.success) {
+      if (res.data && res.data.success) {
         setMessage('Business added successfully!');
         dispatch(updateUser(res.data.user));
-        dispatch(switchBusinessSuccess(res.data.newBusinessId));
+        if (res.data.newBusinessId) {
+          dispatch(switchBusinessSuccess(res.data.newBusinessId));
+        }
         setIsAddBusinessModalOpen(false);
         setAddBizForm({ businessName: '', vendorType: '', category: '', subcategory: '' });
 
-        // Add a notification
-        const newNotification = {
-          id: Date.now() + Math.random(),
-          text: `Successfully added and switched to new business: ${addBizForm.vendorType}!`
-        };
-        setNotifications(prev => [newNotification, ...prev]);
+        // Add a notification if notification state handler exists
+        if (typeof setNotifications === 'function') {
+          const newNotification = {
+            id: Date.now() + Math.random(),
+            text: `Successfully added and switched to new business: ${addBizForm.vendorType}!`
+          };
+          setNotifications(prev => [newNotification, ...(prev || [])]);
+        }
+      } else {
+        setError(res.data?.message || 'Failed to add business');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to add business');
+      console.error('Error adding business:', err);
+      setError(err.response?.data?.message || err.message || 'Failed to add business');
     } finally {
       setAddingBizLoading(false);
     }

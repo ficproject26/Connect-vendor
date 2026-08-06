@@ -185,15 +185,14 @@ const BusinessList = () => {
   const registeredTypes = React.useMemo(() => {
     const set = new Set();
     if (!user) return set;
-    if (user.vendorType) set.add(user.vendorType);
-    if (user.category) set.add(user.category);
-    if (user.baseVendorType) set.add(user.baseVendorType);
-    if (user.businesses && Array.isArray(user.businesses)) {
+    if (user.businesses && Array.isArray(user.businesses) && user.businesses.length > 0) {
       user.businesses.forEach(b => {
         if (b.vendorType) set.add(b.vendorType);
         if (b.category) set.add(b.category);
-        if (b.baseVendorType) set.add(b.baseVendorType);
       });
+    } else {
+      if (user.vendorType) set.add(user.vendorType);
+      if (user.category) set.add(user.category);
     }
     return set;
   }, [user]);
@@ -210,11 +209,13 @@ const BusinessList = () => {
         dispatch(updateUser(res.data.user));
 
         // Add a notification
-        const newNotification = {
-          id: Date.now() + Math.random(),
-          text: 'Business profile removed successfully.'
-        };
-        setNotifications(prev => [newNotification, ...prev]);
+        if (typeof setNotifications === 'function') {
+          const newNotification = {
+            id: Date.now() + Math.random(),
+            text: 'Business profile removed successfully.'
+          };
+          setNotifications(prev => [newNotification, ...(prev || [])]);
+        }
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to delete business profile');
@@ -240,26 +241,32 @@ const BusinessList = () => {
       const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/business`, {
         businessName: addBizForm.businessName,
         vendorType: addBizForm.vendorType,
-        category: addBizForm.category,
-        subcategory: addBizForm.subcategory
+        category: addBizForm.category || addBizForm.vendorType,
+        subcategory: addBizForm.subcategory || addBizForm.vendorType
       }, getAxiosConfig());
 
-      if (res.data.success) {
+      if (res.data && res.data.success) {
         setMessage('Business added successfully!');
         dispatch(updateUser(res.data.user));
-        dispatch(switchBusinessSuccess(res.data.newBusinessId));
+        if (res.data.newBusinessId) {
+          dispatch(switchBusinessSuccess(res.data.newBusinessId));
+        }
         setIsAddBusinessModalOpen(false);
         setAddBizForm({ businessName: '', vendorType: '', category: '', subcategory: '' });
 
-        // Add a notification
-        const newNotification = {
-          id: Date.now() + Math.random(),
-          text: `Successfully added and switched to new business: ${addBizForm.vendorType}!`
-        };
-        setNotifications(prev => [newNotification, ...prev]);
+        if (typeof setNotifications === 'function') {
+          const newNotification = {
+            id: Date.now() + Math.random(),
+            text: `Successfully added and switched to new business: ${addBizForm.vendorType}!`
+          };
+          setNotifications(prev => [newNotification, ...(prev || [])]);
+        }
+      } else {
+        setError(res.data?.message || 'Failed to add business');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to add business');
+      console.error('Error adding business:', err);
+      setError(err.response?.data?.message || err.message || 'Failed to add business');
     } finally {
       setAddingBizLoading(false);
     }
