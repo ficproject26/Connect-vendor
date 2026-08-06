@@ -1,6 +1,7 @@
 const qrcode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
+const mongoose = require('mongoose');
 const { MembershipCard, MembershipPlan, User, Order, Product, MembershipHistory } = require('../models/Schemas');
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
 
@@ -525,78 +526,82 @@ const getMemberOrders = async (req, res) => {
 const getVendorProducts = async (req, res) => {
   try {
     const { vendorId } = req.params;
+    const isObjectId = mongoose.Types.ObjectId.isValid(vendorId);
+    const vendorOrList = [
+      { vendorId: String(vendorId) },
+      { registrationId: String(vendorId) },
+      { 'businesses._id': String(vendorId) }
+    ];
+    if (isObjectId) {
+      vendorOrList.push({ _id: vendorId });
+    }
 
-    const vendorUser = await User.findOne({
-      $or: [
-        { _id: vendorId },
-        { 'businesses._id': vendorId }
-      ]
-    });
+    const vendorUser = await User.findOne({ $or: vendorOrList });
 
     let parentId = vendorId;
     let activeVendorType = '';
 
-    if (!vendorUser) {
-      return res.status(200).json({ success: true, data: [] });
-    }
-
-    const vStatus = (vendorUser.status || '').toLowerCase().trim();
-    if (['suspended', 'inactive', 'rejected', 'pending'].includes(vStatus) || vendorUser.isActive === false) {
-      return res.status(200).json({ success: true, data: [] });
-    }
-
-    parentId = vendorUser._id.toString();
-    const activeBiz = vendorUser.businesses?.find(b => b._id.toString() === vendorId.toString());
-    if (activeBiz) {
-      const bStatus = (activeBiz.status || '').toLowerCase().trim();
-      if (bStatus && ['suspended', 'inactive', 'rejected', 'pending'].includes(bStatus)) {
+    if (vendorUser) {
+      const vStatus = (vendorUser.status || '').toLowerCase().trim();
+      if (['suspended', 'inactive', 'rejected'].includes(vStatus)) {
         return res.status(200).json({ success: true, data: [] });
       }
-      activeVendorType = activeBiz.vendorType;
-    } else {
-      activeVendorType = vendorUser.vendorType || '';
+
+      parentId = vendorUser._id.toString();
+      const activeBiz = vendorUser.businesses?.find(b => b._id.toString() === vendorId.toString());
+      if (activeBiz) {
+        const bStatus = (activeBiz.status || '').toLowerCase().trim();
+        if (bStatus && ['suspended', 'inactive', 'rejected'].includes(bStatus)) {
+          return res.status(200).json({ success: true, data: [] });
+        }
+        activeVendorType = activeBiz.vendorType;
+      } else {
+        activeVendorType = vendorUser.vendorType || '';
+      }
+    }
+
+    const productOrList = [
+      { vendorId: String(vendorId) },
+      { vendor_id: String(vendorId) }
+    ];
+    if (parentId) {
+      productOrList.push({ vendorId: String(parentId) });
+      productOrList.push({ vendor_id: String(parentId) });
+    }
+    if (isObjectId) {
+      productOrList.push({ vendorId: new mongoose.Types.ObjectId(vendorId) });
+      productOrList.push({ vendor_id: new mongoose.Types.ObjectId(vendorId) });
+    }
+    if (parentId && mongoose.Types.ObjectId.isValid(parentId)) {
+      productOrList.push({ vendorId: new mongoose.Types.ObjectId(parentId) });
+      productOrList.push({ vendor_id: new mongoose.Types.ObjectId(parentId) });
     }
 
     const products = await Product.find({
-      $or: [
-        { vendorId: vendorId },
-        { vendor_id: vendorId },
-        { vendorId: parentId },
-        { vendor_id: parentId }
-      ],
+      $or: productOrList,
       status: { $ne: 'Unavailable' }
     });
 
     const filtered = products.filter(p => {
       const pVendorId = (p.vendorId || p.vendor_id || '').toString();
-      if (pVendorId === vendorId.toString()) {
-        return true;
-      }
-      if (pVendorId === parentId.toString()) {
+      const vIdStr = vendorId.toString();
+      const pIdStr = parentId ? parentId.toString() : vIdStr;
+
+      if (pVendorId === vIdStr || pVendorId === pIdStr) {
+        if (!activeVendorType || pVendorId === vIdStr) return true;
         const mainCat = getProductMainCategory(p.category);
+        if (!mainCat) return true;
         
         let normalizedVendorType = activeVendorType;
         if (activeVendorType.endsWith(' Vendor')) {
           normalizedVendorType = activeVendorType.replace(' Vendor', '');
         }
-        if (normalizedVendorType.startsWith('Restaurant')) {
-          normalizedVendorType = 'Food';
-        }
-        if (normalizedVendorType.startsWith('Hotel')) {
-          normalizedVendorType = 'Stay';
-        }
-        if (normalizedVendorType.startsWith('Travel Agency')) {
-          normalizedVendorType = 'Travel';
-        }
-        if (normalizedVendorType.startsWith('Hospital') || normalizedVendorType.startsWith('Service')) {
-          normalizedVendorType = 'Services';
-        }
-        if (normalizedVendorType.startsWith('Grocery') || normalizedVendorType.startsWith('Pharmacy')) {
-          normalizedVendorType = 'Daily Needs';
-        }
-        if (normalizedVendorType.startsWith('Store') || normalizedVendorType.startsWith('Electronics') || normalizedVendorType.startsWith('Home & Furniture')) {
-          normalizedVendorType = 'Products';
-        }
+        if (normalizedVendorType.startsWith('Restaurant')) normalizedVendorType = 'Food';
+        if (normalizedVendorType.startsWith('Hotel')) normalizedVendorType = 'Stay';
+        if (normalizedVendorType.startsWith('Travel Agency')) normalizedVendorType = 'Travel';
+        if (normalizedVendorType.startsWith('Hospital') || normalizedVendorType.startsWith('Service')) normalizedVendorType = 'Services';
+        if (normalizedVendorType.startsWith('Grocery') || normalizedVendorType.startsWith('Pharmacy')) normalizedVendorType = 'Daily Needs';
+        if (normalizedVendorType.startsWith('Store') || normalizedVendorType.startsWith('Electronics') || normalizedVendorType.startsWith('Home & Furniture')) normalizedVendorType = 'Products';
 
         return !mainCat || mainCat.toLowerCase() === normalizedVendorType.toLowerCase() || (p.category && p.category.toLowerCase().includes(normalizedVendorType.toLowerCase()));
       }
