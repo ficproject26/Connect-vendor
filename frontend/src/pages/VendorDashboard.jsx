@@ -693,8 +693,10 @@ const VendorDashboard = () => {
   }, []);
 
   const getCategoryTaxonomy = () => {
-    const tax = JSON.parse(JSON.stringify(COMPLETE_CAT_TAXONOMY));
+    const tax = {};
+    tax[selectedMainCat] = {};
     
+    // 1. First populate from real DB categories
     if (Array.isArray(dbCategories) && dbCategories.length > 0) {
       const filteredForMain = dbCategories.filter(c => {
         const main = (c.mainCategory || c.category || c.name || '').trim().toLowerCase();
@@ -729,6 +731,23 @@ const VendorDashboard = () => {
           tax[selectedMainCat] = dbSubMap;
         }
       }
+    }
+
+    // 2. Also populate from the vendor's actual registered business categories
+    if (user) {
+      const bizList = user.businesses && user.businesses.length > 0 ? user.businesses : [user];
+      bizList.forEach(b => {
+        const bCat = (b.category || '').trim();
+        const bSub = (b.subcategory || '').trim();
+        if (bCat) {
+          if (!tax[selectedMainCat][bCat]) {
+            tax[selectedMainCat][bCat] = [];
+          }
+          if (bSub && !tax[selectedMainCat][bCat].includes(bSub)) {
+            tax[selectedMainCat][bCat].push(bSub);
+          }
+        }
+      });
     }
 
     return tax;
