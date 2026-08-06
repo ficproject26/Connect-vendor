@@ -7,6 +7,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   const { isAuthenticated, user } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
 
+  const statusLower = (user?.status || '').toLowerCase().trim();
   const userRole = (user?.role || user?.userType || '').toLowerCase().trim();
   const isVendorUser = userRole.includes('vendor') || userRole.includes('merchant');
   const isSuspendedOrRevoked = isVendorUser && (['suspended', 'inactive', 'rejected'].includes(statusLower) || user?.isActive === false);
@@ -22,7 +23,6 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/" replace />;
   }
 
-  const userRole = (user?.role || '').toLowerCase().trim();
   const normalizedAllowedRoles = allowedRoles?.map(r => String(r).toLowerCase().trim());
 
   if (normalizedAllowedRoles && !normalizedAllowedRoles.includes(userRole)) {
