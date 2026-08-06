@@ -21,12 +21,15 @@ const protect = async (req, res, next) => {
       }
 
       // Deny access if vendor account status is not active (Suspended, Inactive, Rejected, Pending)
-      const statusLower = (user.status || '').toLowerCase();
-      if (user.role === 'Vendor' && ['suspended', 'inactive', 'rejected'].includes(statusLower)) {
+      const statusLower = (user.status || '').toLowerCase().trim();
+      const userRoleLower = (user.role || user.userType || '').toLowerCase().trim();
+      const isVendorRole = userRoleLower.includes('vendor') || userRoleLower.includes('merchant');
+
+      if (isVendorRole && (['suspended', 'inactive', 'rejected'].includes(statusLower) || user.isActive === false)) {
         return res.status(403).json({ 
           success: false, 
           isTerminated: true,
-          message: `Access denied. Your vendor account is ${user.status || 'suspended'}.` 
+          message: `Your vendor account has been deactivated by the administrator. Please contact support.` 
         });
       }
 

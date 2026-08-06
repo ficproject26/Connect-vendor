@@ -141,19 +141,20 @@ router.get('/products', async (req, res) => {
     // 2. Fetch all products
     const products = await Product.find({});
 
-    // Filter out only products belonging to explicitly suspended vendors or businesses
+    // Filter products: must belong to an active vendor in vendorMap, and must NOT be in suspendedIds or suspendedNames
     const activeProducts = products.filter(p => {
       const vIdStr = (p.vendorId || p.vendor_id || '').toString();
       const vEmail = (p.vendorEmail || '').toLowerCase().trim();
       const pVendorName = (p.vendorName || p.brand || p.companyName || '').toLowerCase().trim();
 
-      if (suspendedIds.has(vIdStr) || (vEmail && suspendedIds.has(vEmail))) {
+      // If vendor is explicitly suspended by ID, email, or brand name -> exclude
+      if (suspendedIds.has(vIdStr) || (vEmail && suspendedIds.has(vEmail)) || (pVendorName && suspendedNames.has(pVendorName))) {
         return false;
       }
-      if (pVendorName && suspendedNames.has(pVendorName)) {
-        return false;
-      }
-      return true;
+
+      // Product MUST belong to an active vendor in vendorMap
+      const hasActiveVendor = !!vendorMap[vIdStr] || (vEmail && !!vendorMap[vEmail]);
+      return hasActiveVendor;
     });
 
     const host = req.get('host');

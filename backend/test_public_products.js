@@ -16,12 +16,10 @@ async function testPublicProducts() {
 
   allUsers.forEach(vendor => {
     const vStatus = (vendor.status || '').toLowerCase().trim();
-    const isUserSuspended = ['suspended', 'inactive', 'rejected'].includes(vStatus);
+    const isUserSuspended = ['suspended', 'inactive', 'rejected'].includes(vStatus) || vendor.isActive === false;
 
     const vendorIdStr = vendor._id ? vendor._id.toString() : '';
     const emailLower = vendor.email ? vendor.email.toLowerCase().trim() : '';
-
-    console.log(`User: ${vendor.name || vendor.businessName} (${emailLower}) - status: "${vendor.status}", isActive: ${vendor.isActive}, isSuspended: ${isUserSuspended}`);
 
     if (isUserSuspended) {
       if (vendorIdStr) suspendedIds.add(vendorIdStr);
@@ -42,7 +40,7 @@ async function testPublicProducts() {
       if (vendor.businesses && Array.isArray(vendor.businesses)) {
         vendor.businesses.forEach(biz => {
           const bizStatus = (biz.status || '').toLowerCase().trim();
-          const isBizSuspended = ['suspended', 'inactive', 'rejected'].includes(bizStatus);
+          const isBizSuspended = ['suspended', 'inactive', 'rejected'].includes(bizStatus) || biz.isActive === false;
           
           if (isBizSuspended) {
             if (biz._id) suspendedIds.add(biz._id.toString());
@@ -60,8 +58,8 @@ async function testPublicProducts() {
     }
   });
 
-  console.log('\n=== SUSPENDED IDS ===', [...suspendedIds]);
-  console.log('=== SUSPENDED NAMES ===', [...suspendedNames]);
+  console.log('\n=== SUSPENDED IDS COUNT ===', suspendedIds.size);
+  console.log('=== ACTIVE VENDOR MAP KEYS COUNT ===', Object.keys(vendorMap).length);
 
   // 2. Fetch all products
   const products = await db.collection('products').find({}).toArray();
@@ -71,21 +69,17 @@ async function testPublicProducts() {
     const vEmail = (p.vendorEmail || '').toLowerCase().trim();
     const pVendorName = (p.vendorName || p.brand || p.companyName || '').toLowerCase().trim();
 
-    if (suspendedIds.has(vIdStr) || (vEmail && suspendedIds.has(vEmail))) {
+    if (suspendedIds.has(vIdStr) || (vEmail && suspendedIds.has(vEmail)) || (pVendorName && suspendedNames.has(pVendorName))) {
       return false;
     }
-    if (pVendorName && suspendedNames.has(pVendorName)) {
-      return false;
-    }
-    return true;
+
+    // Must belong to an active vendor
+    const hasActiveVendor = !!vendorMap[vIdStr] || (vEmail && !!vendorMap[vEmail]);
+    return hasActiveVendor;
   });
 
   console.log(`\nTotal products in DB: ${products.length}`);
   console.log(`Active products returned: ${activeProducts.length}`);
-  console.log('\nReturned Product Names & Vendor IDs:');
-  activeProducts.forEach(p => {
-    console.log(`  - Product: "${p.name}", vendorId: "${p.vendorId}", brand/vendorName: "${p.brand || p.vendorName || ''}"`);
-  });
 
   mongoose.connection.close();
 }
