@@ -64,55 +64,78 @@ const getSubNavbarCategory = (baseVendorType, category) => {
 // GET /api/public/products
 router.get('/products', async (req, res) => {
   try {
-    // 1. Fetch ONLY Active & Approved Vendors (exclude Suspended, Inactive, Rejected)
-    const approvedVendors = await User.find({
-      role: 'Vendor',
-      status: { $in: ['Active', 'Approved', 'active', 'approved'] },
-      isActive: { $ne: false }
+    // 1. Fetch all vendor users
+    const allVendorUsers = await User.find({
+      $or: [
+        { role: { $regex: /vendor|merchant/i } },
+        { userType: { $regex: /vendor|merchant/i } },
+        { isDirectRequest: true }
+      ]
     });
-    const vendorMap = {};
-    approvedVendors.forEach(vendor => {
-      const vendorIdStr = vendor._id.toString();
-      const vCity = vendor.city || vendor.bankCity || 'Bangalore';
-      const vData = {
-        name: vendor.businessName || vendor.name,
-        baseVendorType: vendor.baseVendorType || vendor.vendorType,
-        category: vendor.category,
-        city: vCity,
-        address: vendor.address || '',
-        logo: vendor.logo || '',
-        mobileNumber: vendor.mobileNumber || vendor.telephone || '',
-        operatingHours: vendor.operatingHours || ''
-      };
-      vendorMap[vendorIdStr] = vData;
-      if (vendor.vendorId) vendorMap[vendor.vendorId.toString()] = vData;
-      if (vendor.registrationId) vendorMap[vendor.registrationId.toString()] = vData;
 
-      if (vendor.businesses && Array.isArray(vendor.businesses)) {
-        vendor.businesses.forEach(biz => {
-          if (biz._id) {
-            vendorMap[biz._id.toString()] = {
-              name: biz.businessName || vendor.businessName || vendor.name,
-              baseVendorType: biz.baseVendorType || biz.vendorType || vendor.baseVendorType || vendor.vendorType,
-              category: biz.category || vendor.category,
-              city: biz.city || vCity,
-              address: vendor.address || '',
-              logo: biz.logo || vendor.logo || '',
-              mobileNumber: vendor.mobileNumber || vendor.telephone || '',
-              operatingHours: vendor.operatingHours || ''
-            };
-          }
-        });
+    const suspendedIds = new Set();
+    const vendorMap = {};
+
+    allVendorUsers.forEach(vendor => {
+      const vStatus = (vendor.status || '').toLowerCase().trim();
+      const isSuspended = ['suspended', 'inactive', 'rejected'].includes(vStatus) || vendor.isActive === false;
+
+      const vendorIdStr = vendor._id.toString();
+      if (isSuspended) {
+        suspendedIds.add(vendorIdStr);
+        if (vendor.vendorId) suspendedIds.add(vendor.vendorId.toString());
+        if (vendor.registrationId) suspendedIds.add(vendor.registrationId.toString());
+        if (vendor.email) suspendedIds.add(vendor.email.toLowerCase());
+        if (vendor.businesses && Array.isArray(vendor.businesses)) {
+          vendor.businesses.forEach(b => { if (b._id) suspendedIds.add(b._id.toString()); });
+        }
+      } else {
+        const vCity = vendor.city || vendor.bankCity || 'Bangalore';
+        const vData = {
+          name: vendor.businessName || vendor.name,
+          baseVendorType: vendor.baseVendorType || vendor.vendorType,
+          category: vendor.category,
+          city: vCity,
+          address: vendor.address || '',
+          logo: vendor.logo || '',
+          mobileNumber: vendor.mobileNumber || vendor.telephone || '',
+          operatingHours: vendor.operatingHours || ''
+        };
+        vendorMap[vendorIdStr] = vData;
+        if (vendor.vendorId) vendorMap[vendor.vendorId.toString()] = vData;
+        if (vendor.registrationId) vendorMap[vendor.registrationId.toString()] = vData;
+        if (vendor.email) vendorMap[vendor.email.toLowerCase()] = vData;
+
+        if (vendor.businesses && Array.isArray(vendor.businesses)) {
+          vendor.businesses.forEach(biz => {
+            if (biz._id) {
+              vendorMap[biz._id.toString()] = {
+                name: biz.businessName || vendor.businessName || vendor.name,
+                baseVendorType: biz.baseVendorType || biz.vendorType || vendor.baseVendorType || vendor.vendorType,
+                category: biz.category || vendor.category,
+                city: biz.city || vCity,
+                address: vendor.address || '',
+                logo: biz.logo || vendor.logo || '',
+                mobileNumber: vendor.mobileNumber || vendor.telephone || '',
+                operatingHours: vendor.operatingHours || ''
+              };
+            }
+          });
+        }
       }
     });
 
     // 2. Fetch all products
     const products = await Product.find({});
 
-    // Filter out any product whose vendor is Suspended / Inactive / Not in vendorMap
+    // Filter out only products belonging to explicitly suspended vendors
     const activeProducts = products.filter(p => {
       const vIdStr = (p.vendorId || p.vendor_id || '').toString();
-      return !!vendorMap[vIdStr];
+      const vEmail = (p.vendorEmail || '').toLowerCase();
+      if (suspendedIds.has(vIdStr) || (vEmail && suspendedIds.has(vEmail))) {
+        return false;
+      }
+      return true;
     });
 
     const host = req.get('host');
@@ -122,7 +145,16 @@ router.get('/products', async (req, res) => {
     // 3. Map active products to customer app format
     const mappedProducts = activeProducts.map(p => {
       const vIdStr = (p.vendorId || p.vendor_id || '').toString();
-      const vendor = vendorMap[vIdStr];
+      const vendor = vendorMap[vIdStr] || {
+        name: 'Store Vendor',
+        baseVendorType: 'Store Vendor',
+        category: p.category || 'General',
+        city: 'Bangalore',
+        address: '',
+        logo: '',
+        mobileNumber: '',
+        operatingHours: ''
+      };
       const subNavbarCategory = p.subNavbarCategory || p.mainCategory || getSubNavbarCategory(vendor.baseVendorType, p.category);
       
       return {
