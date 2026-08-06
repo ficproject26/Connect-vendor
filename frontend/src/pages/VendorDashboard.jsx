@@ -488,7 +488,7 @@ const VendorDashboard = () => {
     const checkStatus = async () => {
       if (!user || user.role !== 'Vendor') return;
       try {
-        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`);
+        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`, getAxiosConfig());
         const status = (res.data?.data?.status || res.data?.user?.status || user.status || '').toLowerCase().trim();
         if (['suspended', 'inactive', 'rejected'].includes(status)) {
           alert(`Access denied. Your vendor account has been marked as ${res.data?.data?.status || 'Suspended'} by the Administrator.`);
@@ -496,7 +496,7 @@ const VendorDashboard = () => {
           window.location.href = '/';
         }
       } catch (err) {
-        if (err.response?.status === 403 || err.response?.status === 401 || err.response?.data?.isTerminated) {
+        if (err.response?.status === 403 || err.response?.data?.isTerminated) {
           alert(err.response?.data?.message || 'Your vendor account access has been suspended or revoked. Logging out...');
           dispatch(logout());
           window.location.href = '/';
@@ -511,7 +511,7 @@ const VendorDashboard = () => {
 
   const getActiveVendorType = () => {
     if (!user) return 'Store Vendor';
-    const activeBiz = user.businesses?.find(b => b._id.toString() === activeBusinessId?.toString());
+    const activeBiz = user.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
     const rawType = activeBiz ? activeBiz.vendorType : (user.baseVendorType || user.vendorType);
     const rawCat = activeBiz ? activeBiz.category : user.category;
     const rawSubcat = activeBiz ? activeBiz.subcategory : user.subcategory;
@@ -520,11 +520,13 @@ const VendorDashboard = () => {
   const vendorType = getActiveVendorType();
 
   const getOrderVendorType = (order) => {
-    const parentId = user?.parentUserId || user?._id || '';
-    if (order.vendorId === parentId.toString()) {
+    if (!order) return user?.vendorType || 'Store Vendor';
+    const parentId = String(user?.parentUserId || user?._id || user?.id || '');
+    const orderVendorId = String(order.vendorId || '');
+    if (orderVendorId && orderVendorId === parentId) {
       return user?.vendorType || 'Store Vendor';
     }
-    const biz = user?.businesses?.find(b => b._id.toString() === order.vendorId.toString());
+    const biz = user?.businesses?.find(b => String(b?._id || b?.id || '') === orderVendorId);
     return biz ? biz.vendorType : (user?.vendorType || 'Store Vendor');
   };
 
