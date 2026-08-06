@@ -41,6 +41,7 @@ const DashboardContentGate = () => {
     case 'Stay': return <Rooms />;
     case 'Travel': return <Packages />;
     case 'Jobs': return <JobList />;
+    case 'queries': return <Overview />;
     default: return <Overview />;
   }
 };
