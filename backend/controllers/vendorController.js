@@ -304,7 +304,7 @@ const getProducts = async (req, res) => {
           normalizedVendorType = 'Products';
         }
 
-        return mainCat.toLowerCase() === normalizedVendorType.toLowerCase();
+        return !mainCat || mainCat.toLowerCase() === normalizedVendorType.toLowerCase() || (p.category && p.category.toLowerCase().includes(normalizedVendorType.toLowerCase()));
       }
       return false;
     });

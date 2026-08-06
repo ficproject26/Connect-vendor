@@ -187,7 +187,7 @@ const getMemberCard = async (req, res) => {
 // @access  Private (Member)
 const getParticipatingVendors = async (req, res) => {
   try {
-    const activeStatuses = ['approved', 'active'];
+    const suspendedStatuses = ['suspended', 'inactive', 'rejected', 'pending'];
     const vendors = await User.find({ 
       $or: [{ role: 'Vendor' }, { role: 'vendor' }]
     });
@@ -197,7 +197,7 @@ const getParticipatingVendors = async (req, res) => {
     
     vendors.forEach(v => {
       const vStatus = (v.status || '').toLowerCase().trim();
-      if (!activeStatuses.includes(vStatus) || v.isActive === false || v.isApproved === false || v.isLocked === true) {
+      if (suspendedStatuses.includes(vStatus) || v.isActive === false) {
         return; // Exclude suspended/inactive/rejected/pending vendors from customer dashboard
       }
 
@@ -208,7 +208,7 @@ const getParticipatingVendors = async (req, res) => {
       if (v.businesses && v.businesses.length > 0) {
         v.businesses.forEach(b => {
           const bStatus = (b.status || '').toLowerCase().trim();
-          if (bStatus && !activeStatuses.includes(bStatus)) return;
+          if (bStatus && suspendedStatuses.includes(bStatus)) return;
           if (b.isActive === false) return;
 
           formatted.push({
@@ -598,7 +598,7 @@ const getVendorProducts = async (req, res) => {
           normalizedVendorType = 'Products';
         }
 
-        return mainCat.toLowerCase() === normalizedVendorType.toLowerCase();
+        return !mainCat || mainCat.toLowerCase() === normalizedVendorType.toLowerCase() || (p.category && p.category.toLowerCase().includes(normalizedVendorType.toLowerCase()));
       }
       return false;
     });
