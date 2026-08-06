@@ -64,7 +64,9 @@ const UserSchema = new mongoose.Schema({
     businessName: { type: String },
     logo: { type: String },
     businessLicense: { type: String },
-    businessImages: [{ type: String }]
+    businessImages: [{ type: String }],
+    status: { type: String, default: 'Active' },
+    isActive: { type: Boolean, default: true }
   }],
   primaryBusinessId: { type: String }
 }, { timestamps: true });

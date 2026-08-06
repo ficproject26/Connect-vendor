@@ -73,7 +73,7 @@ router.get('/products', async (req, res) => {
 
     allVendorUsers.forEach(vendor => {
       const vStatus = (vendor.status || '').toLowerCase().trim();
-      const isUserSuspended = !['active', 'approved'].includes(vStatus) || vendor.isActive === false || vendor.isApproved === false || vendor.isLocked === true;
+      const isUserSuspended = ['suspended', 'inactive', 'rejected'].includes(vStatus) || vendor.isActive === false || vendor.isLocked === true;
 
       const vendorIdStr = vendor._id ? vendor._id.toString() : '';
       const emailLower = vendor.email ? vendor.email.toLowerCase().trim() : '';
@@ -98,7 +98,7 @@ router.get('/products', async (req, res) => {
         if (vendor.businesses && Array.isArray(vendor.businesses)) {
           vendor.businesses.forEach(biz => {
             const bizStatus = (biz.status || '').toLowerCase().trim();
-            const isBizSuspended = !['active', 'approved'].includes(bizStatus) || biz.isActive === false;
+            const isBizSuspended = ['suspended', 'inactive', 'rejected'].includes(bizStatus) || biz.isActive === false;
             
             if (isBizSuspended) {
               if (biz._id) suspendedIds.add(biz._id.toString());
@@ -106,7 +106,7 @@ router.get('/products', async (req, res) => {
               if (biz.name) suspendedNames.add(biz.name.toLowerCase().trim());
             } else if (biz._id) {
               const vCity = biz.city || vendor.city || vendor.bankCity || 'Bangalore';
-              vendorMap[biz._id.toString()] = {
+              const bData = {
                 name: biz.businessName || vendor.businessName || vendor.name,
                 baseVendorType: biz.baseVendorType || biz.vendorType || vendor.baseVendorType || vendor.vendorType,
                 category: biz.category || vendor.category,
@@ -116,6 +116,9 @@ router.get('/products', async (req, res) => {
                 mobileNumber: vendor.mobileNumber || vendor.telephone || '',
                 operatingHours: vendor.operatingHours || ''
               };
+              vendorMap[biz._id.toString()] = bData;
+              if (biz.businessName) vendorMap[biz.businessName.toLowerCase().trim()] = bData;
+              if (biz.name) vendorMap[biz.name.toLowerCase().trim()] = bData;
             }
           });
         }
@@ -135,6 +138,8 @@ router.get('/products', async (req, res) => {
         if (vendor.vendorId) vendorMap[vendor.vendorId.toString()] = vData;
         if (vendor.registrationId) vendorMap[vendor.registrationId.toString()] = vData;
         if (emailLower) vendorMap[emailLower] = vData;
+        if (vendor.businessName) vendorMap[vendor.businessName.toLowerCase().trim()] = vData;
+        if (vendor.name) vendorMap[vendor.name.toLowerCase().trim()] = vData;
       }
     });
 
@@ -159,7 +164,10 @@ router.get('/products', async (req, res) => {
       }
 
       // Product MUST belong to an active vendor or active business in vendorMap
-      const hasActiveVendor = (vIdStr && !!vendorMap[vIdStr]) || (pBizId && !!vendorMap[pBizId]) || (vEmail && !!vendorMap[vEmail]);
+      const hasActiveVendor = (vIdStr && !!vendorMap[vIdStr]) || 
+                             (pBizId && !!vendorMap[pBizId]) || 
+                             (vEmail && !!vendorMap[vEmail]) ||
+                             (pVendorName && !!vendorMap[pVendorName]);
       return hasActiveVendor;
     });
 
