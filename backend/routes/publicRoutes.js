@@ -64,14 +64,8 @@ const getSubNavbarCategory = (baseVendorType, category) => {
 // GET /api/public/products
 router.get('/products', async (req, res) => {
   try {
-    // 1. Fetch all vendor users
-    const allVendorUsers = await User.find({
-      $or: [
-        { role: { $regex: /vendor|merchant/i } },
-        { userType: { $regex: /vendor|merchant/i } },
-        { isDirectRequest: true }
-      ]
-    });
+    // 1. Fetch all users from database
+    const allVendorUsers = await User.find({});
 
     const suspendedIds = new Set();
     const suspendedNames = new Set();
