@@ -200,6 +200,9 @@ const Navbar = () => {
                           {user.businesses.map((biz) => {
                             const isActive = biz._id === activeBusinessId;
                             const emoji = vendorTaxonomy[biz.vendorType]?.emoji || "🏢";
+                            const bStatus = (biz.status || '').toLowerCase().trim();
+                            const isSuspended = ['suspended', 'inactive', 'rejected'].includes(bStatus) || biz.isActive === false;
+
                             return (
                               <button
                                 key={biz._id}
@@ -217,9 +220,15 @@ const Navbar = () => {
                               >
                                 <span className="flex items-center gap-2 truncate">
                                   <span className="text-base shrink-0">{emoji}</span>
-                                  <span className="text-xs truncate font-medium text-slate-800 dark:text-slate-200">{biz.subcategory}</span>
+                                  <span className="text-xs truncate font-medium text-slate-800 dark:text-slate-200">{biz.subcategory || biz.vendorType}</span>
                                 </span>
-                                {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#faed26]" />}
+                                {isSuspended ? (
+                                  <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-rose-500 text-white uppercase shrink-0">
+                                    Suspended
+                                  </span>
+                                ) : (
+                                  isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#faed26]" />
+                                )}
                               </button>
                             );
                           })}

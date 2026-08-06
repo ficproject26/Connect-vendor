@@ -2611,11 +2611,15 @@ const VendorDashboard = () => {
                 else if (type.startsWith('Jobs')) Icon = Briefcase;
                 else if (type.startsWith('Services')) Icon = HeartHandshake;
 
+                const bStatus = (biz.status || '').toLowerCase().trim();
+                const isBizSuspended = ['suspended', 'inactive', 'rejected'].includes(bStatus) || biz.isActive === false;
+
                 return {
                   id: biz._id,
                   name: type,
                   icon: Icon,
-                  isActive: biz._id === activeBusinessId
+                  isActive: biz._id === activeBusinessId,
+                  isSuspended: isBizSuspended
                 };
               });
 
@@ -2677,14 +2681,21 @@ const VendorDashboard = () => {
                                 setActiveTab('catalog');
                               }}
                               title={biz.name}
-                              className={`w-full flex items-center gap-3 text-left ${sidebarCollapsed ? 'md:justify-center px-4' : 'px-4'} py-3 rounded-2xl text-sm font-semibold transition-all border border-transparent ${
+                              className={`w-full flex items-center justify-between text-left ${sidebarCollapsed ? 'md:justify-center px-4' : 'px-4'} py-3 rounded-2xl text-sm font-semibold transition-all border border-transparent ${
                                 biz.isActive && activeTab === 'catalog'
                                   ? 'bg-[#faed26] text-[#0B3C7B] shadow-lg shadow-yellow-500/10 font-bold animate-fadeIn' 
                                   : 'text-white/70 hover:bg-white/10 hover:text-white'
                               }`}
                             >
-                              <Icon size={18} className="shrink-0" />
-                              {!sidebarCollapsed && <span className="text-left leading-snug">{biz.name}</span>}
+                              <div className="flex items-center gap-3 min-w-0">
+                                <Icon size={18} className="shrink-0" />
+                                {!sidebarCollapsed && <span className="text-left leading-snug truncate">{biz.name}</span>}
+                              </div>
+                              {!sidebarCollapsed && biz.isSuspended && (
+                                <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-rose-500/90 text-white uppercase tracking-wider shrink-0">
+                                  Suspended
+                                </span>
+                              )}
                             </button>
                           </li>
                         );
@@ -3425,19 +3436,38 @@ const VendorDashboard = () => {
               return true;
             });
 
+            const activeBizObj = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
+            const isCurBizSuspended = activeBizObj && (['suspended', 'inactive', 'rejected'].includes((activeBizObj.status || '').toLowerCase().trim()) || activeBizObj.isActive === false);
+
             return (
               <div className="space-y-6 animate-fadeIn">
+                {isCurBizSuspended && (
+                  <div className="p-4 bg-rose-500/10 border-2 border-rose-500/40 text-rose-700 dark:text-rose-300 rounded-2xl flex items-center justify-between gap-3 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <ShieldAlert className="w-6 h-6 text-rose-500 shrink-0" />
+                      <div>
+                        <h4 className="font-extrabold text-sm uppercase tracking-wide">Category Suspended by Administrator</h4>
+                        <p className="text-xs mt-0.5 opacity-90">
+                          Your <strong>{activeBizObj?.subcategory || activeBizObj?.vendorType || 'Business'}</strong> category outlet has been suspended by Admin. Listing new items, editing, or displaying products for this category is locked.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
                     <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Manage {terms.catalogName}</h2>
                     <p className="text-slate-800 dark:text-slate-200 text-sm mt-1">Add or edit catalog items details</p>
                   </div>
-                  <button
-                    onClick={handleOpenAddItem}
-                    className="bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-sm px-5 py-3 rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-yellow-500/10 active:scale-[0.98]"
-                  >
-                    <Plus size={16} /> Add {terms.catalogItem}
-                  </button>
+                  {!isCurBizSuspended && (
+                    <button
+                      onClick={handleOpenAddItem}
+                      className="bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-sm px-5 py-3 rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-yellow-500/10 active:scale-[0.98]"
+                    >
+                      <Plus size={16} /> Add {terms.catalogItem}
+                    </button>
+                  )}
                 </div>
 
                 {/* ── Catalog Summary Cards ── */}

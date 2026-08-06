@@ -69,6 +69,7 @@ router.get('/products', async (req, res) => {
 
     const suspendedIds = new Set();
     const suspendedNames = new Set();
+    const suspendedCategoryKeys = new Set();
     const vendorMap = {};
 
     allVendorUsers.forEach(vendor => {
@@ -104,6 +105,20 @@ router.get('/products', async (req, res) => {
               if (biz._id) suspendedIds.add(biz._id.toString());
               if (biz.businessName) suspendedNames.add(biz.businessName.toLowerCase().trim());
               if (biz.name) suspendedNames.add(biz.name.toLowerCase().trim());
+
+              const catArr = [
+                biz.category,
+                biz.vendorType,
+                biz.baseVendorType,
+                biz.subcategory,
+                getItemMainCategory(biz.category),
+                getSubNavbarCategory(biz.vendorType, biz.category)
+              ].filter(Boolean).map(s => String(s).toLowerCase().trim());
+
+              catArr.forEach(cKey => {
+                if (vendorIdStr) suspendedCategoryKeys.add(`${vendorIdStr}_${cKey}`);
+                if (emailLower) suspendedCategoryKeys.add(`${emailLower}_${cKey}`);
+              });
             } else if (biz._id) {
               const vCity = biz.city || vendor.city || vendor.bankCity || 'Bangalore';
               const bData = {
@@ -146,7 +161,7 @@ router.get('/products', async (req, res) => {
     // 2. Fetch all products
     const products = await Product.find({});
 
-    // Filter products: must belong to an active vendor in vendorMap, and must NOT be in suspendedIds or suspendedNames
+    // Filter products: must belong to an active vendor in vendorMap, and must NOT be in suspendedIds, suspendedNames, or suspendedCategoryKeys
     const activeProducts = products.filter(p => {
       const vIdStr = (p.vendorId || p.vendor_id || '').toString().trim();
       const pBizId = (p.businessId || p.outletId || p.storeId || '').toString().trim();
@@ -160,6 +175,26 @@ router.get('/products', async (req, res) => {
         (vEmail && suspendedIds.has(vEmail)) ||
         (pVendorName && suspendedNames.has(pVendorName))
       ) {
+        return false;
+      }
+
+      // If product belongs to a category/vendorType of this vendor that is suspended -> exclude
+      const pCatKeys = [
+        p.category,
+        p.vendorType,
+        p.subcategory,
+        p.subNavbarCategory,
+        p.mainCategory,
+        getItemMainCategory(p.category),
+        getSubNavbarCategory(p.vendorType, p.category)
+      ].filter(Boolean).map(s => String(s).toLowerCase().trim());
+
+      const isProductCategorySuspended = pCatKeys.some(cKey => 
+        (vIdStr && suspendedCategoryKeys.has(`${vIdStr}_${cKey}`)) ||
+        (vEmail && suspendedCategoryKeys.has(`${vEmail}_${cKey}`))
+      );
+
+      if (isProductCategorySuspended) {
         return false;
       }
 
