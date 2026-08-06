@@ -17,12 +17,12 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     }
   }, [isSuspendedOrRevoked, user?.status, dispatch]);
 
-  if (!isAuthenticated || isSuspendedOrRevoked) {
+  if (!isAuthenticated || !user || isSuspendedOrRevoked) {
     return <Navigate to="/" replace />;
   }
 
   if (allowedRoles && !allowedRoles.includes(user?.role)) {
-    return <Navigate to="/vendor" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return children;

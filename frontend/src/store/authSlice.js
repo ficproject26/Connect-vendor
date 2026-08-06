@@ -55,7 +55,7 @@ const initialState = {
   user,
   token,
   card,
-  isAuthenticated: !!token,
+  isAuthenticated: !!(token && user),
   loading: false,
   error: null,
   sidebarCollapsed,
