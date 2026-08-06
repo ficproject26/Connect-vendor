@@ -3764,7 +3764,7 @@ const VendorDashboard = () => {
                                             </div>
                                           )}
                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : 'Sold'}</span>
+                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Sold'}</span>
                                             <span className="font-bold text-emerald-600 dark:text-emerald-400">{getItemSalesData(item._id).count}</span>
                                           </div>
                                         </div>
