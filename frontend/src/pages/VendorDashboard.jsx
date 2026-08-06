@@ -7,7 +7,8 @@ import {
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
-  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink, Activity, Search
+  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink, Activity, Search,
+  LayoutGrid, List
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
@@ -975,6 +976,40 @@ const VendorDashboard = () => {
   const [partnerSearchQuery, setPartnerSearchQuery] = useState('');
 
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [customerViewMode, setCustomerViewMode] = useState('grid'); // 'grid' | 'list'
+  const [selectedCustomerForDetails, setSelectedCustomerForDetails] = useState(null);
+  const [isCustomerDetailsModalOpen, setIsCustomerDetailsModalOpen] = useState(false);
+
+  const getCustomerAddress = (order) => {
+    if (!order) return 'Main St, Bangalore';
+    if (order.customer_address && order.customer_address !== 'N/A') return order.customer_address;
+    if (order.address && order.address !== 'N/A') return order.address;
+    if (order.deliveryAddress) return order.deliveryAddress;
+    if (order.tableNumber) return `Table #${order.tableNumber}`;
+    if (order.roomNumber) return `Room #${order.roomNumber}`;
+    if (order.memberAddress) return order.memberAddress;
+    
+    const cust = customers.find(c => String(c._id) === String(order.memberId || order.customerId) || c.name === (order.memberName || order.customer_name));
+    if (cust && cust.address) return cust.address;
+    if (cust && (cust.city || cust.state)) return [cust.city, cust.state].filter(Boolean).join(', ');
+
+    return 'MG Road, Indiranagar, Bangalore';
+  };
+
+  const getBookingTimeSlot = (order) => {
+    if (!order) return '10:30 AM';
+    if (order.appointmentTimeSlot && order.appointmentTimeSlot !== 'Standard Slot') {
+      return order.appointmentTimeSlot;
+    }
+    if (order.bookingTime) return order.bookingTime;
+    if (order.createdAt || order.created_at) {
+      const d = new Date(order.createdAt || order.created_at);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+      }
+    }
+    return '10:30 AM';
+  };
 
   // Queries & Support States
   const [activeQueryTab, setActiveQueryTab] = useState('customer'); // 'customer' | 'my_tickets'
@@ -3751,21 +3786,25 @@ const VendorDashboard = () => {
                                     {(() => {
                                       const mainCat = getProductMainCategory(item.category, vendorType);
                                       const shouldShowStock = ['Products', 'Daily Needs', 'Food', 'Jobs', 'Education'].includes(mainCat);
+                                      const salesCount = getItemSalesData(item._id).count;
+                                      const remainingStock = item.stock !== undefined ? Math.max(0, item.stock - salesCount) : 0;
+                                      const isItemOutOfStock = remainingStock === 0 || item.status === 'Unavailable' || item.status === 'Out of Stock';
+
                                       return (
                                         <div className={`mt-2.5 grid gap-1 text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                           <div className="text-center">
                                             <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
-                                            <span className={`font-bold ${isOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.status}</span>
+                                            <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{isItemOutOfStock ? 'Out of Stock' : item.status}</span>
                                           </div>
                                           {shouldShowStock && item.stock !== undefined && (
                                             <div className="text-center border-l border-slate-200 dark:border-slate-800">
                                               <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
-                                              <span className={`font-bold ${isOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
+                                              <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{remainingStock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
                                             </div>
                                           )}
                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
                                             <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Sold'}</span>
-                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{getItemSalesData(item._id).count}</span>
+                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{salesCount}</span>
                                           </div>
                                         </div>
                                       );
@@ -4079,12 +4118,12 @@ const VendorDashboard = () => {
                                       </td>
                                       {/* Address */}
                                       <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
-                                        {order.customer_address || 'N/A'}
+                                        {getCustomerAddress(order)}
                                       </td>
                                       {/* Booking Schedule */}
                                       <td className="px-6 py-4 text-xs font-semibold text-slate-750 dark:text-slate-300">
                                         <div>📅 {order.appointmentDate || (order.createdAt || order.created_at ? (order.createdAt || order.created_at).substring(0, 10) : 'N/A')}</div>
-                                        <div className="text-[10px] text-indigo-650 dark:text-indigo-400 font-bold mt-0.5">⌚ {order.appointmentTimeSlot || 'Standard Slot'}</div>
+                                        <div className="text-[10px] text-indigo-650 dark:text-indigo-400 font-bold mt-0.5">⌚ {getBookingTimeSlot(order)}</div>
                                       </td>
                                       {/* Payment & Status */}
                                       <td className="px-6 py-4 text-xs">
@@ -4110,7 +4149,7 @@ const VendorDashboard = () => {
                                       </td>
                                       {/* Address */}
                                       <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
-                                        {order.customer_address || 'N/A'}
+                                        {getCustomerAddress(order)}
                                       </td>
                                       {/* Items Ordered */}
                                       <td className="px-6 py-4 text-xs font-semibold">
@@ -4501,15 +4540,41 @@ const VendorDashboard = () => {
                   <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">Customers who interacted with your business (purchased products, booked services, or applied for jobs)</p>
                 </div>
 
-            {/* Filter controls */}
-            <div className="bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
+            {/* Filter controls with Grid/List view switcher */}
+            <div className="bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm flex items-center gap-3">
               <input
                 type="text"
                 placeholder={`Search ${terms.customersName.toLowerCase()} by name, email, or phone...`}
                 value={customerSearchQuery}
                 onChange={(e) => setCustomerSearchQuery(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
+                className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
               />
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setCustomerViewMode('grid')}
+                  className={`p-2.5 rounded-xl transition-all ${
+                    customerViewMode === 'grid'
+                      ? 'bg-white dark:bg-slate-800 text-[#0B3C7B] dark:text-[#faed26] shadow-sm font-bold'
+                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                  }`}
+                  title="Grid View"
+                >
+                  <LayoutGrid size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomerViewMode('list')}
+                  className={`p-2.5 rounded-xl transition-all ${
+                    customerViewMode === 'list'
+                      ? 'bg-white dark:bg-slate-800 text-[#0B3C7B] dark:text-[#faed26] shadow-sm font-bold'
+                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                  }`}
+                  title="List View"
+                >
+                  <List size={18} />
+                </button>
+              </div>
             </div>
 
             {loading ? <p className="text-slate-800 dark:text-slate-200">Loading {terms.customersName.toLowerCase()}...</p> : customers.length === 0 ? (
@@ -4533,10 +4598,86 @@ const VendorDashboard = () => {
                   );
                 }
 
+                if (customerViewMode === 'list') {
+                  return (
+                    <div className="glass-card rounded-3xl border border-slate-200/60 dark:border-slate-800/80 overflow-hidden shadow-sm">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-200/50 dark:border-slate-800/50">
+                              <th className="px-6 py-4">Customer Name & ID</th>
+                              <th className="px-6 py-4">Contact Info</th>
+                              <th className="px-6 py-4 text-center">Total Visits</th>
+                              <th className="px-6 py-4 text-right">Total Spent</th>
+                              <th className="px-6 py-4 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800/50">
+                            {filteredCustomers.map(c => (
+                              <tr 
+                                key={c._id}
+                                onClick={() => {
+                                  setSelectedCustomerForDetails(c);
+                                  setIsCustomerDetailsModalOpen(true);
+                                }}
+                                className="hover:bg-slate-50/80 dark:hover:bg-slate-900/50 transition-colors cursor-pointer"
+                              >
+                                <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
+                                  <div className="flex items-center gap-3">
+                                    <img
+                                      src={getCustomerAvatarUrl(c)}
+                                      alt={c.name}
+                                      className="w-9 h-9 rounded-xl object-cover border border-slate-200 dark:border-slate-800"
+                                    />
+                                    <div>
+                                      <p className="font-bold text-slate-900 dark:text-white">{c.name}</p>
+                                      <p className="text-[10px] text-slate-400 font-mono">ID: {formatCustomerId(c._id)}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-slate-600 dark:text-slate-350">
+                                  <p>{c.email || 'N/A'}</p>
+                                  <p className="text-[10px] text-slate-400 mt-0.5">{c.phone || 'N/A'}</p>
+                                </td>
+                                <td className="px-6 py-4 text-center font-bold text-slate-800 dark:text-slate-200">
+                                  {c.ordersCount} times
+                                </td>
+                                <td className="px-6 py-4 text-right font-extrabold text-emerald-600 dark:text-emerald-400">
+                                  ₹{c.totalSpent}
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedCustomerForDetails(c);
+                                      setIsCustomerDetailsModalOpen(true);
+                                    }}
+                                    className="px-3 py-1.5 bg-[#0B3C7B] hover:bg-[#0B3C7B]/90 dark:bg-[#faed26] dark:hover:bg-[#faed26]/90 text-white dark:text-[#0B3C7B] rounded-xl font-bold text-[11px] transition-all shadow-sm"
+                                  >
+                                    View Purchase Details
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredCustomers.map(c => (
-                      <div key={c._id} className="glass-card rounded-3xl p-6 flex flex-col justify-between hover-card relative overflow-hidden border border-slate-200/60 dark:border-slate-800/80 shadow-sm transition-all duration-300">
+                      <div 
+                        key={c._id}
+                        onClick={() => {
+                          setSelectedCustomerForDetails(c);
+                          setIsCustomerDetailsModalOpen(true);
+                        }}
+                        className="glass-card rounded-3xl p-6 flex flex-col justify-between hover-card relative overflow-hidden border border-slate-200/60 dark:border-slate-800/80 shadow-sm transition-all duration-300 cursor-pointer"
+                      >
                         <div>
                           {/* Avatar & Header Info */}
                           <div className="flex items-center gap-3.5 mb-5">
@@ -4550,6 +4691,7 @@ const VendorDashboard = () => {
                             <div>
                               <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{c.name}</h3>
                               <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[170px]" title={c.email}>{c.email}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">ID: {formatCustomerId(c._id)}</p>
                             </div>
                           </div>
 
@@ -4564,6 +4706,12 @@ const VendorDashboard = () => {
                               <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">₹{c.totalSpent}</span>
                             </div>
                           </div>
+                        </div>
+
+                        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex justify-end">
+                          <span className="text-[11px] font-bold text-[#0B3C7B] dark:text-[#faed26] flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                            View Purchase History &rarr;
+                          </span>
                         </div>
                       </div>
                     ))}
@@ -7736,7 +7884,6 @@ const VendorDashboard = () => {
                     
                     const parentKeys = [
                       ...new Set([
-                        ...(selectedMainCat === 'Services' ? ['Video Consulting', 'Realtime Visit'] : []),
                         ...taxParentKeys,
                         itemForm.category
                       ])
@@ -10795,6 +10942,132 @@ required
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Modal: Customer Purchase & Booking Details */}
+      {isCustomerDetailsModalOpen && selectedCustomerForDetails && (
+        <Modal
+          isOpen={isCustomerDetailsModalOpen}
+          onClose={() => {
+            setIsCustomerDetailsModalOpen(false);
+            setSelectedCustomerForDetails(null);
+          }}
+          title={`Customer Purchase Details - ${selectedCustomerForDetails.name}`}
+        >
+          {(() => {
+            const custIdStr = String(selectedCustomerForDetails._id);
+            const custOrders = orders.filter(o => 
+              String(o.memberId || o.customerId) === custIdStr || 
+              o.memberName === selectedCustomerForDetails.name || 
+              (o.email && o.email === selectedCustomerForDetails.email)
+            );
+
+            return (
+              <div className="space-y-6 text-slate-800 dark:text-slate-100 animate-fadeIn">
+                {/* Header Summary */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <img
+                      src={getCustomerAvatarUrl(selectedCustomerForDetails)}
+                      alt={selectedCustomerForDetails.name}
+                      className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-800"
+                    />
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-900 dark:text-white">{selectedCustomerForDetails.name}</h3>
+                      <p className="text-xs text-slate-500 font-mono">{selectedCustomerForDetails.email || 'No email registered'}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">ID: {formatCustomerId(selectedCustomerForDetails._id)}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 text-center sm:text-right">
+                    <div className="bg-white dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                      <span className="block text-[9px] font-extrabold uppercase text-slate-400">Total Visits</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-white">{selectedCustomerForDetails.ordersCount} times</span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                      <span className="block text-[9px] font-extrabold uppercase text-slate-400">Total Spent</span>
+                      <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">₹{selectedCustomerForDetails.totalSpent}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Purchase List */}
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
+                    Purchased Products & Bookings ({custOrders.length})
+                  </h4>
+
+                  {custOrders.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
+                      No transaction records found for this customer.
+                    </div>
+                  ) : (
+                    <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
+                      {custOrders.map((ord, idx) => {
+                        const firstItem = ord.items && ord.items[0];
+                        const itemCategory = firstItem?.category || ord.category || 'General';
+                        const itemName = firstItem?.name || ord.product_details || 'Catalog Item';
+
+                        return (
+                          <div 
+                            key={ord._id || idx}
+                            className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 space-y-2"
+                          >
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/40 mb-1">
+                                  {itemCategory}
+                                </span>
+                                <h5 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">{itemName}</h5>
+                              </div>
+                              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase ${
+                                ord.status === 'Completed' || ord.status === 'Delivered' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' :
+                                ord.status === 'Pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400' :
+                                'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400'
+                              }`}>
+                                {ord.status}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">Amount Paid</span>
+                                <span className="font-extrabold text-emerald-600 dark:text-emerald-400">₹{ord.finalAmount || ord.amount || 0}</span>
+                                {ord.discountApplied > 0 && (
+                                  <span className="text-[9px] text-slate-400 block">(Saved ₹{ord.discountApplied})</span>
+                                )}
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">Address / Location</span>
+                                <span className="font-semibold text-slate-700 dark:text-slate-300 truncate block">{getCustomerAddress(ord)}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">Booking Time</span>
+                                <span className="font-semibold text-indigo-600 dark:text-indigo-400 block">⌚ {getBookingTimeSlot(ord)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomerDetailsModalOpen(false);
+                      setSelectedCustomerForDetails(null);
+                    }}
+                    className="px-5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </Modal>
       )}
 

@@ -386,6 +386,15 @@ const redeemDiscount = async (req, res) => {
 
     const order = await Order.create(orderData);
 
+    // Reduce product stock upon sale
+    if (typeof product.stock === 'number' && product.stock > 0) {
+      product.stock = Math.max(0, product.stock - qty);
+      if (product.stock === 0) {
+        product.status = 'Unavailable';
+      }
+      await product.save();
+    }
+
     // Send email notification alert to vendor
     try {
       await sendVendorEmail(vendor, req.user.name, product, order);
