@@ -345,7 +345,8 @@ const loginVendor = async (req, res) => {
     // Find user by email (case-insensitive)
     const cleanEmail = email.trim().toLowerCase();
     const user = await User.findOne({ email: { $regex: new RegExp('^' + cleanEmail + '$', 'i') } });
-    if (!user || (user.role !== 'Vendor' && user.role !== 'Admin')) {
+    const userRole = (user?.role || '').toLowerCase();
+    if (!user || (userRole !== 'vendor' && userRole !== 'admin')) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 

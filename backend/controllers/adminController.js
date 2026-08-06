@@ -46,7 +46,7 @@ const getPendingVendors = async (req, res) => {
 const approveVendor = async (req, res) => {
   try {
     const vendor = await User.findById(req.params.id);
-    if (!vendor || vendor.role !== 'Vendor') {
+    if (!vendor || (vendor.role !== 'Vendor' && vendor.role !== 'vendor')) {
       return res.status(404).json({ success: false, message: 'Vendor application not found' });
     }
 
@@ -66,7 +66,7 @@ const approveVendor = async (req, res) => {
 const rejectVendor = async (req, res) => {
   try {
     const vendor = await User.findById(req.params.id);
-    if (!vendor || vendor.role !== 'Vendor') {
+    if (!vendor || (vendor.role !== 'Vendor' && vendor.role !== 'vendor')) {
       return res.status(404).json({ success: false, message: 'Vendor application not found' });
     }
 
@@ -86,7 +86,7 @@ const rejectVendor = async (req, res) => {
 const getAllVendors = async (req, res) => {
   try {
     // Return all vendors
-    const vendors = await User.find({ role: 'Vendor' });
+    const vendors = await User.find({ role: { $in: ['Vendor', 'vendor'] } });
     res.status(200).json({ success: true, data: vendors });
   } catch (error) {
     console.error('Get All Vendors Error:', error);
@@ -100,12 +100,13 @@ const getAllVendors = async (req, res) => {
 const toggleVendorStatus = async (req, res) => {
   try {
     const vendor = await User.findById(req.params.id);
-    if (!vendor || vendor.role !== 'Vendor') {
+    if (!vendor || (vendor.role !== 'Vendor' && vendor.role !== 'vendor')) {
       return res.status(404).json({ success: false, message: 'Vendor not found' });
     }
 
     // Toggle between Approved and Rejected
-    vendor.status = vendor.status === 'Approved' ? 'Rejected' : 'Approved';
+    const currentStatus = (vendor.status || '').toLowerCase();
+    vendor.status = (currentStatus === 'approved' || currentStatus === 'active') ? 'Rejected' : 'Approved';
     await vendor.save();
 
     res.status(200).json({ 
