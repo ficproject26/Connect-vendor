@@ -388,6 +388,7 @@ const getCategoryIcon = (category) => {
 };
 
 const VendorDashboard = () => {
+  const dispatch = useDispatch();
   const { user, token, card, sidebarCollapsed, activeBusinessId } = useSelector(state => state.auth);
   const [, setCategoryTrigger] = useState(0);
   const deadlineInputRef = useRef(null);
@@ -886,9 +887,6 @@ const VendorDashboard = () => {
   const [selectedBillOrder, setSelectedBillOrder] = useState(null);
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
   const [isResumeViewerOpen, setIsResumeViewerOpen] = useState(false);
-
-  // Redux Dispatch
-  const dispatch = useDispatch();
 
   // Sync profile on mount to get latest user categories/businesses from DB
   useEffect(() => {
