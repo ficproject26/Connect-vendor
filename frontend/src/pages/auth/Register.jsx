@@ -316,9 +316,7 @@ const Register = () => {
     );
   };
 
-  const validateStep = (step) => {
-    setError('');
-    if (step === 1) {
+  const validateStep = (step) => {    if (step === 1) {
       if (!businessName) return 'Business / Shop Name is required';
       if (!logoFile) return 'Shop / Brand Logo is required';
       const businessesList = getSelectedBusinessesList();
@@ -329,6 +327,9 @@ const Register = () => {
       const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|in|org|net|co|edu|gov|info|biz|us|uk|ca|au)$/i;
       if (!emailRegex.test(email)) return 'Enter valid email id';
       if (!address) return 'Business Address is required';
+      if (!state) return 'State is required';
+      if (!city) return 'City is required';
+      if (!postalCode) return 'Postal Code / PIN Code is required';
       if (!operatingHours) return 'Business Operating Hours are required';
     } else if (step === 2) {
       if (!contactPerson) return 'Owner / Contact Person Name is required';
@@ -337,7 +338,7 @@ const Register = () => {
       const hasLowercase = /[a-z]/.test(password);
       const hasUppercase = /[A-Z]/.test(password);
       const hasDigit = /\d/.test(password);
-      const hasSpecial = /[@$!%*?&#_.\-+=^~`/\\{}()|[\]:;\"'<>,?]/.test(password);
+      const hasSpecial = /[@$!%*?&#_.\-+=^~`/\\{}()|[\]:;\\"'<>,?]/.test(password);
 
       if (!password) return 'Account Password is required';
       if (password.length < 6 || !hasLowercase || !hasUppercase || !hasDigit || !hasSpecial) {
@@ -348,6 +349,7 @@ const Register = () => {
       if (!panNo) return 'PAN Number is required';
       if (!licenseFile) return 'Business License Document is required';
       if (!gstStatus) return 'GST Status is required';
+      if (gstStatus === 'GST Registered' && !gstNumber) return 'GST Number is required when GST Registered is selected';
       if (!msmeStatus) return 'MSME Status is required';
     } else if (step === 4) {
       if (!accountHolderName) return 'Account Holder Name is required';
@@ -747,6 +749,100 @@ const Register = () => {
                           />
                         </div>
                       </div>
+
+                      {/* State & City Row */}
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* State Dropdown */}
+                        <div className="space-y-2">
+                          <label className="text-[13px] font-semibold text-slate-300 flex items-center gap-1">State <span className="text-red-400">*</span></label>
+                          <select
+                            value={state}
+                            onChange={(e) => setState(e.target.value)}
+                            required
+                            className="w-full bg-[#0e1726]/60 border border-white/10 rounded-xl px-3 py-1.5 text-[14px] text-white focus:outline-none focus:border-[#faed26]/50 focus:ring-1 focus:ring-[#faed26]/50 transition-all [&>option]:bg-[#060b13] [&>option]:text-white cursor-pointer"
+                          >
+                            <option value="">-- Select State --</option>
+                            <option value="Andhra Pradesh">Andhra Pradesh</option>
+                            <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+                            <option value="Assam">Assam</option>
+                            <option value="Bihar">Bihar</option>
+                            <option value="Chhattisgarh">Chhattisgarh</option>
+                            <option value="Delhi">Delhi</option>
+                            <option value="Goa">Goa</option>
+                            <option value="Gujarat">Gujarat</option>
+                            <option value="Haryana">Haryana</option>
+                            <option value="Himachal Pradesh">Himachal Pradesh</option>
+                            <option value="Jharkhand">Jharkhand</option>
+                            <option value="Karnataka">Karnataka</option>
+                            <option value="Kerala">Kerala</option>
+                            <option value="Madhya Pradesh">Madhya Pradesh</option>
+                            <option value="Maharashtra">Maharashtra</option>
+                            <option value="Manipur">Manipur</option>
+                            <option value="Meghalaya">Meghalaya</option>
+                            <option value="Mizoram">Mizoram</option>
+                            <option value="Nagaland">Nagaland</option>
+                            <option value="Odisha">Odisha</option>
+                            <option value="Punjab">Punjab</option>
+                            <option value="Rajasthan">Rajasthan</option>
+                            <option value="Sikkim">Sikkim</option>
+                            <option value="Tamil Nadu">Tamil Nadu</option>
+                            <option value="Telangana">Telangana</option>
+                            <option value="Tripura">Tripura</option>
+                            <option value="Uttar Pradesh">Uttar Pradesh</option>
+                            <option value="Uttarakhand">Uttarakhand</option>
+                            <option value="West Bengal">West Bengal</option>
+                          </select>
+                        </div>
+
+                        {/* City */}
+                        <div className="space-y-2">
+                          <label className="text-[13px] font-semibold text-slate-300 flex items-center gap-1">City <span className="text-red-400">*</span></label>
+                          <input
+                            type="text"
+                            required
+                            value={city}
+                            onChange={(e) => setCity(e.target.value)}
+                            placeholder="Enter city name"
+                            className="w-full bg-[#0e1726]/60 border border-white/10 rounded-xl px-3 py-1.5 text-[14px] text-white placeholder-slate-500 focus:outline-none focus:border-[#faed26]/50 focus:ring-1 focus:ring-[#faed26]/50 transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Country & Postal Code Row */}
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Country Dropdown */}
+                        <div className="space-y-2">
+                          <label className="text-[13px] font-semibold text-slate-300 flex items-center gap-1">Country <span className="text-red-400">*</span></label>
+                          <select
+                            value={country}
+                            onChange={(e) => setCountry(e.target.value)}
+                            required
+                            className="w-full bg-[#0e1726]/60 border border-white/10 rounded-xl px-3 py-1.5 text-[14px] text-white focus:outline-none focus:border-[#faed26]/50 focus:ring-1 focus:ring-[#faed26]/50 transition-all [&>option]:bg-[#060b13] [&>option]:text-white cursor-pointer"
+                          >
+                            <option value="India">India</option>
+                            <option value="United States">United States</option>
+                            <option value="United Kingdom">United Kingdom</option>
+                            <option value="Canada">Canada</option>
+                            <option value="Australia">Australia</option>
+                            <option value="Singapore">Singapore</option>
+                            <option value="UAE">UAE</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+
+                        {/* Postal Code */}
+                        <div className="space-y-2">
+                          <label className="text-[13px] font-semibold text-slate-300 flex items-center gap-1">Postal Code <span className="text-red-400">*</span></label>
+                          <input
+                            type="text"
+                            required
+                            value={postalCode}
+                            onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            placeholder="Enter PIN code"
+                            className="w-full bg-[#0e1726]/60 border border-white/10 rounded-xl px-3 py-1.5 text-[14px] text-white placeholder-slate-500 focus:outline-none focus:border-[#faed26]/50 focus:ring-1 focus:ring-[#faed26]/50 transition-all"
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     {/* Right Column */}
@@ -1111,6 +1207,25 @@ const Register = () => {
                     </div>
                   </div>
 
+                  {/* GST Number (conditional - shown when GST Registered) */}
+                  {gstStatus === 'GST Registered' && (
+                    <div className="space-y-2">
+                      <label className="text-[14px] font-semibold text-slate-300 flex items-center gap-1">GST Number <span className="text-red-400">*</span></label>
+                      <div className="relative">
+                        <FileText size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                          type="text"
+                          required
+                          value={gstNumber}
+                          onChange={(e) => setGstNumber(e.target.value.toUpperCase())}
+                          placeholder="e.g. 22AAAAA0000A1Z5"
+                          maxLength={15}
+                          className="w-full bg-[#0e1726]/60 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-[13px] text-white placeholder-slate-500 focus:outline-none focus:border-[#faed26]/50 focus:ring-1 focus:ring-[#faed26]/50 transition-all"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   {/* Business License File upload */}
                   <div className="space-y-2">
                     <label className="text-[14px] font-semibold text-slate-300 flex items-center gap-1">Business License / Document Upload <span className="text-red-400">*</span></label>
@@ -1173,15 +1288,39 @@ const Register = () => {
                     <div className="space-y-2">
                       <label className="text-[14px] font-semibold text-slate-300 flex items-center gap-1">Bank Name <span className="text-red-400">*</span></label>
                       <div className="relative">
-                        <Building size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                        <input
-                          type="text"
-                          required
+                        <Building size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                        <select
                           value={bankName}
                           onChange={(e) => setBankName(e.target.value)}
-                          placeholder="Bank Name"
-                          className="w-full bg-[#0e1726]/60 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-[13px] text-white placeholder-slate-500 focus:outline-none focus:border-[#faed26]/50 focus:ring-1 focus:ring-[#faed26]/50 transition-all"
-                        />
+                          required
+                          className="w-full bg-[#0e1726]/60 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-[13px] text-white focus:outline-none focus:border-[#faed26]/50 focus:ring-1 focus:ring-[#faed26]/50 transition-all [&>option]:bg-[#060b13] [&>option]:text-white cursor-pointer"
+                        >
+                          <option value="">-- Select Bank --</option>
+                          <option value="State Bank of India">State Bank of India (SBI)</option>
+                          <option value="Punjab National Bank">Punjab National Bank (PNB)</option>
+                          <option value="Bank of Baroda">Bank of Baroda</option>
+                          <option value="Canara Bank">Canara Bank</option>
+                          <option value="Union Bank of India">Union Bank of India</option>
+                          <option value="Bank of India">Bank of India</option>
+                          <option value="Indian Bank">Indian Bank</option>
+                          <option value="Central Bank of India">Central Bank of India</option>
+                          <option value="Indian Overseas Bank">Indian Overseas Bank</option>
+                          <option value="UCO Bank">UCO Bank</option>
+                          <option value="HDFC Bank">HDFC Bank</option>
+                          <option value="ICICI Bank">ICICI Bank</option>
+                          <option value="Axis Bank">Axis Bank</option>
+                          <option value="Kotak Mahindra Bank">Kotak Mahindra Bank</option>
+                          <option value="IndusInd Bank">IndusInd Bank</option>
+                          <option value="Yes Bank">Yes Bank</option>
+                          <option value="IDBI Bank">IDBI Bank</option>
+                          <option value="Federal Bank">Federal Bank</option>
+                          <option value="South Indian Bank">South Indian Bank</option>
+                          <option value="Karur Vysya Bank">Karur Vysya Bank</option>
+                          <option value="City Union Bank">City Union Bank</option>
+                          <option value="Bandhan Bank">Bandhan Bank</option>
+                          <option value="RBL Bank">RBL Bank</option>
+                          <option value="Other">Other</option>
+                        </select>
                       </div>
                     </div>
                   </div>
