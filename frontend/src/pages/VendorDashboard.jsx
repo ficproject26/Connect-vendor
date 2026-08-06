@@ -977,6 +977,7 @@ const VendorDashboard = () => {
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
 
   // Queries & Support States
+  const [activeQueryTab, setActiveQueryTab] = useState('customer'); // 'customer' | 'my_tickets'
   const [queriesStatusFilter, setQueriesStatusFilter] = useState('All');
   const [queriesSearchQuery, setQueriesSearchQuery] = useState('');
   const [selectedQueryDetail, setSelectedQueryDetail] = useState(null);
@@ -986,6 +987,7 @@ const VendorDashboard = () => {
   const [vendorQueriesList, setVendorQueriesList] = useState([
     {
       id: 'QRY-2026-101',
+      queryType: 'customer',
       customerName: 'Rahul Sharma',
       email: 'rahul.sharma@example.com',
       phone: '9876543210',
@@ -1001,6 +1003,7 @@ const VendorDashboard = () => {
     },
     {
       id: 'QRY-2026-102',
+      queryType: 'customer',
       customerName: 'Priya Verma',
       email: 'priya.v@example.com',
       phone: '9123456789',
@@ -1017,6 +1020,7 @@ const VendorDashboard = () => {
     },
     {
       id: 'QRY-2026-103',
+      queryType: 'customer',
       customerName: 'Amit Patel',
       email: 'amit.patel@example.com',
       phone: '9988776655',
@@ -1029,6 +1033,56 @@ const VendorDashboard = () => {
       replies: [
         { sender: 'Amit Patel', role: 'Customer', text: 'Please send tax invoice with GSTIN breakdown for our institutional order.', time: '2026-08-02 09:45' },
         { sender: 'Vendor Support', role: 'Vendor', text: 'Sent tax invoice PDF to your registered email address.', time: '2026-08-02 10:30' }
+      ]
+    },
+    {
+      id: 'TKT-ADM-501',
+      queryType: 'vendor_support',
+      customerName: 'Platform Support Team',
+      email: 'support@connectapp.com',
+      phone: '1800-123-4567',
+      category: 'Payout & Settlements',
+      subject: 'Weekly Payout delay for August 1st settlement cycle',
+      message: 'Hi Admin, our account settlement for the July 25 - July 31 period has not been credited yet. Please verify.',
+      date: '2026-08-05 16:00',
+      status: 'Open',
+      priority: 'High',
+      replies: [
+        { sender: 'Vendor (You)', role: 'Vendor', text: 'Hi Admin, our account settlement for the July 25 - July 31 period has not been credited yet. Please verify.', time: '2026-08-05 16:00' }
+      ]
+    },
+    {
+      id: 'TKT-ADM-502',
+      queryType: 'vendor_support',
+      customerName: 'Platform Support Team',
+      email: 'support@connectapp.com',
+      phone: '1800-123-4567',
+      category: 'Category & Catalog',
+      subject: 'Request to add new subcategory under Food & Bakery',
+      message: 'We would like to add Artisan Breads as a new subcategory in our catalog.',
+      date: '2026-08-03 10:20',
+      status: 'In Progress',
+      priority: 'Medium',
+      replies: [
+        { sender: 'Vendor (You)', role: 'Vendor', text: 'We would like to add Artisan Breads as a new subcategory in our catalog.', time: '2026-08-03 10:20' },
+        { sender: 'Platform Admin', role: 'Admin', text: 'Hi Dhanu, our catalog team is reviewing your requested subcategory. We will update the taxonomy shortly.', time: '2026-08-03 14:15' }
+      ]
+    },
+    {
+      id: 'TKT-ADM-503',
+      queryType: 'vendor_support',
+      customerName: 'Platform Support Team',
+      email: 'support@connectapp.com',
+      phone: '1800-123-4567',
+      category: 'Storefront & Profile',
+      subject: 'Banner image aspect ratio update assistance',
+      message: 'Need help adjusting our store cover photo resolution for mobile view.',
+      date: '2026-07-28 15:10',
+      status: 'Resolved',
+      priority: 'Low',
+      replies: [
+        { sender: 'Vendor (You)', role: 'Vendor', text: 'Need help adjusting our store cover photo resolution for mobile view.', time: '2026-07-28 15:10' },
+        { sender: 'Platform Admin', role: 'Admin', text: 'Resized image template shared. Updated on storefront.', time: '2026-07-28 17:30' }
       ]
     }
   ]);
@@ -4880,7 +4934,10 @@ const VendorDashboard = () => {
 
         {/* Queries Tab (Vendor) */}
         {activeTab === 'queries' && (() => {
-          const filteredQueries = vendorQueriesList.filter(q => {
+          const currentTypeFilter = activeQueryTab === 'customer' ? 'customer' : 'vendor_support';
+          const tabQueries = vendorQueriesList.filter(q => (q.queryType || 'customer') === currentTypeFilter);
+          
+          const filteredQueries = tabQueries.filter(q => {
             const matchesStatus = queriesStatusFilter === 'All' || q.status === queriesStatusFilter;
             const qSearch = queriesSearchQuery.toLowerCase().trim();
             const matchesSearch = !qSearch || 
@@ -4891,25 +4948,69 @@ const VendorDashboard = () => {
             return matchesStatus && matchesSearch;
           });
 
-          const openCount = vendorQueriesList.filter(q => q.status === 'Open').length;
-          const inProgressCount = vendorQueriesList.filter(q => q.status === 'In Progress').length;
-          const resolvedCount = vendorQueriesList.filter(q => q.status === 'Resolved').length;
+          const openCount = tabQueries.filter(q => q.status === 'Open').length;
+          const inProgressCount = tabQueries.filter(q => q.status === 'In Progress').length;
+          const resolvedCount = tabQueries.filter(q => q.status === 'Resolved').length;
+
+          const customerQueriesCount = vendorQueriesList.filter(q => (q.queryType || 'customer') === 'customer').length;
+          const supportTicketsCount = vendorQueriesList.filter(q => q.queryType === 'vendor_support').length;
 
           return (
             <div className="space-y-6 animate-fadeIn">
+              {/* Sub-Navigation Switcher */}
+              <div className="flex border-b border-slate-200 dark:border-slate-800 gap-2 sm:gap-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveQueryTab('customer');
+                    setQueriesStatusFilter('All');
+                  }}
+                  className={`pb-3 px-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+                    activeQueryTab === 'customer'
+                      ? 'border-[#0B3C7B] dark:border-[#faed26] text-[#0B3C7B] dark:text-[#faed26]'
+                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  <Users size={16} /> Customer Queries ({customerQueriesCount})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveQueryTab('my_tickets');
+                    setQueriesStatusFilter('All');
+                  }}
+                  className={`pb-3 px-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+                    activeQueryTab === 'my_tickets'
+                      ? 'border-[#0B3C7B] dark:border-[#faed26] text-[#0B3C7B] dark:text-[#faed26]'
+                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  <HelpCircle size={16} /> My Support Tickets ({supportTicketsCount})
+                </button>
+              </div>
+
               {/* Top Header */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Customer & Support Queries</h2>
-                  <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">Manage customer inquiries, order questions, and platform support tickets</p>
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                    {activeQueryTab === 'customer' ? 'Customer Queries & Inquiries' : 'My Support Tickets & History'}
+                  </h2>
+                  <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">
+                    {activeQueryTab === 'customer' 
+                      ? 'Manage incoming customer inquiries, order questions, and discount requests' 
+                      : 'Track your platform support tickets, payout questions, and category requests to Admin'}
+                  </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsNewQueryModalOpen(true)}
-                  className="bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-sm px-5 py-3 rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-yellow-500/10 active:scale-[0.98] shrink-0"
-                >
-                  <Plus size={16} /> Raise Support Ticket
-                </button>
+                {activeQueryTab === 'my_tickets' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsNewQueryModalOpen(true)}
+                    className="bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-sm px-5 py-3 rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-yellow-500/10 active:scale-[0.98] shrink-0"
+                  >
+                    <Plus size={16} /> Raise Support Ticket
+                  </button>
+                )}
               </div>
 
               {/* Stats Summary Bar */}
@@ -4919,8 +5020,8 @@ const VendorDashboard = () => {
                     <HelpCircle size={22} />
                   </div>
                   <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total Queries</p>
-                    <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-0.5">{vendorQueriesList.length}</p>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total {activeQueryTab === 'customer' ? 'Queries' : 'Tickets'}</p>
+                    <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-0.5">{tabQueries.length}</p>
                   </div>
                 </div>
 
@@ -4979,7 +5080,7 @@ const VendorDashboard = () => {
                     type="text"
                     value={queriesSearchQuery}
                     onChange={(e) => setQueriesSearchQuery(e.target.value)}
-                    placeholder="Search query by customer or topic..."
+                    placeholder={activeQueryTab === 'customer' ? "Search query by customer..." : "Search ticket by topic or ID..."}
                     className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:border-[#0B3C7B] dark:focus:border-[#faed26] text-slate-800 dark:text-slate-200"
                   />
                   <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
@@ -4990,8 +5091,8 @@ const VendorDashboard = () => {
               {filteredQueries.length === 0 ? (
                 <div className="glass-card p-12 text-center rounded-3xl border border-slate-200 dark:border-slate-800">
                   <HelpCircle size={36} className="mx-auto text-slate-400 mb-3 opacity-60" />
-                  <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">No Queries Found</h4>
-                  <p className="text-xs text-slate-500 mt-1">There are no customer or support queries matching your selected filter.</p>
+                  <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">No {activeQueryTab === 'customer' ? 'Customer Queries' : 'Support Tickets'} Found</h4>
+                  <p className="text-xs text-slate-500 mt-1">There are no {activeQueryTab === 'customer' ? 'customer queries' : 'support tickets'} matching your selected filter.</p>
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 gap-5">
@@ -5032,7 +5133,7 @@ const VendorDashboard = () => {
                           {query.subject}
                         </h4>
 
-                        {/* Customer Info */}
+                        {/* User / Customer Info */}
                         <div className="flex items-center gap-2.5 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/60 text-xs text-slate-600 dark:text-slate-400">
                           <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-800 dark:text-slate-200 font-bold text-xs">
                             {query.customerName.charAt(0)}
@@ -5045,7 +5146,7 @@ const VendorDashboard = () => {
                         </div>
                       </div>
 
-                      {/* View & Reply Button */}
+                      {/* View & Respond Button */}
                       <button
                         type="button"
                         onClick={() => {
@@ -5054,7 +5155,7 @@ const VendorDashboard = () => {
                         }}
                         className="w-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-100 font-bold text-xs py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-[0.98]"
                       >
-                        <Eye size={14} /> View & Respond to Query
+                        <Eye size={14} /> {query.queryType === 'vendor_support' ? 'View Ticket & Admin Responses' : 'View & Respond to Customer'}
                       </button>
                     </div>
                   ))}
@@ -10692,10 +10793,11 @@ required
                 return;
               }
               const newTicket = {
-                id: `QRY-2026-${Math.floor(100 + Math.random() * 900)}`,
-                customerName: user?.businessName || user?.name || 'Vendor Partner',
-                email: user?.email || '',
-                phone: user?.mobileNumber || user?.telephone || '',
+                id: `TKT-ADM-${Math.floor(500 + Math.random() * 500)}`,
+                queryType: 'vendor_support',
+                customerName: 'Platform Support Team',
+                email: 'support@connectapp.com',
+                phone: '1800-123-4567',
                 category: newQueryForm.category,
                 subject: newQueryForm.subject,
                 message: newQueryForm.message,
@@ -10704,7 +10806,7 @@ required
                 priority: newQueryForm.priority,
                 replies: [
                   {
-                    sender: user?.name || 'Vendor Partner',
+                    sender: 'Vendor (You)',
                     role: 'Vendor',
                     text: newQueryForm.message,
                     time: new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -10712,6 +10814,7 @@ required
                 ]
               };
               setVendorQueriesList(prev => [newTicket, ...prev]);
+              setActiveQueryTab('my_tickets');
               setMessage('Support query ticket raised successfully! Admin will review your request.');
               setIsNewQueryModalOpen(false);
               setNewQueryForm({ subject: '', category: 'General Inquiry', message: '', priority: 'Medium' });
