@@ -3,7 +3,7 @@ import { useDashboard } from '../../context/DashboardContext';
 import { useSelector } from 'react-redux';
 import { 
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
-  LogOut, Bell, Settings, CreditCard, Store, ChevronLeft, ChevronRight, Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, IndianRupee, ShieldAlert
+  LogOut, Bell, Settings, CreditCard, Store, ChevronLeft, ChevronRight, Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, IndianRupee, ShieldAlert, HelpCircle
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -73,6 +73,7 @@ const Sidebar = () => {
     }
     items.push({ id: 'payments', name: 'Payments', icon: IndianRupee });
     items.push({ id: 'business', name: 'Business', icon: Store });
+    items.push({ id: 'queries', name: 'Queries', icon: HelpCircle });
     items.push({ id: 'profile', name: 'Business Settings', icon: User });
     return items;
   };

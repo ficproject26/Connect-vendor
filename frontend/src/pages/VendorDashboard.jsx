@@ -956,6 +956,63 @@ const VendorDashboard = () => {
   const [partnerSearchQuery, setPartnerSearchQuery] = useState('');
 
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+
+  // Queries & Support States
+  const [queriesStatusFilter, setQueriesStatusFilter] = useState('All');
+  const [queriesSearchQuery, setQueriesSearchQuery] = useState('');
+  const [selectedQueryDetail, setSelectedQueryDetail] = useState(null);
+  const [isNewQueryModalOpen, setIsNewQueryModalOpen] = useState(false);
+  const [newQueryForm, setNewQueryForm] = useState({ subject: '', category: 'General Inquiry', message: '', priority: 'Medium' });
+  const [replyText, setReplyText] = useState('');
+  const [vendorQueriesList, setVendorQueriesList] = useState([
+    {
+      id: 'QRY-2026-101',
+      customerName: 'Rahul Sharma',
+      email: 'rahul.sharma@example.com',
+      phone: '9876543210',
+      category: 'Order Status Inquiry',
+      subject: 'When will order #ORD-8821 be dispatched?',
+      message: 'Hello, I placed an order yesterday for home essentials. Could you please provide tracking details or estimated delivery timeline?',
+      date: '2026-08-05 14:30',
+      status: 'Open',
+      priority: 'High',
+      replies: [
+        { sender: 'Rahul Sharma', role: 'Customer', text: 'Hello, I placed an order yesterday for home essentials. Could you please provide tracking details or estimated delivery timeline?', time: '2026-08-05 14:30' }
+      ]
+    },
+    {
+      id: 'QRY-2026-102',
+      customerName: 'Priya Verma',
+      email: 'priya.v@example.com',
+      phone: '9123456789',
+      category: 'Product Discount & Offers',
+      subject: 'Membership card discount application on combo items',
+      message: 'Hi, does the 15% Gold Tier member discount apply on seasonal promotional bundles?',
+      date: '2026-08-04 11:15',
+      status: 'In Progress',
+      priority: 'Medium',
+      replies: [
+        { sender: 'Priya Verma', role: 'Customer', text: 'Hi, does the 15% Gold Tier member discount apply on seasonal promotional bundles?', time: '2026-08-04 11:15' },
+        { sender: 'Vendor Support', role: 'Vendor', text: 'Dear Priya, yes! Gold Tier membership discounts apply across all products including combo deals.', time: '2026-08-04 12:00' }
+      ]
+    },
+    {
+      id: 'QRY-2026-103',
+      customerName: 'Amit Patel',
+      email: 'amit.patel@example.com',
+      phone: '9988776655',
+      category: 'Billing & Invoice',
+      subject: 'GST invoice request for July bulk order',
+      message: 'Please send tax invoice with GSTIN breakdown for our institutional order.',
+      date: '2026-08-02 09:45',
+      status: 'Resolved',
+      priority: 'Low',
+      replies: [
+        { sender: 'Amit Patel', role: 'Customer', text: 'Please send tax invoice with GSTIN breakdown for our institutional order.', time: '2026-08-02 09:45' },
+        { sender: 'Vendor Support', role: 'Vendor', text: 'Sent tax invoice PDF to your registered email address.', time: '2026-08-02 10:30' }
+      ]
+    }
+  ]);
   
   // Member Search and Storefront States
   const [memberCategorySearch, setMemberCategorySearch] = useState('');
@@ -2529,6 +2586,7 @@ const VendorDashboard = () => {
               }
               items.push({ id: 'payments', name: 'Payments', icon: IndianRupee });
               items.push({ id: 'business', name: 'Business', icon: Store });
+              items.push({ id: 'queries', name: 'Queries', icon: HelpCircle });
               items.push({ id: 'profile', name: 'Business Settings', icon: User });
               return items;
             };
@@ -4800,6 +4858,192 @@ const VendorDashboard = () => {
             </div>
           </div>
         )}
+
+        {/* Queries Tab (Vendor) */}
+        {activeTab === 'queries' && (() => {
+          const filteredQueries = vendorQueriesList.filter(q => {
+            const matchesStatus = queriesStatusFilter === 'All' || q.status === queriesStatusFilter;
+            const qSearch = queriesSearchQuery.toLowerCase().trim();
+            const matchesSearch = !qSearch || 
+              (q.customerName && q.customerName.toLowerCase().includes(qSearch)) ||
+              (q.subject && q.subject.toLowerCase().includes(qSearch)) ||
+              (q.id && q.id.toLowerCase().includes(qSearch)) ||
+              (q.category && q.category.toLowerCase().includes(qSearch));
+            return matchesStatus && matchesSearch;
+          });
+
+          const openCount = vendorQueriesList.filter(q => q.status === 'Open').length;
+          const inProgressCount = vendorQueriesList.filter(q => q.status === 'In Progress').length;
+          const resolvedCount = vendorQueriesList.filter(q => q.status === 'Resolved').length;
+
+          return (
+            <div className="space-y-6 animate-fadeIn">
+              {/* Top Header */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Customer & Support Queries</h2>
+                  <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">Manage customer inquiries, order questions, and platform support tickets</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsNewQueryModalOpen(true)}
+                  className="bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-sm px-5 py-3 rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-yellow-500/10 active:scale-[0.98] shrink-0"
+                >
+                  <Plus size={16} /> Raise Support Ticket
+                </button>
+              </div>
+
+              {/* Stats Summary Bar */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="glass-card p-5 rounded-3xl border border-slate-200/50 dark:border-slate-800/50 flex items-center gap-4">
+                  <div className="p-3 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-2xl">
+                    <HelpCircle size={22} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total Queries</p>
+                    <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-0.5">{vendorQueriesList.length}</p>
+                  </div>
+                </div>
+
+                <div className="glass-card p-5 rounded-3xl border border-slate-200/50 dark:border-slate-800/50 flex items-center gap-4">
+                  <div className="p-3 bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-2xl">
+                    <Clock size={22} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 uppercase font-bold tracking-wider">Open</p>
+                    <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 mt-0.5">{openCount}</p>
+                  </div>
+                </div>
+
+                <div className="glass-card p-5 rounded-3xl border border-slate-200/50 dark:border-slate-800/50 flex items-center gap-4">
+                  <div className="p-3 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-2xl">
+                    <Activity size={22} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-indigo-600/80 dark:text-indigo-400/80 uppercase font-bold tracking-wider">In Progress</p>
+                    <p className="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-0.5">{inProgressCount}</p>
+                  </div>
+                </div>
+
+                <div className="glass-card p-5 rounded-3xl border border-slate-200/50 dark:border-slate-800/50 flex items-center gap-4">
+                  <div className="p-3 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-2xl">
+                    <CheckCircle2 size={22} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 uppercase font-bold tracking-wider">Resolved</p>
+                    <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">{resolvedCount}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filters & Search Header */}
+              <div className="glass-card p-4 rounded-3xl flex flex-col sm:flex-row justify-between items-center gap-4 border border-slate-200 dark:border-slate-800">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  {['All', 'Open', 'In Progress', 'Resolved'].map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setQueriesStatusFilter(status)}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                        queriesStatusFilter === status
+                          ? 'bg-[#0B3C7B] dark:bg-[#faed26] text-white dark:text-[#0B3C7B] shadow-md'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-350 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <input
+                    type="text"
+                    value={queriesSearchQuery}
+                    onChange={(e) => setQueriesSearchQuery(e.target.value)}
+                    placeholder="Search query by customer or topic..."
+                    className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:border-[#0B3C7B] dark:focus:border-[#faed26] text-slate-800 dark:text-slate-200"
+                  />
+                  <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                </div>
+              </div>
+
+              {/* Query Cards List */}
+              {filteredQueries.length === 0 ? (
+                <div className="glass-card p-12 text-center rounded-3xl border border-slate-200 dark:border-slate-800">
+                  <HelpCircle size={36} className="mx-auto text-slate-400 mb-3 opacity-60" />
+                  <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">No Queries Found</h4>
+                  <p className="text-xs text-slate-500 mt-1">There are no customer or support queries matching your selected filter.</p>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-5">
+                  {filteredQueries.map((query) => (
+                    <div
+                      key={query.id}
+                      className="glass-card p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 space-y-4 hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between"
+                    >
+                      <div>
+                        {/* Status & Priority Row */}
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                              {query.id}
+                            </span>
+                            <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase ${
+                              query.priority === 'High' ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400' :
+                              query.priority === 'Medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' :
+                              'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                            }`}>
+                              {query.priority} Priority
+                            </span>
+                          </div>
+                          <span className={`text-[10px] px-3 py-1 rounded-full font-extrabold uppercase tracking-wider ${
+                            query.status === 'Open' ? 'bg-amber-500 text-slate-950' :
+                            query.status === 'In Progress' ? 'bg-indigo-600 text-white' :
+                            'bg-emerald-500 text-slate-950'
+                          }`}>
+                            {query.status}
+                          </span>
+                        </div>
+
+                        {/* Category & Subject */}
+                        <span className="text-[11px] font-bold text-[#0B3C7B] dark:text-[#faed26]">
+                          {query.category}
+                        </span>
+                        <h4 className="text-base font-bold text-slate-900 dark:text-white mt-1 leading-snug">
+                          {query.subject}
+                        </h4>
+
+                        {/* Customer Info */}
+                        <div className="flex items-center gap-2.5 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/60 text-xs text-slate-600 dark:text-slate-400">
+                          <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-800 dark:text-slate-200 font-bold text-xs">
+                            {query.customerName.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">{query.customerName}</p>
+                            <p className="text-[10px] text-slate-400 truncate">{query.email} • {query.phone}</p>
+                          </div>
+                          <span className="text-[10px] text-slate-400">{query.date}</span>
+                        </div>
+                      </div>
+
+                      {/* View & Reply Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedQueryDetail(query);
+                          setReplyText('');
+                        }}
+                        className="w-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-100 font-bold text-xs py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                      >
+                        <Eye size={14} /> View & Respond to Query
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Profile Tab */}
         {activeTab === 'profile' && (
@@ -10301,6 +10545,237 @@ required
           )}
         </div>
       </Modal>
+
+      {/* Modal: View & Respond to Query */}
+      {selectedQueryDetail && (
+        <Modal
+          isOpen={!!selectedQueryDetail}
+          onClose={() => setSelectedQueryDetail(null)}
+          title={`Query Details - ${selectedQueryDetail.id}`}
+        >
+          <div className="space-y-5 text-slate-800 dark:text-slate-100">
+            {/* Header info */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-[#0B3C7B] dark:text-[#faed26]">{selectedQueryDetail.category}</span>
+                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase ${
+                  selectedQueryDetail.status === 'Open' ? 'bg-amber-500 text-slate-950' :
+                  selectedQueryDetail.status === 'In Progress' ? 'bg-indigo-600 text-white' :
+                  'bg-emerald-500 text-slate-950'
+                }`}>
+                  {selectedQueryDetail.status}
+                </span>
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white leading-snug">{selectedQueryDetail.subject}</h3>
+              <div className="text-xs text-slate-500 flex flex-wrap justify-between gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
+                <span>From: <strong className="text-slate-800 dark:text-slate-200">{selectedQueryDetail.customerName}</strong> ({selectedQueryDetail.email})</span>
+                <span>Date: {selectedQueryDetail.date}</span>
+              </div>
+            </div>
+
+            {/* Conversation History */}
+            <div className="space-y-3 max-h-60 overflow-y-auto p-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Discussion History</span>
+              {selectedQueryDetail.replies && selectedQueryDetail.replies.map((r, idx) => (
+                <div
+                  key={idx}
+                  className={`p-3.5 rounded-2xl text-xs space-y-1 ${
+                    r.role === 'Vendor'
+                      ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-100 ml-6 border border-blue-200 dark:border-blue-900/40'
+                      : 'bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 mr-6 border border-slate-200 dark:border-slate-800'
+                  }`}
+                >
+                  <div className="flex justify-between items-center text-[10px] text-slate-400">
+                    <span className="font-bold">{r.sender} ({r.role})</span>
+                    <span>{r.time}</span>
+                  </div>
+                  <p className="leading-relaxed">{r.text}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Response Form */}
+            <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Write Response / Internal Note</label>
+              <textarea
+                rows={3}
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder="Type your response to the customer..."
+                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs focus:outline-none focus:border-[#0B3C7B] dark:focus:border-[#faed26] text-slate-800 dark:text-slate-100"
+              />
+
+              <div className="flex flex-wrap justify-between items-center gap-3 pt-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 font-medium">Update Status:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVendorQueriesList(prev => prev.map(q => q.id === selectedQueryDetail.id ? { ...q, status: 'In Progress' } : q));
+                      setSelectedQueryDetail(prev => ({ ...prev, status: 'In Progress' }));
+                      setMessage('Query status updated to In Progress');
+                    }}
+                    className="px-3 py-1 bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold hover:bg-indigo-200 transition-colors"
+                  >
+                    In Progress
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVendorQueriesList(prev => prev.map(q => q.id === selectedQueryDetail.id ? { ...q, status: 'Resolved' } : q));
+                      setSelectedQueryDetail(prev => ({ ...prev, status: 'Resolved' }));
+                      setMessage('Query status updated to Resolved');
+                    }}
+                    className="px-3 py-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors"
+                  >
+                    Mark Resolved
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!replyText.trim()) return;
+                    const newReply = {
+                      sender: user?.businessName || user?.name || 'Vendor Support',
+                      role: 'Vendor',
+                      text: replyText.trim(),
+                      time: new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    };
+                    const updatedReplies = [...(selectedQueryDetail.replies || []), newReply];
+                    setVendorQueriesList(prev => prev.map(q => q.id === selectedQueryDetail.id ? { ...q, replies: updatedReplies, status: q.status === 'Open' ? 'In Progress' : q.status } : q));
+                    setSelectedQueryDetail(prev => ({ ...prev, replies: updatedReplies, status: prev.status === 'Open' ? 'In Progress' : prev.status }));
+                    setReplyText('');
+                    setMessage('Response sent successfully!');
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all shadow-md active:scale-[0.98]"
+                >
+                  Send Response
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: Raise Support Ticket to Admin */}
+      {isNewQueryModalOpen && (
+        <Modal
+          isOpen={isNewQueryModalOpen}
+          onClose={() => setIsNewQueryModalOpen(false)}
+          title="Raise Support Ticket / Query to Platform Admin"
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!newQueryForm.subject || !newQueryForm.message) {
+                setError('Please provide both subject and message details.');
+                return;
+              }
+              const newTicket = {
+                id: `QRY-2026-${Math.floor(100 + Math.random() * 900)}`,
+                customerName: user?.businessName || user?.name || 'Vendor Partner',
+                email: user?.email || '',
+                phone: user?.mobileNumber || user?.telephone || '',
+                category: newQueryForm.category,
+                subject: newQueryForm.subject,
+                message: newQueryForm.message,
+                date: new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+                status: 'Open',
+                priority: newQueryForm.priority,
+                replies: [
+                  {
+                    sender: user?.name || 'Vendor Partner',
+                    role: 'Vendor',
+                    text: newQueryForm.message,
+                    time: new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                  }
+                ]
+              };
+              setVendorQueriesList(prev => [newTicket, ...prev]);
+              setMessage('Support query ticket raised successfully! Admin will review your request.');
+              setIsNewQueryModalOpen(false);
+              setNewQueryForm({ subject: '', category: 'General Inquiry', message: '', priority: 'Medium' });
+            }}
+            className="space-y-4 text-slate-800 dark:text-slate-100"
+          >
+            <div>
+              <label className="block text-xs font-bold mb-1">Category</label>
+              <select
+                value={newQueryForm.category}
+                onChange={(e) => setNewQueryForm({ ...newQueryForm, category: e.target.value })}
+                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:border-[#0B3C7B] dark:focus:border-[#faed26]"
+              >
+                <option value="General Inquiry">General Inquiry</option>
+                <option value="Catalog & Product Listing">Catalog & Product Listing</option>
+                <option value="Order & Delivery Issues">Order & Delivery Issues</option>
+                <option value="Payments & Settlement">Payments & Settlement</option>
+                <option value="Account & Membership Plan">Account & Membership Plan</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold mb-1">Subject *</label>
+              <input
+                type="text"
+                required
+                value={newQueryForm.subject}
+                onChange={(e) => setNewQueryForm({ ...newQueryForm, subject: e.target.value })}
+                placeholder="Brief summary of your query or issue..."
+                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:border-[#0B3C7B] dark:focus:border-[#faed26]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold mb-1">Priority Level</label>
+              <div className="grid grid-cols-3 gap-2">
+                {['Low', 'Medium', 'High'].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setNewQueryForm({ ...newQueryForm, priority: p })}
+                    className={`py-2 rounded-xl text-xs font-bold transition-all border ${
+                      newQueryForm.priority === p
+                        ? 'bg-[#0B3C7B] text-white dark:bg-[#faed26] dark:text-[#0B3C7B] border-[#0B3C7B] dark:border-[#faed26]'
+                        : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-350'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold mb-1">Query Details / Message *</label>
+              <textarea
+                required
+                rows={4}
+                value={newQueryForm.message}
+                onChange={(e) => setNewQueryForm({ ...newQueryForm, message: e.target.value })}
+                placeholder="Describe your issue or query in detail so our support team can assist you..."
+                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:border-[#0B3C7B] dark:focus:border-[#faed26]"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsNewQueryModalOpen(false)}
+                className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-extrabold text-xs rounded-xl transition-all shadow-md active:scale-[0.98]"
+              >
+                Submit Ticket
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
     </div>
   );
