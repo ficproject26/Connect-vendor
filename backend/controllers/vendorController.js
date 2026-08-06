@@ -1186,6 +1186,10 @@ const addBusiness = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
+    if (user.status === 'Assigned' || !['Pending', 'Approved', 'Rejected', 'Active'].includes(user.status)) {
+      user.status = 'Approved';
+    }
+
     // Check if duplicate business exists
     const duplicate = user.businesses && user.businesses.find(
       b => b.vendorType === vendorType || b.category === finalCategory
