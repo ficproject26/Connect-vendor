@@ -73,7 +73,7 @@ router.get('/products', async (req, res) => {
 
     allVendorUsers.forEach(vendor => {
       const vStatus = (vendor.status || '').toLowerCase().trim();
-      const isUserSuspended = ['suspended', 'inactive', 'rejected'].includes(vStatus) || vendor.isActive === false;
+      const isUserSuspended = ['suspended', 'inactive', 'rejected'].includes(vStatus);
 
       const vendorIdStr = vendor._id ? vendor._id.toString() : '';
       const emailLower = vendor.email ? vendor.email.toLowerCase().trim() : '';
@@ -98,7 +98,7 @@ router.get('/products', async (req, res) => {
         if (vendor.businesses && Array.isArray(vendor.businesses)) {
           vendor.businesses.forEach(biz => {
             const bizStatus = (biz.status || '').toLowerCase().trim();
-            const isBizSuspended = ['suspended', 'inactive', 'rejected'].includes(bizStatus) || biz.isActive === false;
+            const isBizSuspended = ['suspended', 'inactive', 'rejected'].includes(bizStatus);
             
             if (isBizSuspended) {
               if (biz._id) suspendedIds.add(biz._id.toString());
