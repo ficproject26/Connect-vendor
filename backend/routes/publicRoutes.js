@@ -64,8 +64,12 @@ const getSubNavbarCategory = (baseVendorType, category) => {
 // GET /api/public/products
 router.get('/products', async (req, res) => {
   try {
-    // 1. Fetch all vendors (Approved, Pending, or Rejected for development/testing visibility)
-    const approvedVendors = await User.find({ role: 'Vendor' });
+    // 1. Fetch ONLY Active & Approved Vendors (exclude Suspended, Inactive, Rejected)
+    const approvedVendors = await User.find({
+      role: 'Vendor',
+      status: { $in: ['Active', 'Approved', 'active', 'approved'] },
+      isActive: { $ne: false }
+    });
     const vendorMap = {};
     approvedVendors.forEach(vendor => {
       const vendorIdStr = vendor._id.toString();
@@ -102,26 +106,23 @@ router.get('/products', async (req, res) => {
       }
     });
 
-    // 2. Fetch all products (including Unavailable items so customers can see them as disabled)
+    // 2. Fetch all products
     const products = await Product.find({});
+
+    // Filter out any product whose vendor is Suspended / Inactive / Not in vendorMap
+    const activeProducts = products.filter(p => {
+      const vIdStr = (p.vendorId || p.vendor_id || '').toString();
+      return !!vendorMap[vIdStr];
+    });
 
     const host = req.get('host');
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const baseUrl = `${protocol}://${host}`;
 
-    // 3. Map products to customer app format (ensure no products are dropped)
-    const mappedProducts = products.map(p => {
+    // 3. Map active products to customer app format
+    const mappedProducts = activeProducts.map(p => {
       const vIdStr = (p.vendorId || p.vendor_id || '').toString();
-      const vendor = vendorMap[vIdStr] || {
-        name: 'Store Vendor',
-        baseVendorType: 'Store Vendor',
-        category: p.category || 'General',
-        city: 'Bangalore',
-        address: '',
-        logo: '',
-        mobileNumber: '',
-        operatingHours: ''
-      };
+      const vendor = vendorMap[vIdStr];
       const subNavbarCategory = p.subNavbarCategory || p.mainCategory || getSubNavbarCategory(vendor.baseVendorType, p.category);
       
       return {
