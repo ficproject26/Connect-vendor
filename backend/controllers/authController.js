@@ -351,7 +351,7 @@ const loginVendor = async (req, res) => {
     }
 
     // Check Vendor status
-    const vendorStatus = (user.status || '').toLowerCase();
+    const vendorStatus = (user.status || '').toLowerCase().trim();
     if (vendorStatus === 'pending') {
       return res.status(403).json({ 
         success: false, 
@@ -360,7 +360,7 @@ const loginVendor = async (req, res) => {
     } else if (vendorStatus === 'suspended') {
       return res.status(403).json({ 
         success: false, 
-        message: 'Your vendor account has been suspended by the Admin. Access denied.' 
+        message: 'The admin has suspended your account. Please contact administration.' 
       });
     } else if (vendorStatus === 'inactive') {
       return res.status(403).json({ 

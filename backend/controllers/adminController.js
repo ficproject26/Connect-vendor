@@ -104,9 +104,25 @@ const toggleVendorStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor not found' });
     }
 
-    // Toggle between Approved and Rejected
-    const currentStatus = (vendor.status || '').toLowerCase();
-    vendor.status = (currentStatus === 'approved' || currentStatus === 'active') ? 'Rejected' : 'Approved';
+    if (req.body && req.body.status) {
+      const raw = String(req.body.status).trim();
+      vendor.status = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+    } else {
+      const currentStatus = (vendor.status || '').toLowerCase();
+      vendor.status = (currentStatus === 'approved' || currentStatus === 'active') ? 'Rejected' : 'Approved';
+    }
+
+    const isActiveState = ['Approved', 'Active'].includes(vendor.status);
+    vendor.isActive = isActiveState;
+    vendor.isApproved = isActiveState;
+
+    if (vendor.businesses && Array.isArray(vendor.businesses)) {
+      vendor.businesses.forEach(b => {
+        b.status = vendor.status;
+        b.isActive = isActiveState;
+      });
+    }
+
     await vendor.save();
 
     res.status(200).json({ 

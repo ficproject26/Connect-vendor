@@ -187,18 +187,30 @@ const getMemberCard = async (req, res) => {
 // @access  Private (Member)
 const getParticipatingVendors = async (req, res) => {
   try {
-    const vendors = await User.find({ role: 'Vendor' });
+    const activeStatuses = ['approved', 'active'];
+    const vendors = await User.find({ 
+      $or: [{ role: 'Vendor' }, { role: 'vendor' }]
+    });
     
-    // Format vendor list for member display
+    // Format vendor list for member display (only active/approved and non-suspended vendors)
     const formatted = [];
     
     vendors.forEach(v => {
+      const vStatus = (v.status || '').toLowerCase().trim();
+      if (!activeStatuses.includes(vStatus) || v.isActive === false) {
+        return; // Exclude suspended/inactive/rejected/pending vendors from customer dashboard
+      }
+
       const addedIds = new Set();
       const vId = v.vendorId || v.registrationId || v._id;
       
-      // Add all sub-businesses
+      // Add all sub-businesses (filtering out any non-active sub-business)
       if (v.businesses && v.businesses.length > 0) {
         v.businesses.forEach(b => {
+          const bStatus = (b.status || '').toLowerCase().trim();
+          if (bStatus && !activeStatuses.includes(bStatus)) return;
+          if (b.isActive === false) return;
+
           formatted.push({
             id: b._id,
             vendorId: vId,
@@ -251,11 +263,19 @@ const redeemDiscount = async (req, res) => {
 
     // Get vendor details
     const vendor = await User.findOne({ 
-      role: 'Vendor', 
+      $or: [{ role: 'Vendor' }, { role: 'vendor' }],
       $or: [ { _id: vendorId }, { 'businesses._id': vendorId } ]
     });
     if (!vendor) {
       return res.status(404).json({ success: false, message: 'Vendor is not available' });
+    }
+
+    const vStatus = (vendor.status || '').toLowerCase().trim();
+    if (['suspended', 'inactive', 'rejected', 'pending'].includes(vStatus) || vendor.isActive === false) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'The admin has suspended your account. Please contact administration.' 
+      });
     }
 
     // Get item details
@@ -516,14 +536,25 @@ const getVendorProducts = async (req, res) => {
     let parentId = vendorId;
     let activeVendorType = '';
 
-    if (vendorUser) {
-      parentId = vendorUser._id.toString();
-      const activeBiz = vendorUser.businesses?.find(b => b._id.toString() === vendorId.toString());
-      if (activeBiz) {
-        activeVendorType = activeBiz.vendorType;
-      } else {
-        activeVendorType = vendorUser.vendorType || '';
+    if (!vendorUser) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const vStatus = (vendorUser.status || '').toLowerCase().trim();
+    if (['suspended', 'inactive', 'rejected', 'pending'].includes(vStatus) || vendorUser.isActive === false) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    parentId = vendorUser._id.toString();
+    const activeBiz = vendorUser.businesses?.find(b => b._id.toString() === vendorId.toString());
+    if (activeBiz) {
+      const bStatus = (activeBiz.status || '').toLowerCase().trim();
+      if (bStatus && ['suspended', 'inactive', 'rejected', 'pending'].includes(bStatus)) {
+        return res.status(200).json({ success: true, data: [] });
       }
+      activeVendorType = activeBiz.vendorType;
+    } else {
+      activeVendorType = vendorUser.vendorType || '';
     }
 
     const products = await Product.find({

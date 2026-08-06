@@ -14,10 +14,13 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
   useEffect(() => {
     if (isSuspendedOrRevoked) {
-      alert(`Access denied. Your vendor account has been marked as ${user?.status || 'Suspended'} by the Administrator.`);
+      alert(statusLower === 'suspended'
+        ? 'Your account has been suspended by the administrator. Please contact administration.'
+        : `Access denied. Your vendor account has been marked as ${user?.status || 'Inactive'} by the Administrator.`
+      );
       dispatch(logout());
     }
-  }, [isSuspendedOrRevoked, user?.status, dispatch]);
+  }, [isSuspendedOrRevoked, statusLower, user?.status, dispatch]);
 
   if (!isAuthenticated || !user || isSuspendedOrRevoked) {
     return <Navigate to="/" replace />;
