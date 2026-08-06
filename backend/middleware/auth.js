@@ -20,16 +20,17 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
       }
 
-      // Deny access if vendor account status is not active (Suspended, Inactive, Rejected, Pending)
+      // Deny access if vendor account status is not active (Suspended, Inactive, Rejected, Pending, isLocked, isActive=false)
       const statusLower = (user.status || '').toLowerCase().trim();
       const userRoleLower = (user.role || user.userType || '').toLowerCase().trim();
       const isVendorRole = userRoleLower.includes('vendor') || userRoleLower.includes('merchant');
+      const isNotActive = !['approved', 'active'].includes(statusLower) || user.isActive === false || user.isApproved === false || user.isLocked === true;
 
-      if (isVendorRole && (['suspended', 'inactive', 'rejected'].includes(statusLower) || user.isActive === false)) {
+      if (isVendorRole && isNotActive) {
         return res.status(403).json({ 
           success: false, 
           isTerminated: true,
-          message: `Your vendor account has been deactivated by the administrator. Please contact support.` 
+          message: `The admin has suspended your account. Please contact administration.` 
         });
       }
 

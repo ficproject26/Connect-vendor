@@ -73,7 +73,7 @@ router.get('/products', async (req, res) => {
 
     allVendorUsers.forEach(vendor => {
       const vStatus = (vendor.status || '').toLowerCase().trim();
-      const isUserSuspended = ['suspended', 'inactive', 'rejected'].includes(vStatus);
+      const isUserSuspended = !['active', 'approved'].includes(vStatus) || vendor.isActive === false || vendor.isApproved === false || vendor.isLocked === true;
 
       const vendorIdStr = vendor._id ? vendor._id.toString() : '';
       const emailLower = vendor.email ? vendor.email.toLowerCase().trim() : '';
@@ -98,7 +98,7 @@ router.get('/products', async (req, res) => {
         if (vendor.businesses && Array.isArray(vendor.businesses)) {
           vendor.businesses.forEach(biz => {
             const bizStatus = (biz.status || '').toLowerCase().trim();
-            const isBizSuspended = ['suspended', 'inactive', 'rejected'].includes(bizStatus);
+            const isBizSuspended = !['active', 'approved'].includes(bizStatus) || biz.isActive === false;
             
             if (isBizSuspended) {
               if (biz._id) suspendedIds.add(biz._id.toString());
@@ -143,17 +143,23 @@ router.get('/products', async (req, res) => {
 
     // Filter products: must belong to an active vendor in vendorMap, and must NOT be in suspendedIds or suspendedNames
     const activeProducts = products.filter(p => {
-      const vIdStr = (p.vendorId || p.vendor_id || '').toString();
+      const vIdStr = (p.vendorId || p.vendor_id || '').toString().trim();
+      const pBizId = (p.businessId || p.outletId || p.storeId || '').toString().trim();
       const vEmail = (p.vendorEmail || '').toLowerCase().trim();
-      const pVendorName = (p.vendorName || p.brand || p.companyName || '').toLowerCase().trim();
+      const pVendorName = (p.vendorName || p.brand || p.companyName || p.businessName || '').toLowerCase().trim();
 
-      // If vendor is explicitly suspended by ID, email, or brand name -> exclude
-      if (suspendedIds.has(vIdStr) || (vEmail && suspendedIds.has(vEmail)) || (pVendorName && suspendedNames.has(pVendorName))) {
+      // If vendor or business is explicitly suspended by ID, email, or brand name -> exclude
+      if (
+        (vIdStr && suspendedIds.has(vIdStr)) ||
+        (pBizId && suspendedIds.has(pBizId)) ||
+        (vEmail && suspendedIds.has(vEmail)) ||
+        (pVendorName && suspendedNames.has(pVendorName))
+      ) {
         return false;
       }
 
-      // Product MUST belong to an active vendor in vendorMap
-      const hasActiveVendor = !!vendorMap[vIdStr] || (vEmail && !!vendorMap[vEmail]);
+      // Product MUST belong to an active vendor or active business in vendorMap
+      const hasActiveVendor = (vIdStr && !!vendorMap[vIdStr]) || (pBizId && !!vendorMap[pBizId]) || (vEmail && !!vendorMap[vEmail]);
       return hasActiveVendor;
     });
 

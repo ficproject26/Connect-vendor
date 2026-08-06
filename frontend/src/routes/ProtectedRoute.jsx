@@ -10,7 +10,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   const statusLower = (user?.status || '').toLowerCase().trim();
   const userRole = (user?.role || user?.userType || '').toLowerCase().trim();
   const isVendorUser = userRole.includes('vendor') || userRole.includes('merchant');
-  const isSuspendedOrRevoked = isVendorUser && (['suspended', 'inactive', 'rejected'].includes(statusLower) || user?.isActive === false);
+  const isSuspendedOrRevoked = isVendorUser && (!['active', 'approved'].includes(statusLower) || user?.isActive === false || user?.isApproved === false || user?.isLocked === true);
 
   useEffect(() => {
     if (isSuspendedOrRevoked) {
