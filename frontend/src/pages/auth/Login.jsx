@@ -8,6 +8,7 @@ import {
   loginFailure, 
   clearError 
 } from '../../store/authSlice';
+import { getVendorBackendUrl } from '../../services/apiSetup';
 import { Store, Lock, Mail, ArrowRight, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 
 const Login = () => {
@@ -65,9 +66,10 @@ const Login = () => {
     dispatch(loginStart());
 
     try {
+      const backendUrl = getVendorBackendUrl();
       const endpoint = loginType === 'vendor' 
-        ? `http://${window.location.hostname}:8000/api/auth/login-vendor`
-        : `http://${window.location.hostname}:8000/api/auth/login-member`;
+        ? `${backendUrl}/api/auth/login-vendor`
+        : `${backendUrl}/api/auth/login-member`;
 
       const response = await axios.post(endpoint, { email, password });
       

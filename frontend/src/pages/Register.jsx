@@ -9,6 +9,7 @@ import {
   Eye, EyeOff
 } from 'lucide-react';
 import { vendorTaxonomy, getBaseVendorType } from '../data/servicesData';
+import { getVendorBackendUrl } from '../services/apiSetup';
 
 const Register = () => {
   const [searchParams] = useSearchParams();
@@ -444,8 +445,7 @@ const Register = () => {
         });
       }
 
-      const apiHost = window.location.hostname || 'localhost';
-      const response = await axios.post(`http://${apiHost}:8000/api/auth/register-vendor`, formData);
+      const response = await axios.post(`${getVendorBackendUrl()}/api/auth/register-vendor`, formData);
 
       if (response.data.success) {
         setSuccess(response.data.message || 'Vendor registered successfully!');
@@ -1520,7 +1520,7 @@ const Register = () => {
                     setShowTermsModal(false);
                     // Send terms email asynchronously in the background
                     try {
-                      axios.post(`http://${window.location.hostname}:8000/api/auth/send-terms-email`, { email })
+                      axios.post(`${getVendorBackendUrl()}/api/auth/send-terms-email`, { email })
                         .then(res => {
                           if (res.data.success) {
                             console.log("✉️ Terms and conditions email sent successfully:", res.data.message);

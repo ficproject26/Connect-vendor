@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
+import { getVendorBackendUrl } from '../services/apiSetup';
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 
@@ -552,7 +553,7 @@ export const DashboardProvider = ({ children }) => {
     setIsStorefrontModalOpen(true);
     setLoadingStorefront(true);
     try {
-      const res = await axios.get(`http://${window.location.hostname}:8000/api/member/vendors/${vendor.id}/products`, getAxiosConfig());
+      const res = await axios.get(`${getVendorBackendUrl()}/api/member/vendors/${vendor.id}/products`, getAxiosConfig());
       if (res.data.success) {
         setStorefrontProducts(res.data.data);
       }

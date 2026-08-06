@@ -5,6 +5,7 @@ import { logout, toggleSidebar, switchBusinessSuccess } from '../../store/authSl
 import { LogOut, User, Store, Shield, CreditCard, Home, Sun, Moon, Activity, ChevronDown, Search, Settings, Bell, HelpCircle, Globe, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 import Modal from '../common/Modal';
 import { vendorTaxonomy } from '../../data/servicesData';
+import { getVendorBackendUrl } from '../../services/apiSetup';
 
 const Navbar = () => {
   const { user, isAuthenticated, token, sidebarCollapsed, activeBusinessId } = useSelector((state) => state.auth);
@@ -38,7 +39,7 @@ const Navbar = () => {
     if (!isAuthenticated || !token || user?.role !== 'Vendor') return;
     const fetchOrders = async () => {
       try {
-        const res = await fetch(`http://${window.location.hostname}:8000/api/vendor/orders`, {
+        const res = await fetch(`${getVendorBackendUrl()}/api/vendor/orders`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();

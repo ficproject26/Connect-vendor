@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { getVendorBackendUrl } from '../../services/apiSetup';
 
 const Profile = () => {
   const {
@@ -178,7 +179,7 @@ const Profile = () => {
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.put(`http://${window.location.hostname}:8000/api/vendor/profile`, {
+      const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/profile`, {
         ...profileForm,
         activeBusinessId
       }, getAxiosConfig());
