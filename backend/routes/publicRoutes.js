@@ -317,7 +317,7 @@ router.get('/products', async (req, res) => {
           if (pin.startsWith('40')) return 'Mumbai';
           if (pin.startsWith('11')) return 'Delhi';
           if (pin.startsWith('64')) return 'Coimbatore';
-          return vendor.city || 'Bangalore';
+          return p.city || vendor.city || 'Pan India';
         })(),
         tag: p.status === 'Unavailable' ? 'Unavailable' : (p.status === 'Low Stock' ? 'Low Stock' : 'Verified Partner'),
         discount: p.discount || (p.originalPrice && p.originalPrice > p.price ? `${Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}% off` : ''),
