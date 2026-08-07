@@ -198,12 +198,7 @@ router.get('/products', async (req, res) => {
         return false;
       }
 
-      // Product MUST belong to an active vendor or active business in vendorMap
-      const hasActiveVendor = (vIdStr && !!vendorMap[vIdStr]) || 
-                             (pBizId && !!vendorMap[pBizId]) || 
-                             (vEmail && !!vendorMap[vEmail]) ||
-                             (pVendorName && !!vendorMap[pVendorName]);
-      return hasActiveVendor;
+      return true;
     });
 
     const host = req.get('host');
@@ -214,7 +209,7 @@ router.get('/products', async (req, res) => {
     const mappedProducts = activeProducts.map(p => {
       const vIdStr = (p.vendorId || p.vendor_id || '').toString();
       const vendor = vendorMap[vIdStr] || {
-        name: 'Store Vendor',
+        name: p.vendorName || p.brand || p.companyName || 'Store Vendor',
         baseVendorType: 'Store Vendor',
         category: p.category || 'General',
         city: 'Bangalore',
@@ -224,7 +219,13 @@ router.get('/products', async (req, res) => {
         operatingHours: ''
       };
       const subNavbarCategory = p.subNavbarCategory || p.mainCategory || getSubNavbarCategory(vendor.baseVendorType, p.category);
-      
+      const rawImg = p.imageUrl || p.image || p.img || (p.imageUrls && p.imageUrls.length > 0 ? p.imageUrls[0] : '');
+      const finalImg = rawImg 
+        ? (rawImg.startsWith('/uploads') ? `${baseUrl}${rawImg}` : rawImg)
+        : (subNavbarCategory === 'Services' 
+            ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
+            : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60');
+
       return {
         id: p._id,
         vendorId: vIdStr || p._id,
@@ -234,7 +235,7 @@ router.get('/products', async (req, res) => {
         unit: p.unit || 'count',
         stock: p.stock,
         status: p.status || 'Available',
-        originalPrice: p.originalPrice || Math.round(p.price * 1.25),
+        originalPrice: p.originalPrice ? p.originalPrice : (p.mrp || p.price),
         guests: p.guests || 2,
         amenities: p.amenities || [],
         category: p.category || vendor.category || 'General',
@@ -268,21 +269,13 @@ router.get('/products', async (req, res) => {
         distance: p.distance,
         busTiming: p.busTiming,
         stoppings: p.stoppings || [],
-        image: p.imageUrl 
-          ? (p.imageUrl.startsWith('/uploads') ? `${baseUrl}${p.imageUrl}` : p.imageUrl)
-          : (subNavbarCategory === 'Services' 
-              ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
-              : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60'),
+        image: finalImg,
         images: p.imageUrls && p.imageUrls.length > 0
           ? p.imageUrls.map(img => img.startsWith('/uploads') ? `${baseUrl}${img}` : img)
-          : [p.imageUrl 
-              ? (p.imageUrl.startsWith('/uploads') ? `${baseUrl}${p.imageUrl}` : p.imageUrl)
-              : (subNavbarCategory === 'Services' 
-                  ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
-                  : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60')],
-        rating: 4.5,
-        reviews: 120,
-        vendorName: vendor.name,
+          : [finalImg],
+        rating: p.rating || 4.5,
+        reviews: p.reviews !== undefined ? p.reviews : 12,
+        vendorName: p.vendorName || vendor.name,
         vendorLogo: vendor.logo,
         vendorAddress: vendor.address,
         vendorOperatingHours: vendor.operatingHours,
@@ -297,7 +290,7 @@ router.get('/products', async (req, res) => {
           return vendor.city || 'Bangalore';
         })(),
         tag: p.status === 'Unavailable' ? 'Unavailable' : (p.status === 'Low Stock' ? 'Low Stock' : 'Verified Partner'),
-        discount: '20% off',
+        discount: p.discount || (p.originalPrice && p.originalPrice > p.price ? `${Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}% off` : ''),
         delivery: 'Free Delivery'
       };
     });
