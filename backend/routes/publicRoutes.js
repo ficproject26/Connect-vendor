@@ -77,6 +77,7 @@ router.get('/products', async (req, res) => {
       const isUserSuspended = 
         ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
         vendor.isActive === false || 
+        vendor.isApproved === false ||
         vendor.isLocked === true || 
         vendor.isSuspended === true ||
         vendor.status === 'SUSPENDED' ||
@@ -86,14 +87,19 @@ router.get('/products', async (req, res) => {
         vendor._id ? vendor._id.toString() : '',
         vendor.vendorId ? vendor.vendorId.toString() : '',
         vendor.registrationId ? vendor.registrationId.toString() : '',
+        vendor.regId ? vendor.regId.toString() : '',
         vendor.id ? vendor.id.toString() : '',
+        vendor.username ? vendor.username.toLowerCase().trim() : '',
+        vendor.handle ? vendor.handle.toLowerCase().trim() : '',
         vendor.email ? vendor.email.toLowerCase().trim() : '',
         vendor.phone ? vendor.phone.toString().replace(/\D/g, '') : '',
         vendor.mobileNumber ? vendor.mobileNumber.toString().replace(/\D/g, '') : '',
+        vendor.telephone ? vendor.telephone.toString().replace(/\D/g, '') : '',
         vendor.businessName ? vendor.businessName.toLowerCase().trim() : '',
         vendor.name ? vendor.name.toLowerCase().trim() : '',
         vendor.companyName ? vendor.companyName.toLowerCase().trim() : '',
-        vendor.brand ? vendor.brand.toLowerCase().trim() : ''
+        vendor.brand ? vendor.brand.toLowerCase().trim() : '',
+        vendor.vendorCode ? vendor.vendorCode.toString().toLowerCase().trim() : ''
       ].filter(Boolean);
 
       if (isUserSuspended) {
@@ -187,15 +193,26 @@ router.get('/products', async (req, res) => {
       const productVendorKeys = [
         p.vendorId ? p.vendorId.toString() : '',
         p.vendor_id ? p.vendor_id.toString() : '',
+        p.vendor ? p.vendor.toString() : '',
+        p.createdBy ? p.createdBy.toString() : '',
+        p.userId ? p.userId.toString() : '',
+        p.user ? p.user.toString() : '',
+        p.registrationId ? p.registrationId.toString() : '',
+        p.regId ? p.regId.toString() : '',
         p.businessId ? p.businessId.toString() : '',
         p.outletId ? p.outletId.toString() : '',
         p.storeId ? p.storeId.toString() : '',
+        p.username ? p.username.toLowerCase().trim() : '',
+        p.vendorUsername ? p.vendorUsername.toLowerCase().trim() : '',
         p.vendorEmail ? p.vendorEmail.toLowerCase().trim() : '',
+        p.email ? p.email.toLowerCase().trim() : '',
         p.vendorPhone ? p.vendorPhone.toString().replace(/\D/g, '') : '',
         p.phone ? p.phone.toString().replace(/\D/g, '') : '',
+        p.mobileNumber ? p.mobileNumber.toString().replace(/\D/g, '') : '',
         p.vendorName ? p.vendorName.toLowerCase().trim() : '',
         p.brand ? p.brand.toLowerCase().trim() : '',
         p.companyName ? p.companyName.toLowerCase().trim() : '',
+        p.company ? p.company.toLowerCase().trim() : '',
         p.businessName ? p.businessName.toLowerCase().trim() : ''
       ].filter(Boolean);
 
@@ -210,6 +227,8 @@ router.get('/products', async (req, res) => {
         const vId = v._id ? v._id.toString() : '';
         const vVenId = v.vendorId ? v.vendorId.toString() : '';
         const vRegId = v.registrationId ? v.registrationId.toString() : '';
+        const vRegId2 = v.regId ? v.regId.toString() : '';
+        const vUser = v.username ? v.username.toLowerCase().trim() : '';
         const vEmail = v.email ? v.email.toLowerCase().trim() : '';
         const vPhone = v.phone ? v.phone.toString().replace(/\D/g, '') : '';
         const vMob = v.mobileNumber ? v.mobileNumber.toString().replace(/\D/g, '') : '';
@@ -225,23 +244,21 @@ router.get('/products', async (req, res) => {
           });
         }
 
-        const allKeysForVendor = [vId, vVenId, vRegId, vEmail, vPhone, vMob, vBiz, vName, ...vBizListKeys].filter(Boolean);
+        const allKeysForVendor = [vId, vVenId, vRegId, vRegId2, vUser, vEmail, vPhone, vMob, vBiz, vName, ...vBizListKeys].filter(Boolean);
 
         return productVendorKeys.some(k => allKeysForVendor.includes(k));
       });
 
-      if (!matchingVendorUser) {
-        // Exclude products that do not belong to any active registered vendor user in the system
-        return false;
-      }
-
-      const vStatus = (matchingVendorUser.status || matchingVendorUser.vendorStatus || '').toString().toLowerCase().trim();
-      const isSusp = ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
-                     matchingVendorUser.isActive === false || 
-                     matchingVendorUser.isLocked === true || 
-                     matchingVendorUser.isSuspended === true;
-      if (isSusp) {
-        return false;
+      if (matchingVendorUser) {
+        const vStatus = (matchingVendorUser.status || matchingVendorUser.vendorStatus || '').toString().toLowerCase().trim();
+        const isSusp = ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
+                       matchingVendorUser.isActive === false || 
+                       matchingVendorUser.isApproved === false ||
+                       matchingVendorUser.isLocked === true || 
+                       matchingVendorUser.isSuspended === true;
+        if (isSusp) {
+          return false;
+        }
       }
 
       return true;
