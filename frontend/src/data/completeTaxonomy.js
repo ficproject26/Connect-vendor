@@ -116,28 +116,7 @@ export const COMPLETE_CAT_TAXONOMY = {
     "Emergency Travel": ["Medical Emergency Travel", "Emergency Ticket Booking", "Travel Support", "Insurance Claims"]
   },
   "Jobs": {
-    "Banking": ["Relationship Manager", "Sales Officer", "Branch Operations", "Customer Service Executive", "Credit Analyst", "Loan Officer", "CASA Executive", "Branch Manager", "Wealth Manager", "Commercial Banking"],
-    "IT": ["Software Developer", "Full Stack Developer", "Frontend Developer", "Backend Developer", "Mobile App Developer", "UI/UX Designer", "DevOps Engineer", "Cloud Engineer", "Data Analyst", "AI Engineer", "Cyber Security Analyst"],
-    "Non-IT": ["Admin Executive", "Office Assistant", "Data Entry Operator", "Operations Executive", "Coordinator", "Receptionist", "Back Office Executive"],
-    "BPO": ["Voice Process", "Non-Voice Process", "Customer Support", "Technical Support", "Chat Support", "International Process", "Domestic Process"],
-    "Sales & Marketing": ["Sales Executive", "Business Development Executive", "Marketing Executive", "Digital Marketing Executive", "Territory Sales Manager", "Area Sales Manager", "Brand Executive"],
-    "Manufacturing": ["Production Operator", "Machine Operator", "Quality Inspector", "Production Supervisor", "Plant Manager", "Maintenance Technician"],
-    "Automobile": ["Service Advisor", "Technician", "Sales Consultant", "Workshop Manager", "Spare Parts Executive"],
-    "Healthcare": ["Doctors", "Nurses", "Pharmacists", "Lab Technicians", "Medical Representatives", "Hospital Administrators"],
-    "Education": ["Teachers", "Professors", "Trainers", "Academic Counselors", "School Administrators", "Placement Officers"],
-    "Hospitality": ["Hotel Manager", "Front Office Executive", "Housekeeping Staff", "Chef", "Waiter", "Restaurant Manager"],
-    "Travel & Tourism": ["Travel Consultant", "Tour Coordinator", "Ticketing Executive", "Visa Consultant", "Travel Operations Executive"],
-    "Real Estate": ["Property Consultant", "Sales Executive", "Site Engineer", "CRM Executive", "Real Estate Manager"],
-    "Legal": ["Advocate", "Legal Associate", "Legal Advisor", "Documentation Executive"],
-    "Finance": ["Accountant", "Finance Executive", "Tax Consultant", "Auditor", "Chartered Accountant"],
-    "Logistics": ["Warehouse Executive", "Logistics Coordinator", "Supply Chain Analyst", "Delivery Executive"],
-    "Construction": ["Civil Engineer", "Site Supervisor", "Project Manager", "Architect", "Quantity Surveyor"],
-    "Creative": ["Graphic Designer", "Video Editor", "Animator", "Content Writer", "Social Media Manager"],
-    "Retail": ["Store Manager", "Cashier", "Retail Sales Executive", "Inventory Executive"],
-    "HR & Recruitment": ["HR Executive", "Recruiter", "Talent Acquisition Specialist", "HR Manager"],
-    "Government": ["State Government Jobs", "Central Government Jobs", "Railway Jobs", "Defense Jobs", "PSU Jobs"],
-    "International": ["Gulf Jobs", "Europe Jobs", "Singapore Jobs", "Malaysia Jobs", "Canada Jobs", "Australia Jobs"],
-    "Internships": ["IT Internship", "HR Internship", "Marketing Internship", "Banking Internship", "Finance Internship"],
-    "Freelance & Remote": ["Remote Developer", "Remote Designer", "Virtual Assistant", "Freelance Writer", "Online Tutor"]
+    "IT Domain": ["Full Stack", "Software Developer", "Frontend Developer", "Backend Developer", "Mobile App Developer", "UI/UX Designer", "DevOps Engineer", "Cloud Engineer", "Data Analyst", "AI Engineer", "Cyber Security Analyst"],
+    "Non-IT": ["Admin Executive", "Office Assistant", "Data Entry Operator", "Operations Executive", "Coordinator", "Receptionist", "Back Office Executive"]
   }
 };

@@ -601,13 +601,9 @@ export const vendorTaxonomy = {
   "Jobs": {
     emoji: "💼",
     categories: {
-      "Banking Jobs": [
-        "Relationship Manager",
-        "Sales Officer",
-        "Credit Analyst"
-      ],
-      "IT Jobs": [
-        "Full Stack Developer",
+      "IT Domain": [
+        "Full Stack",
+        "Software Developer",
         "Frontend Developer",
         "Backend Developer",
         "Mobile Developer",
@@ -616,69 +612,11 @@ export const vendorTaxonomy = {
         "Cloud Engineer",
         "AI Engineer"
       ],
-      "Non-IT Jobs": [
+      "Non-IT": [
         "Admin Executive",
         "Office Assistant",
-        "Data Entry Operator"
-      ],
-      "BPO Jobs": [
-        "Voice Process",
-        "Non-Voice Process",
-        "Customer Support"
-      ],
-      "Sales & Marketing": [
-        "Sales Executive",
-        "Business Development",
-        "Digital Marketing"
-      ],
-      "Healthcare Jobs": [
-        "Doctors",
-        "Nurses",
-        "Pharmacists",
-        "Lab Technicians"
-      ],
-      "Education Jobs": [
-        "Teachers",
-        "Professors",
-        "Trainers"
-      ],
-      "Hospitality Jobs": [
-        "Hotel Manager",
-        "Chef",
-        "Waiter",
-        "Housekeeping"
-      ],
-      "Finance Jobs": [
-        "Accountant",
-        "Auditor",
-        "Chartered Accountant"
-      ],
-      "Logistics Jobs": [
-        "Warehouse Executive",
-        "Delivery Executive"
-      ],
-      "Government Jobs": [
-        "State Government",
-        "Central Government",
-        "Railway Jobs",
-        "Defense Jobs"
-      ],
-      "International Jobs": [
-        "Gulf Jobs",
-        "Europe Jobs",
-        "Singapore Jobs",
-        "Canada Jobs"
-      ],
-      "Internships": [
-        "IT Internship",
-        "HR Internship",
-        "Marketing Internship"
-      ],
-      "Freelance & Remote": [
-        "Remote Developer",
-        "Remote Designer",
-        "Virtual Assistant",
-        "Online Tutor"
+        "Data Entry Operator",
+        "Operations Executive"
       ]
     }
   }

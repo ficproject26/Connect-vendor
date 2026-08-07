@@ -325,38 +325,31 @@ const VendorDashboard = () => {
             return { main, sub, subsub };
           };
 
+          const dbCatsByMain = {};
           dbCats.forEach(cat => {
+            if (cat.isDeleted || cat.isActive === false || cat.description === 'DELETED_HIERARCHY_MARKER') return;
             const { main, sub, subsub } = resolveCategoryHierarchy(cat);
-            
-            if (COMPLETE_CAT_TAXONOMY[main]) {
-              if (cat.isDeleted || cat.isActive === false || cat.description === 'DELETED_HIERARCHY_MARKER') {
-                if (sub && sub !== 'General') {
-                  const matchedSubKey = Object.keys(COMPLETE_CAT_TAXONOMY[main]).find(k => k.toLowerCase() === sub.toLowerCase());
-                  const actualSub = matchedSubKey || sub;
-                  if (subsub) {
-                    if (COMPLETE_CAT_TAXONOMY[main][actualSub]) {
-                      COMPLETE_CAT_TAXONOMY[main][actualSub] = COMPLETE_CAT_TAXONOMY[main][actualSub].filter(
-                        x => x.toLowerCase() !== subsub.toLowerCase()
-                      );
-                    }
-                  } else {
-                    delete COMPLETE_CAT_TAXONOMY[main][actualSub];
-                  }
-                } else {
-                  delete COMPLETE_CAT_TAXONOMY[main];
-                }
-              } else {
-                if (sub && sub !== 'ALL_SUBCATEGORIES_DELETED_MARKER') {
-                  const matchedSubKey = Object.keys(COMPLETE_CAT_TAXONOMY[main]).find(k => k.toLowerCase() === sub.toLowerCase());
-                  const actualSub = matchedSubKey || sub;
-                  if (!COMPLETE_CAT_TAXONOMY[main][actualSub]) {
-                    COMPLETE_CAT_TAXONOMY[main][actualSub] = [];
-                  }
-                  if (subsub && subsub !== 'ALL_CHILD_DELETED_MARKER' && !COMPLETE_CAT_TAXONOMY[main][actualSub].some(x => x.toLowerCase() === subsub.toLowerCase())) {
-                    COMPLETE_CAT_TAXONOMY[main][actualSub].push(subsub);
-                  }
-                }
+            if (!main) return;
+            if (!dbCatsByMain[main]) dbCatsByMain[main] = {};
+            if (sub && sub !== 'ALL_SUBCATEGORIES_DELETED_MARKER') {
+              if (!dbCatsByMain[main][sub]) dbCatsByMain[main][sub] = [];
+              if (subsub && subsub !== 'ALL_CHILD_DELETED_MARKER' && !dbCatsByMain[main][sub].includes(subsub)) {
+                dbCatsByMain[main][sub].push(subsub);
               }
+              if (Array.isArray(cat.children)) {
+                cat.children.forEach(ch => {
+                  const chName = (typeof ch === 'string' ? ch : ch.name || '').trim();
+                  if (chName && chName !== 'ALL_CHILD_DELETED_MARKER' && !dbCatsByMain[main][sub].includes(chName)) {
+                    dbCatsByMain[main][sub].push(chName);
+                  }
+                });
+              }
+            }
+          });
+
+          Object.keys(dbCatsByMain).forEach(main => {
+            if (COMPLETE_CAT_TAXONOMY[main] && Object.keys(dbCatsByMain[main]).length > 0) {
+              COMPLETE_CAT_TAXONOMY[main] = dbCatsByMain[main];
             }
           });
           setCategoryTrigger(prev => prev + 1);
