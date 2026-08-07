@@ -35,6 +35,7 @@ const UserSchema = new mongoose.Schema({
   coPartnerName: { type: String },
   gstStatus: { type: String }, // GST Reg. or Non-GST Declared
   panNo: { type: String },
+  aadhaarNo: { type: String },
   companyRegNo: { type: String },
   gstNumber: { type: String },
   msmeStatus: { type: String, default: 'Non-MSME' },

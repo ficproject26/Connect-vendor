@@ -45,7 +45,10 @@ export const COMPLETE_CAT_TAXONOMY = {
   },
   "Daily Needs": {
     "Grocery": ["Staples", "Rice", "Wheat", "Flour", "Rava", "Pulses", "Dal", "Sugar", "Salt", "Cooking Oil", "Spices", "Packaged Foods", "Biscuits", "Snacks", "Noodles", "Breakfast Cereals", "Ready-to-Eat Foods", "Dry Fruits"],
+    "Vegetables": ["Fresh Vegetables", "Onion", "Tomato", "Potato", "Carrot", "Cabbage", "Green Vegetables", "Cauliflower", "Brinjal", "Garlic", "Ginger", "Chilli", "Capsicum"],
+    "Vegtables": ["Fresh Vegetables", "Onion", "Tomato", "Potato", "Carrot", "Cabbage", "Green Vegetables", "Cauliflower", "Brinjal", "Garlic", "Ginger", "Chilli", "Capsicum"],
     "Fruits & Vegetables": ["Fresh Fruits", "Apple", "Banana", "Orange", "Mango", "Grapes", "Pomegranate", "Fresh Vegetables", "Onion", "Tomato", "Potato", "Carrot", "Cabbage", "Green Vegetables"],
+    "Fruits": ["Fresh Fruits", "Apple", "Banana", "Orange", "Mango", "Grapes", "Pomegranate", "Papaya", "Watermelon"],
     "Dairy": ["Milk", "Curd", "Butter", "Ghee", "Cheese", "Paneer", "Yogurt", "Ice Cream", "Flavored Milk"],
     "Water & Beverages": ["Drinking Water", "Water Cans", "Mineral Water", "RO Water Delivery", "Beverages", "Tea", "Coffee", "Juices", "Soft Drinks", "Energy Drinks", "Health Drinks"],
     "Household Essentials": ["Cleaning Products", "Floor Cleaner", "Toilet Cleaner", "Glass Cleaner", "Disinfectants", "Kitchen Essentials", "Dishwash Liquid", "Scrub Pads", "Aluminum Foil", "Storage Containers", "Utility Items", "Buckets", "Mops", "Dustbins", "Cloth Drying Stands"],

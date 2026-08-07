@@ -412,6 +412,30 @@ router.post('/orders', async (req, res) => {
   }
 
   try {
+    const targetVendor = await User.findOne({
+      role: { $in: ['Vendor', 'vendor'] },
+      $or: [
+        { _id: vendorId },
+        { vendorId: vendorId },
+        { registrationId: vendorId },
+        { regId: vendorId },
+        { primaryBusinessId: vendorId },
+        { 'businesses._id': vendorId }
+      ]
+    });
+
+    if (targetVendor) {
+      const vStatus = (targetVendor.status || targetVendor.vendorStatus || '').toString().toLowerCase().trim();
+      const isSuspended = ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
+                          targetVendor.isActive === false || 
+                          targetVendor.isApproved === false || 
+                          targetVendor.isLocked === true || 
+                          targetVendor.isSuspended === true;
+      if (isSuspended) {
+        return res.status(403).json({ success: false, message: 'This vendor is currently suspended and cannot receive new orders or bookings.' });
+      }
+    }
+
     let orderType = type || 'Order';
     if (!type) {
       const vendor = await User.findOne({

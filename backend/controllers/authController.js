@@ -107,6 +107,7 @@ const registerVendor = async (req, res) => {
       mobileNumber,
       gstStatus,
       panNo,
+      aadhaarNo,
       companyRegNo,
       msmeStatus,
       accountHolderName,
@@ -142,6 +143,16 @@ const registerVendor = async (req, res) => {
       !ifscCode
     ) {
       return res.status(400).json({ success: false, message: 'Please provide all required fields (*)' });
+    }
+
+    // Validate PAN Number format
+    if (panNo && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panNo.toUpperCase().trim())) {
+      return res.status(400).json({ success: false, message: 'Invalid PAN Number format. PAN must be 10 characters (5 uppercase letters, 4 digits, 1 letter, e.g. ABCDE1234F).' });
+    }
+
+    // Validate Aadhaar Number format if provided
+    if (aadhaarNo && !/^\d{12}$/.test(aadhaarNo.trim())) {
+      return res.status(400).json({ success: false, message: 'Invalid Aadhaar Number format. Must be a 12-digit number.' });
     }
 
     // Validate email format
@@ -293,6 +304,7 @@ const registerVendor = async (req, res) => {
       mobileNumber,
       gstStatus,
       panNo,
+      aadhaarNo,
       companyRegNo,
       msmeStatus,
       accountHolderName,
@@ -358,7 +370,7 @@ const loginVendor = async (req, res) => {
       if (vendorStatus === 'suspended' || user.isActive === false || user.isLocked === true) {
         return res.status(403).json({ 
           success: false, 
-          message: 'The admin has suspended your account. Please contact administration.' 
+          message: 'Your vendor account has been suspended. Please contact the administrator.' 
         });
       } else if (vendorStatus === 'pending') {
         return res.status(403).json({ 
@@ -378,7 +390,7 @@ const loginVendor = async (req, res) => {
       } else {
         return res.status(403).json({ 
           success: false, 
-          message: 'The admin has suspended your account. Please contact administration.' 
+          message: 'Your vendor account has been suspended. Please contact the administrator.' 
         });
       }
     }

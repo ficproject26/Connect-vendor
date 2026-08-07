@@ -141,24 +141,40 @@ const toggleVendorStatus = async (req, res) => {
 // @access  Private (Admin)
 const editVendorDetails = async (req, res) => {
   try {
-    const { name, businessName, mobileNumber, address, gstNumber, vendorType } = req.body;
+    const { name, businessName, mobileNumber, address, gstNumber, vendorType, status } = req.body;
     
     const vendor = await User.findById(req.params.id);
-    if (!vendor || vendor.role !== 'Vendor') {
+    if (!vendor || (vendor.role !== 'Vendor' && vendor.role !== 'vendor')) {
       return res.status(404).json({ success: false, message: 'Vendor not found' });
     }
 
-    // Update fields
-    const updated = await User.findByIdAndUpdate(req.params.id, {
-      $set: {
-        name: name || vendor.name,
-        businessName: businessName || vendor.businessName,
-        mobileNumber: mobileNumber || vendor.mobileNumber,
-        address: address || vendor.address,
-        gstNumber: gstNumber !== undefined ? gstNumber : vendor.gstNumber,
-        vendorType: vendorType || vendor.vendorType
+    const updateFields = {
+      name: name || vendor.name,
+      businessName: businessName || vendor.businessName,
+      mobileNumber: mobileNumber || vendor.mobileNumber,
+      address: address || vendor.address,
+      gstNumber: gstNumber !== undefined ? gstNumber : vendor.gstNumber,
+      vendorType: vendorType || vendor.vendorType
+    };
+
+    if (status) {
+      const rawStatus = String(status).trim();
+      const formattedStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase();
+      const isActiveState = ['Approved', 'Active'].includes(formattedStatus);
+      updateFields.status = formattedStatus;
+      updateFields.isActive = isActiveState;
+      updateFields.isApproved = isActiveState;
+
+      if (vendor.businesses && Array.isArray(vendor.businesses)) {
+        updateFields.businesses = vendor.businesses.map(b => ({
+          ...(typeof b.toObject === 'function' ? b.toObject() : b),
+          status: formattedStatus,
+          isActive: isActiveState
+        }));
       }
-    }, { new: true });
+    }
+
+    const updated = await User.findByIdAndUpdate(req.params.id, { $set: updateFields }, { new: true });
 
     res.status(200).json({ success: true, message: 'Vendor details updated successfully', data: updated });
   } catch (error) {

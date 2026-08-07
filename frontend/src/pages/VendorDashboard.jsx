@@ -368,13 +368,13 @@ const VendorDashboard = () => {
         const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`, getAxiosConfig());
         const status = (res.data?.data?.status || res.data?.user?.status || user.status || '').toLowerCase().trim();
         if (['suspended', 'inactive', 'rejected'].includes(status)) {
-          alert(`Access denied. Your vendor account has been marked as ${res.data?.data?.status || 'Suspended'} by the Administrator.`);
+          alert('Your vendor account has been suspended. Please contact the administrator.');
           dispatch(logout());
           window.location.href = '/';
         }
       } catch (err) {
         if (err.response?.status === 403 || err.response?.data?.isTerminated) {
-          alert(err.response?.data?.message || 'Your vendor account access has been suspended or revoked. Logging out...');
+          alert(err.response?.data?.message || 'Your vendor account has been suspended. Please contact the administrator.');
           dispatch(logout());
           window.location.href = '/';
         }

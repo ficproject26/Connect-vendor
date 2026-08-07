@@ -30,7 +30,7 @@ const protect = async (req, res, next) => {
         return res.status(403).json({ 
           success: false, 
           isTerminated: true,
-          message: `The admin has suspended your account. Please contact administration.` 
+          message: 'Your vendor account has been suspended. Please contact the administrator.' 
         });
       }
 

@@ -822,10 +822,21 @@ const updateProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
+    if (req.body.panNo !== undefined && String(req.body.panNo).trim() !== '') {
+      if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(String(req.body.panNo).toUpperCase().trim())) {
+        return res.status(400).json({ success: false, message: 'Invalid PAN Number format. PAN must be 10 characters (e.g. ABCDE1234F).' });
+      }
+    }
+    if (req.body.aadhaarNo !== undefined && String(req.body.aadhaarNo).trim() !== '') {
+      if (!/^\d{12}$/.test(String(req.body.aadhaarNo).trim())) {
+        return res.status(400).json({ success: false, message: 'Invalid Aadhaar Number format. Must be a 12-digit number.' });
+      }
+    }
+
     const keys = [
       'name', 'email', 'businessName', 'agentName', 'alternateVendorName', 'contactPerson', 'mobileNumber',
       'address', 'street', 'city', 'state', 'country', 'postalCode', 'telephone', 'fax',
-      'alternateNumber', 'coPartnerName', 'gstStatus', 'panNo', 'companyRegNo', 'gstNumber',
+      'alternateNumber', 'coPartnerName', 'gstStatus', 'panNo', 'aadhaarNo', 'companyRegNo', 'gstNumber',
       'msmeStatus', 'businessLicense', 'accountHolderName', 'bankName', 'bankBranch',
       'bankStreet', 'bankCity', 'accountNo', 'ifscCode', 'swiftCode', 'logo'
     ];

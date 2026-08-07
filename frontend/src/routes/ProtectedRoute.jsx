@@ -15,8 +15,8 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   useEffect(() => {
     if (isSuspendedOrRevoked) {
       alert(statusLower === 'suspended'
-        ? 'Your account has been suspended by the administrator. Please contact administration.'
-        : `Access denied. Your vendor account has been marked as ${user?.status || 'Inactive'} by the Administrator.`
+        ? 'Your vendor account has been suspended. Please contact the administrator.'
+        : `Your vendor account has been suspended. Please contact the administrator.`
       );
       dispatch(logout());
     }
