@@ -80,24 +80,29 @@ const Sidebar = () => {
 
   const getBusinessSidebarItems = () => {
     if (user?.role !== 'Vendor' || !user?.businesses) return [];
-    return user.businesses.map(biz => {
-      const type = biz.vendorType || '';
-      let Icon = Store;
-      if (type.startsWith('Products')) Icon = ShoppingBag;
-      else if (type.startsWith('Daily Needs')) Icon = Store;
-      else if (type.startsWith('Food')) Icon = Utensils;
-      else if (type.startsWith('Stay')) Icon = Hotel;
-      else if (type.startsWith('Travel')) Icon = Truck;
-      else if (type.startsWith('Jobs')) Icon = Briefcase;
-      else if (type.startsWith('Services')) Icon = HeartHandshake;
+    return user.businesses
+      .filter(biz => {
+        const type = (biz.vendorType || biz.category || biz.name || '').toLowerCase();
+        return !type.includes('membership');
+      })
+      .map(biz => {
+        const type = biz.vendorType || '';
+        let Icon = Store;
+        if (type.startsWith('Products')) Icon = ShoppingBag;
+        else if (type.startsWith('Daily Needs')) Icon = Store;
+        else if (type.startsWith('Food')) Icon = Utensils;
+        else if (type.startsWith('Stay')) Icon = Hotel;
+        else if (type.startsWith('Travel')) Icon = Truck;
+        else if (type.startsWith('Jobs')) Icon = Briefcase;
+        else if (type.startsWith('Services')) Icon = HeartHandshake;
 
-      return {
-        id: biz._id,
-        name: type,
-        icon: Icon,
-        isActive: biz._id === activeBusinessId
-      };
-    });
+        return {
+          id: biz._id,
+          name: type,
+          icon: Icon,
+          isActive: biz._id === activeBusinessId
+        };
+      });
   };
 
   const firstItem = getFirstItem();
