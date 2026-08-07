@@ -166,6 +166,7 @@ const Register = () => {
 
   // Documents Fields (Step 3)
   const [panNo, setPanNo] = useState('');
+  const [aadhaarNo, setAadhaarNo] = useState('');
   const [companyRegNo, setCompanyRegNo] = useState('');
   const [gstStatus, setGstStatus] = useState('Non-GST Declared');
   const [msmeStatus, setMsmeStatus] = useState('Non-MSME');
@@ -346,7 +347,12 @@ const Register = () => {
       }
       if (password !== confirmPassword) return 'Passwords do not match';
     } else if (step === 3) {
+      const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+      const aadhaarRegex = /^\d{12}$/;
       if (!panNo) return 'PAN Number is required';
+      if (!panRegex.test(panNo.toUpperCase())) return 'Enter valid 10-character PAN Number (e.g. ABCDE1234F)';
+      if (!aadhaarNo) return 'Aadhaar Number is required';
+      if (!aadhaarRegex.test(aadhaarNo)) return 'Enter valid 12-digit Aadhaar Number';
       if (!licenseFile) return 'Business License Document is required';
       if (!gstStatus) return 'GST Status is required';
       if (gstStatus === 'GST Registered' && !gstNumber) return 'GST Number is required when GST Registered is selected';
@@ -419,9 +425,10 @@ const Register = () => {
       formData.append('city', city || 'City');
       formData.append('state', state || 'State');
       formData.append('country', country);
-      formData.append('postalCode', postalCode || '111111');
+      formData.append('postalCode', postalCode);
       formData.append('gstStatus', gstStatus);
-      formData.append('panNo', panNo);
+      formData.append('panNo', panNo.toUpperCase());
+      formData.append('aadhaarNo', aadhaarNo);
       formData.append('companyRegNo', companyRegNo || '');
       formData.append('msmeStatus', msmeStatus);
       formData.append('accountHolderName', accountHolderName);
@@ -1145,10 +1152,28 @@ const Register = () => {
                         <input
                           type="text"
                           required
+                          maxLength={10}
                           value={panNo}
-                          onChange={(e) => setPanNo(e.target.value.toUpperCase())}
-                          placeholder="Enter PAN Number"
-                          className="w-full bg-[#0e1726]/60 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-[13px] text-white placeholder-slate-500 focus:outline-none focus:border-[#faed26]/50 focus:ring-1 focus:ring-[#faed26]/50 transition-all"
+                          onChange={(e) => setPanNo(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
+                          placeholder="e.g. ABCDE1234F"
+                          className="w-full bg-[#0e1726]/60 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-[13px] text-white placeholder-slate-500 focus:outline-none focus:border-[#faed26]/50 focus:ring-1 focus:ring-[#faed26]/50 transition-all uppercase font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Aadhaar Number */}
+                    <div className="space-y-2">
+                      <label className="text-[14px] font-semibold text-slate-300 flex items-center gap-1">Aadhaar Number <span className="text-red-400">*</span></label>
+                      <div className="relative">
+                        <FileText size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                          type="text"
+                          required
+                          maxLength={12}
+                          value={aadhaarNo}
+                          onChange={(e) => setAadhaarNo(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                          placeholder="Enter 12-digit Aadhaar Number"
+                          className="w-full bg-[#0e1726]/60 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-[13px] text-white placeholder-slate-500 focus:outline-none focus:border-[#faed26]/50 focus:ring-1 focus:ring-[#faed26]/50 transition-all font-mono"
                         />
                       </div>
                     </div>

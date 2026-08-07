@@ -934,12 +934,13 @@ const VendorDashboard = () => {
   const [isCustomerDetailsModalOpen, setIsCustomerDetailsModalOpen] = useState(false);
 
   const getCustomerAddress = (order) => {
-    if (!order) return 'MG Road, Indiranagar, Bangalore';
+    if (!order) return 'Not Specified';
     if (order.customer_address && order.customer_address !== 'N/A') return order.customer_address;
     if (order.address && order.address !== 'N/A') return order.address;
     if (order.deliveryAddress) return order.deliveryAddress;
     if (order.shippingAddress) return order.shippingAddress;
     if (order.location) return order.location;
+    if (order.customer_details?.address) return order.customer_details.address;
     if (order.tableNumber) return `Table #${order.tableNumber}`;
     if (order.roomNumber) return `Room #${order.roomNumber}`;
     if (order.memberAddress) return order.memberAddress;
@@ -952,9 +953,9 @@ const VendorDashboard = () => {
       (c.email && order.customer_email && c.email.toLowerCase() === order.customer_email.toLowerCase())
     );
     if (cust && cust.address && cust.address !== 'N/A') return cust.address;
-    if (cust && (cust.city || cust.state)) return [cust.city, cust.state].filter(Boolean).join(', ');
+    if (cust && (cust.street || cust.city || cust.state || cust.postalCode)) return [cust.street, cust.city, cust.state, cust.postalCode].filter(Boolean).join(', ');
 
-    return 'MG Road, Indiranagar, Bangalore';
+    return 'Not Specified';
   };
 
   const getBookingTimeSlot = (order) => {
@@ -4064,7 +4065,7 @@ const VendorDashboard = () => {
                             {filteredOrders.map(order => {
                               const orderVType = getOrderVendorType(order);
                               const isJob = orderVType.startsWith('Job') || vendorType.startsWith('Job');
-                              const isProductOrderTab = selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || vendorType.startsWith('Products') || vendorType.startsWith('Daily Needs');
+                              const isProductOrderTab = selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || vendorType.startsWith('Products') || vendorType.startsWith('Daily Needs') || order.category === 'Daily Needs' || order.category === 'Products' || (order.items && (order.items[0]?.category === 'Daily Needs' || order.items[0]?.category === 'Products'));
                               const isService = !isProductOrderTab && (orderVType.startsWith('Hospital') || orderVType.startsWith('Service') || orderVType.startsWith('Education') || terms.ordersName !== 'Orders' || hasBookingBusiness);
 
                               return (
@@ -5443,9 +5444,23 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         required
-                        value={profileForm.panNo}
-                        onChange={e => setProfileForm({ ...profileForm, panNo: e.target.value })}
-                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                        maxLength={10}
+                        placeholder="e.g. ABCDE1234F"
+                        value={profileForm.panNo || ''}
+                        onChange={e => setProfileForm({ ...profileForm, panNo: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) })}
+                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none uppercase font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Aadhaar Number</label>
+                      <input
+                        type="text"
+                        required
+                        maxLength={12}
+                        placeholder="12-digit Aadhaar Number"
+                        value={profileForm.aadhaarNo || ''}
+                        onChange={e => setProfileForm({ ...profileForm, aadhaarNo: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                       />
                     </div>
                     <div className="space-y-1">
@@ -7650,8 +7665,21 @@ const VendorDashboard = () => {
                     >
                       {(() => {
                         const currentTax = getCategoryTaxonomy();
-                        const taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
-                        const allSubOpts = taxonomySubOpts.length > 0 
+                        let taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
+                        if (!taxonomySubOpts || taxonomySubOpts.length === 0) {
+                          const normCat = (itemForm.category || '').toLowerCase();
+                          for (const mainK of Object.keys(currentTax)) {
+                            if (!currentTax[mainK]) continue;
+                            for (const subK of Object.keys(currentTax[mainK])) {
+                              if (subK.toLowerCase() === normCat || (normCat.includes('veg') && subK.toLowerCase().includes('veg'))) {
+                                taxonomySubOpts = currentTax[mainK][subK];
+                                break;
+                              }
+                            }
+                            if (taxonomySubOpts && taxonomySubOpts.length > 0) break;
+                          }
+                        }
+                        const allSubOpts = (taxonomySubOpts && taxonomySubOpts.length > 0)
                           ? (taxonomySubOpts.includes(itemForm.subcategory) ? taxonomySubOpts : [...taxonomySubOpts, itemForm.subcategory].filter(Boolean))
                           : (itemForm.subcategory ? [itemForm.subcategory] : []);
                         const uniqueOpts = [...new Set(allSubOpts)];
@@ -7940,8 +7968,21 @@ const VendorDashboard = () => {
                 >
                   {(() => {
                     const currentTax = getCategoryTaxonomy();
-                    const taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
-                    const allSubOpts = taxonomySubOpts.length > 0 
+                    let taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
+                    if (!taxonomySubOpts || taxonomySubOpts.length === 0) {
+                      const normCat = (itemForm.category || '').toLowerCase();
+                      for (const mainK of Object.keys(currentTax)) {
+                        if (!currentTax[mainK]) continue;
+                        for (const subK of Object.keys(currentTax[mainK])) {
+                          if (subK.toLowerCase() === normCat || (normCat.includes('veg') && subK.toLowerCase().includes('veg'))) {
+                            taxonomySubOpts = currentTax[mainK][subK];
+                            break;
+                          }
+                        }
+                        if (taxonomySubOpts && taxonomySubOpts.length > 0) break;
+                      }
+                    }
+                    const allSubOpts = (taxonomySubOpts && taxonomySubOpts.length > 0)
                       ? (taxonomySubOpts.includes(itemForm.subcategory) ? taxonomySubOpts : [...taxonomySubOpts, itemForm.subcategory].filter(Boolean))
                       : (itemForm.subcategory ? [itemForm.subcategory] : []);
                     const uniqueOpts = [...new Set(allSubOpts)];
