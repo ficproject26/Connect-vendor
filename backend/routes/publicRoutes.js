@@ -211,21 +211,37 @@ router.get('/products', async (req, res) => {
         const vVenId = v.vendorId ? v.vendorId.toString() : '';
         const vRegId = v.registrationId ? v.registrationId.toString() : '';
         const vEmail = v.email ? v.email.toLowerCase().trim() : '';
+        const vPhone = v.phone ? v.phone.toString().replace(/\D/g, '') : '';
+        const vMob = v.mobileNumber ? v.mobileNumber.toString().replace(/\D/g, '') : '';
         const vBiz = v.businessName ? v.businessName.toLowerCase().trim() : '';
         const vName = v.name ? v.name.toLowerCase().trim() : '';
 
-        return productVendorKeys.some(k => k === vId || k === vVenId || k === vRegId || k === vEmail || k === vBiz || k === vName);
+        const vBizListKeys = [];
+        if (v.businesses && Array.isArray(v.businesses)) {
+          v.businesses.forEach(b => {
+            if (b._id) vBizListKeys.push(b._id.toString());
+            if (b.businessName) vBizListKeys.push(b.businessName.toLowerCase().trim());
+            if (b.name) vBizListKeys.push(b.name.toLowerCase().trim());
+          });
+        }
+
+        const allKeysForVendor = [vId, vVenId, vRegId, vEmail, vPhone, vMob, vBiz, vName, ...vBizListKeys].filter(Boolean);
+
+        return productVendorKeys.some(k => allKeysForVendor.includes(k));
       });
 
-      if (matchingVendorUser) {
-        const vStatus = (matchingVendorUser.status || matchingVendorUser.vendorStatus || '').toString().toLowerCase().trim();
-        const isSusp = ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
-                       matchingVendorUser.isActive === false || 
-                       matchingVendorUser.isLocked === true || 
-                       matchingVendorUser.isSuspended === true;
-        if (isSusp) {
-          return false;
-        }
+      if (!matchingVendorUser) {
+        // Exclude products that do not belong to any active registered vendor user in the system
+        return false;
+      }
+
+      const vStatus = (matchingVendorUser.status || matchingVendorUser.vendorStatus || '').toString().toLowerCase().trim();
+      const isSusp = ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
+                     matchingVendorUser.isActive === false || 
+                     matchingVendorUser.isLocked === true || 
+                     matchingVendorUser.isSuspended === true;
+      if (isSusp) {
+        return false;
       }
 
       return true;
