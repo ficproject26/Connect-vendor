@@ -35,7 +35,6 @@ const COMPLETE_CAT_TAXONOMY = {
     "Beauty": ["Skincare", "Haircare", "Cosmetics", "Perfumes", "Grooming Products", "Wellness Products"],
     "Baby Care": ["Baby Food", "Diapers", "Baby Clothing", "Baby Toys", "Baby Care Products", "Baby Accessories"],
     "Sports & Fitness": ["Gym Equipment", "Yoga Accessories", "Sports Wear", "Sports Equipment", "Fitness Trackers", "Cycling Accessories"],
-    "Books": ["Academic Books", "Story Books", "Notebooks", "Office Stationery", "Art Supplies", "Educational Materials"],
     "Gaming": ["Gaming Consoles", "Gaming Accessories", "VR Devices", "Gaming Chairs", "Gaming PCs"],
     "Automobile": ["Car Accessories", "Bike Accessories", "Tyres", "Vehicle Care Products", "Safety Equipment", "GPS Devices"],
     "Home & Kitchen": ["Kitchen Appliances", "Cookware", "Storage Containers", "Dining Sets", "Home Decor", "Lighting Products"],

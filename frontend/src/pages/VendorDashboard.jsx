@@ -687,8 +687,8 @@ const VendorDashboard = () => {
       tax[selectedMainCat] = COMPLETE_CAT_TAXONOMY[selectedMainCat] || {};
     }
 
-    // 2. Also populate from the vendor's actual registered business categories
-    if (user) {
+    // 2. Also populate from the vendor's actual registered business categories only if no categories exist
+    if (user && Object.keys(tax[selectedMainCat] || {}).length === 0) {
       const bizList = user.businesses && user.businesses.length > 0 ? user.businesses : [user];
       bizList.forEach(b => {
         const bCat = (b.category || '').trim();
@@ -7582,12 +7582,8 @@ const VendorDashboard = () => {
                         const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
                         const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
                         
-                        const parentKeys = [
-                          ...new Set([
-                            ...taxParentKeys,
-                            itemForm.category
-                          ])
-                        ].filter(cat => cat && !mainCatNames.includes(cat));
+                        const rawKeys = taxParentKeys.length > 0 ? taxParentKeys : (itemForm.category ? [itemForm.category] : []);
+                        const parentKeys = [...new Set(rawKeys)].filter(cat => cat && !mainCatNames.includes(cat));
 
                         return parentKeys.map(cat => (
                           <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
@@ -7876,12 +7872,8 @@ const VendorDashboard = () => {
                     const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
                     const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
                     
-                    const parentKeys = [
-                      ...new Set([
-                        ...taxParentKeys,
-                        itemForm.category
-                      ])
-                    ].filter(cat => cat && !mainCatNames.includes(cat));
+                    const rawKeys = taxParentKeys.length > 0 ? taxParentKeys : (itemForm.category ? [itemForm.category] : []);
+                    const parentKeys = [...new Set(rawKeys)].filter(cat => cat && !mainCatNames.includes(cat));
 
                     return parentKeys.map(cat => (
                       <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
