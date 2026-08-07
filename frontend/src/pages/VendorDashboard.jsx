@@ -402,32 +402,59 @@ const VendorDashboard = () => {
         if (res.ok) {
           const dbCats = await res.json();
           
-          // Reset COMPLETE_CAT_TAXONOMY to the default static taxonomy state
-          Object.keys(COMPLETE_CAT_TAXONOMY).forEach(key => {
-            delete COMPLETE_CAT_TAXONOMY[key];
-          });
-          Object.keys(DEFAULT_TAXONOMY).forEach(key => {
-            COMPLETE_CAT_TAXONOMY[key] = JSON.parse(JSON.stringify(DEFAULT_TAXONOMY[key]));
-          });
+          const idToCat = {};
+          dbCats.forEach(c => { if (c && c._id) idToCat[String(c._id)] = c; });
 
-          const resolveCategoryHierarchy = (c, taxonomyObj) => {
-            let main = (c.name || '').trim();
-            let sub = (c.subcategory || '').trim();
-            let subsub = (c.subSubcategory || '').trim();
+          const normalizeMainName = (str) => {
+            if (!str) return '';
+            const clean = String(str).trim();
+            const lower = clean.toLowerCase();
+            if (['stores', 'products', 'product', 'store'].includes(lower)) return 'Products';
+            if (['hotels', 'stay', 'hotel'].includes(lower)) return 'Stay';
+            if (['restaurants', 'food', 'restaurant'].includes(lower)) return 'Food';
+            if (['daily need', 'daily needs'].includes(lower)) return 'Daily Needs';
+            if (['job', 'jobs'].includes(lower)) return 'Jobs';
+            if (['service', 'services', 'service provider'].includes(lower)) return 'Services';
+            if (['travel'].includes(lower)) return 'Travel';
+            return clean;
+          };
 
-            const mainLower = main.toLowerCase();
-            if (mainLower === 'stores' || mainLower === 'products' || mainLower === 'product' || mainLower === 'store') main = 'Products';
-            else if (mainLower === 'hotels' || mainLower === 'stay' || mainLower === 'hotel') main = 'Stay';
-            else if (mainLower === 'restaurants' || mainLower === 'food' || mainLower === 'restaurant') main = 'Food';
-            else if (mainLower === 'daily need' || mainLower === 'daily needs') main = 'Daily Needs';
-            else if (mainLower === 'job' || mainLower === 'jobs') main = 'Jobs';
-            else if (mainLower === 'service' || mainLower === 'services') main = 'Services';
-            else if (mainLower === 'travel') main = 'Travel';
+          const resolveCategoryHierarchy = (c) => {
+            let main = '';
+            let sub = '';
+            let subsub = '';
+            const level = c.level || (c.subSubcategory ? 'child' : (c.subcategory ? 'sub' : 'main'));
 
-            if (taxonomyObj && !taxonomyObj[main]) {
-              for (const topKey of Object.keys(taxonomyObj)) {
-                if (taxonomyObj[topKey] && Object.keys(taxonomyObj[topKey]).some(k => k.toLowerCase() === main.toLowerCase())) {
-                  subsub = sub;
+            if (c.parentId && idToCat[String(c.parentId)]) {
+              const parent = idToCat[String(c.parentId)];
+              if (level === 'child') {
+                subsub = (c.subSubcategory || c.name || '').trim();
+                sub = (c.subcategory || parent.subcategory || parent.name || '').trim();
+                if (parent.parentId && idToCat[String(parent.parentId)]) {
+                  main = (idToCat[String(parent.parentId)].name || '').trim();
+                } else {
+                  main = (parent.name || c.name || '').trim();
+                }
+              } else if (level === 'sub') {
+                sub = (c.subcategory || c.name || '').trim();
+                main = (parent.name || '').trim();
+              } else {
+                main = (c.name || '').trim();
+              }
+            }
+
+            if (!main) main = (c.mainCategory || c.category || c.name || '').trim();
+            if (!sub) sub = (c.subcategory || (level === 'sub' ? c.name : '')).trim();
+            if (!subsub) subsub = (c.subSubcategory || (level === 'child' ? c.name : '')).trim();
+
+            main = normalizeMainName(main);
+
+            const mainKeys = ['Products', 'Stay', 'Food', 'Daily Needs', 'Jobs', 'Services', 'Travel'];
+            if (!mainKeys.includes(main)) {
+              for (const topKey of mainKeys) {
+                const topTax = COMPLETE_CAT_TAXONOMY[topKey];
+                if (topTax && Object.keys(topTax).some(k => k.toLowerCase() === main.toLowerCase())) {
+                  subsub = sub || subsub;
                   sub = main;
                   main = topKey;
                   break;
@@ -435,7 +462,7 @@ const VendorDashboard = () => {
               }
             }
 
-            if (taxonomyObj && taxonomyObj[main] && !sub) {
+            if (mainKeys.includes(main) && !sub && level !== 'main') {
               sub = 'General';
             }
 
@@ -443,10 +470,9 @@ const VendorDashboard = () => {
           };
 
           dbCats.forEach(cat => {
-            const { main, sub, subsub } = resolveCategoryHierarchy(cat, COMPLETE_CAT_TAXONOMY);
+            const { main, sub, subsub } = resolveCategoryHierarchy(cat);
             
             if (COMPLETE_CAT_TAXONOMY[main]) {
-              // If it's a deletion/inactivation marker
               if (cat.isDeleted || cat.isActive === false || cat.description === 'DELETED_HIERARCHY_MARKER') {
                 if (sub && sub !== 'General') {
                   const matchedSubKey = Object.keys(COMPLETE_CAT_TAXONOMY[main]).find(k => k.toLowerCase() === sub.toLowerCase());
@@ -464,14 +490,15 @@ const VendorDashboard = () => {
                   delete COMPLETE_CAT_TAXONOMY[main];
                 }
               } else {
-                // Active category addition
-                const matchedSubKey = Object.keys(COMPLETE_CAT_TAXONOMY[main]).find(k => k.toLowerCase() === sub.toLowerCase());
-                const actualSub = matchedSubKey || sub;
-                if (!COMPLETE_CAT_TAXONOMY[main][actualSub]) {
-                  COMPLETE_CAT_TAXONOMY[main][actualSub] = [];
-                }
-                if (subsub && !COMPLETE_CAT_TAXONOMY[main][actualSub].some(x => x.toLowerCase() === subsub.toLowerCase())) {
-                  COMPLETE_CAT_TAXONOMY[main][actualSub].push(subsub);
+                if (sub && sub !== 'ALL_SUBCATEGORIES_DELETED_MARKER') {
+                  const matchedSubKey = Object.keys(COMPLETE_CAT_TAXONOMY[main]).find(k => k.toLowerCase() === sub.toLowerCase());
+                  const actualSub = matchedSubKey || sub;
+                  if (!COMPLETE_CAT_TAXONOMY[main][actualSub]) {
+                    COMPLETE_CAT_TAXONOMY[main][actualSub] = [];
+                  }
+                  if (subsub && subsub !== 'ALL_CHILD_DELETED_MARKER' && !COMPLETE_CAT_TAXONOMY[main][actualSub].some(x => x.toLowerCase() === subsub.toLowerCase())) {
+                    COMPLETE_CAT_TAXONOMY[main][actualSub].push(subsub);
+                  }
                 }
               }
             }
@@ -699,39 +726,116 @@ const VendorDashboard = () => {
     
     // 1. First populate from real DB categories
     if (Array.isArray(dbCategories) && dbCategories.length > 0) {
-      const filteredForMain = dbCategories.filter(c => {
-        const main = (c.mainCategory || c.category || c.name || '').trim().toLowerCase();
-        const target = (selectedMainCat || '').trim().toLowerCase();
-        return main === target && c.isActive !== false && !c.isDeleted;
-      });
+      const idToCat = {};
+      dbCategories.forEach(c => { if (c && c._id) idToCat[String(c._id)] = c; });
 
-      if (filteredForMain.length > 0) {
-        const dbSubMap = {};
-        filteredForMain.forEach(item => {
-          const sub = (item.subcategory || item.name || '').trim();
-          if (!sub || sub === 'ALL_SUBCATEGORIES_DELETED_MARKER') return;
+      const normalizeMainName = (str) => {
+        if (!str) return '';
+        const clean = String(str).trim();
+        const lower = clean.toLowerCase();
+        if (['stores', 'products', 'product', 'store'].includes(lower)) return 'Products';
+        if (['hotels', 'stay', 'hotel'].includes(lower)) return 'Stay';
+        if (['restaurants', 'food', 'restaurant'].includes(lower)) return 'Food';
+        if (['daily need', 'daily needs'].includes(lower)) return 'Daily Needs';
+        if (['job', 'jobs'].includes(lower)) return 'Jobs';
+        if (['service', 'services', 'service provider'].includes(lower)) return 'Services';
+        if (['travel'].includes(lower)) return 'Travel';
+        return clean;
+      };
+
+      const resolveHierarchy = (c) => {
+        let main = '';
+        let sub = '';
+        let subsub = '';
+        const level = c.level || (c.subSubcategory ? 'child' : (c.subcategory ? 'sub' : 'main'));
+
+        if (c.parentId && idToCat[String(c.parentId)]) {
+          const parent = idToCat[String(c.parentId)];
+          if (level === 'child') {
+            subsub = (c.subSubcategory || c.name || '').trim();
+            sub = (c.subcategory || parent.subcategory || parent.name || '').trim();
+            if (parent.parentId && idToCat[String(parent.parentId)]) {
+              main = (idToCat[String(parent.parentId)].name || '').trim();
+            } else {
+              main = (parent.name || c.name || '').trim();
+            }
+          } else if (level === 'sub') {
+            sub = (c.subcategory || c.name || '').trim();
+            main = (parent.name || '').trim();
+          } else {
+            main = (c.name || '').trim();
+          }
+        }
+
+        if (!main) main = (c.mainCategory || c.category || c.name || '').trim();
+        if (!sub) sub = (c.subcategory || (level === 'sub' ? c.name : '')).trim();
+        if (!subsub) subsub = (c.subSubcategory || (level === 'child' ? c.name : '')).trim();
+
+        main = normalizeMainName(main);
+
+        const mainKeys = ['Products', 'Stay', 'Food', 'Daily Needs', 'Jobs', 'Services', 'Travel'];
+        if (!mainKeys.includes(main)) {
+          for (const topKey of mainKeys) {
+            const topTax = COMPLETE_CAT_TAXONOMY[topKey];
+            if (topTax && Object.keys(topTax).some(k => k.toLowerCase() === main.toLowerCase())) {
+              subsub = sub || subsub;
+              sub = main;
+              main = topKey;
+              break;
+            }
+          }
+        }
+
+        if (mainKeys.includes(main) && !sub && level !== 'main') {
+          sub = 'General';
+        }
+
+        return { main, sub, subsub };
+      };
+
+      const dbSubMap = {};
+      dbCategories.forEach(item => {
+        if (item.isDeleted || item.isActive === false || item.description === 'DELETED_HIERARCHY_MARKER') return;
+
+        const { main, sub, subsub } = resolveHierarchy(item);
+        const target = (selectedMainCat || '').trim().toLowerCase();
+
+        if (main.toLowerCase() === target && sub && sub !== 'ALL_SUBCATEGORIES_DELETED_MARKER') {
           if (!dbSubMap[sub]) {
             dbSubMap[sub] = [];
           }
-          if (item.subSubcategory && item.subSubcategory.trim()) {
-            const child = item.subSubcategory.trim();
-            if (!dbSubMap[sub].includes(child)) {
-              dbSubMap[sub].push(child);
-            }
-          } else if (Array.isArray(item.children)) {
+          if (subsub && subsub !== 'ALL_CHILD_DELETED_MARKER' && !dbSubMap[sub].includes(subsub)) {
+            dbSubMap[sub].push(subsub);
+          }
+          if (Array.isArray(item.children)) {
             item.children.forEach(ch => {
               const chName = (typeof ch === 'string' ? ch : ch.name || '').trim();
-              if (chName && !dbSubMap[sub].includes(chName)) {
+              if (chName && chName !== 'ALL_CHILD_DELETED_MARKER' && !dbSubMap[sub].includes(chName)) {
                 dbSubMap[sub].push(chName);
               }
             });
           }
-        });
-
-        if (Object.keys(dbSubMap).length > 0) {
-          tax[selectedMainCat] = dbSubMap;
         }
-      }
+      });
+
+      const defaultTaxForMain = COMPLETE_CAT_TAXONOMY[selectedMainCat] || {};
+      const mergedSubMap = {};
+      Object.keys(defaultTaxForMain).forEach(subK => {
+        mergedSubMap[subK] = [...(defaultTaxForMain[subK] || [])];
+      });
+      Object.keys(dbSubMap).forEach(subK => {
+        if (!mergedSubMap[subK]) {
+          mergedSubMap[subK] = [...dbSubMap[subK]];
+        } else {
+          dbSubMap[subK].forEach(chItem => {
+            if (!mergedSubMap[subK].includes(chItem)) {
+              mergedSubMap[subK].push(chItem);
+            }
+          });
+        }
+      });
+
+      tax[selectedMainCat] = mergedSubMap;
     }
 
     // 2. Also populate from the vendor's actual registered business categories
