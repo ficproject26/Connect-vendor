@@ -598,28 +598,6 @@ export const vendorTaxonomy = {
       ]
     }
   },
-  "Membership": {
-    emoji: "🛡️",
-    categories: {
-      "Silver Membership": [
-        "5% Discount",
-        "Reward Points",
-        "Cashback"
-      ],
-      "Gold Membership": [
-        "10% Discount",
-        "Free Delivery",
-        "Priority Access",
-        "Exclusive Offers"
-      ],
-      "Diamond Membership": [
-        "15% to 25% Discount",
-        "VIP Access",
-        "Luxury Benefits",
-        "Complimentary Offers"
-      ]
-    }
-  },
   "Jobs": {
     emoji: "💼",
     categories: {
