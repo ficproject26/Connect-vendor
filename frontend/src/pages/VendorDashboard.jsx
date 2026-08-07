@@ -676,22 +676,22 @@ const VendorDashboard = () => {
 
       const defaultTaxForMain = COMPLETE_CAT_TAXONOMY[selectedMainCat] || {};
       const mergedSubMap = {};
-      Object.keys(defaultTaxForMain).forEach(subK => {
-        mergedSubMap[subK] = [...(defaultTaxForMain[subK] || [])];
-      });
-      Object.keys(dbSubMap).forEach(subK => {
-        if (!mergedSubMap[subK]) {
+
+      if (Object.keys(dbSubMap).length > 0) {
+        // Admin added categories exist for this section! Show ONLY admin added categories.
+        Object.keys(dbSubMap).forEach(subK => {
           mergedSubMap[subK] = [...dbSubMap[subK]];
-        } else {
-          dbSubMap[subK].forEach(chItem => {
-            if (!mergedSubMap[subK].includes(chItem)) {
-              mergedSubMap[subK].push(chItem);
-            }
-          });
-        }
-      });
+        });
+      } else {
+        // Fallback to static taxonomy only if admin has not added any categories for this section
+        Object.keys(defaultTaxForMain).forEach(subK => {
+          mergedSubMap[subK] = [...(defaultTaxForMain[subK] || [])];
+        });
+      }
 
       tax[selectedMainCat] = mergedSubMap;
+    } else {
+      tax[selectedMainCat] = COMPLETE_CAT_TAXONOMY[selectedMainCat] || {};
     }
 
     // 2. Also populate from the vendor's actual registered business categories
