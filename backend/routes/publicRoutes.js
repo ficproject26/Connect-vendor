@@ -225,6 +225,7 @@ router.get('/products', async (req, res) => {
       // 2. Cross-reference matching vendor user in allVendorUsers
       const matchingVendorUser = allVendorUsers.find(v => {
         const vId = v._id ? v._id.toString() : '';
+        const vPrimaryBizId = v.primaryBusinessId ? v.primaryBusinessId.toString() : '';
         const vVenId = v.vendorId ? v.vendorId.toString() : '';
         const vRegId = v.registrationId ? v.registrationId.toString() : '';
         const vRegId2 = v.regId ? v.regId.toString() : '';
@@ -244,21 +245,24 @@ router.get('/products', async (req, res) => {
           });
         }
 
-        const allKeysForVendor = [vId, vVenId, vRegId, vRegId2, vUser, vEmail, vPhone, vMob, vBiz, vName, ...vBizListKeys].filter(Boolean);
+        const allKeysForVendor = [vId, vPrimaryBizId, vVenId, vRegId, vRegId2, vUser, vEmail, vPhone, vMob, vBiz, vName, ...vBizListKeys].filter(Boolean);
 
         return productVendorKeys.some(k => allKeysForVendor.includes(k));
       });
 
-      if (matchingVendorUser) {
-        const vStatus = (matchingVendorUser.status || matchingVendorUser.vendorStatus || '').toString().toLowerCase().trim();
-        const isSusp = ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
-                       matchingVendorUser.isActive === false || 
-                       matchingVendorUser.isApproved === false ||
-                       matchingVendorUser.isLocked === true || 
-                       matchingVendorUser.isSuspended === true;
-        if (isSusp) {
-          return false;
-        }
+      if (!matchingVendorUser) {
+        // Exclude products that do not belong to any active registered vendor user in the system
+        return false;
+      }
+
+      const vStatus = (matchingVendorUser.status || matchingVendorUser.vendorStatus || '').toString().toLowerCase().trim();
+      const isSusp = ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
+                     matchingVendorUser.isActive === false || 
+                     matchingVendorUser.isApproved === false ||
+                     matchingVendorUser.isLocked === true || 
+                     matchingVendorUser.isSuspended === true;
+      if (isSusp) {
+        return false;
       }
 
       return true;
