@@ -5,7 +5,7 @@ import {
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
-  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star
+  Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Image as ImageIcon
 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
@@ -444,13 +444,19 @@ const ProductList = () => {
                                           {item.status && item.status.toLowerCase().includes('service') ? 'OUT OF SERVICE' : 'OUT OF STOCK'}
                                         </div>
                                       )}
-                                      <img
-                                        src={item.imageUrl ? (item.imageUrl.startsWith('http') ? item.imageUrl : `${getBackendUrl()}${item.imageUrl}`) : getFallbackImageUrl(item, vendorType)}
-                                        alt={item.name}
-                                        className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
-                                          isOutOfStock ? 'grayscale opacity-50' : ''
-                                        }`}
-                                      />
+                                      {item.imageUrl ? (
+                                        <img
+                                          src={item.imageUrl.startsWith('http') ? item.imageUrl : `${getBackendUrl()}${item.imageUrl}`}
+                                          alt={item.name}
+                                          className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
+                                            isOutOfStock ? 'grayscale opacity-50' : ''
+                                          }`}
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full bg-slate-100 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-300 dark:text-slate-700">
+                                          <ImageIcon size={32} strokeWidth={1.5} />
+                                        </div>
+                                      )}
                                     </div>
                                     <div className="flex justify-between items-start mb-1.5">
                                       <div className="flex items-center gap-1.5">

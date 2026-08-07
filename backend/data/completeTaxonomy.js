@@ -1,6 +1,6 @@
 const COMPLETE_CAT_TAXONOMY = {
   "Services": {
-    "Healthcare": ["Hospitals", "Clinics", "Diagnostic Centers", "Pharmacies", "Dental Care", "Eye Care", "Ambulance Services", "Home Nursing", "Health Checkups", "Telemedicine", "Physiotherapy", "Medical Equipment"],
+    "Healthcare": ["Clinics", "Diagnostic Centers", "Pharmacies", "Dental Care", "Eye Care", "Ambulance Services", "Home Nursing", "Health Checkups", "Telemedicine", "Physiotherapy", "Medical Equipment"],
     "Education": ["Schools", "Colleges", "Universities", "Online Courses", "Training Institutes", "Skill Development", "Computer Training", "AI & IT Training", "Language Classes", "Competitive Exam Coaching", "Certification Programs"],
     "Employment": ["Job Portal", "Recruitment Services", "Resume Building", "Interview Preparation", "Career Guidance", "Placement Services", "Internship Programs", "Freelancing Opportunities", "Overseas Jobs"],
     "Financial": ["Banking Services", "Personal Loans", "Home Loans", "Business Loans", "Credit Cards", "Investment Plans", "Mutual Funds", "Financial Consulting", "Tax Planning", "Retirement Planning"],

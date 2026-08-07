@@ -88,151 +88,7 @@ const getProductMainCategory = (itemCategory, vType) => {
 };
 
 const getFallbackImageUrl = (item, vendorType) => {
-  const name = (item.name || '').toLowerCase();
-  const category = (item.category || '').toLowerCase();
-  
-  if (vendorType.startsWith('Hospital')) {
-    if (name.includes('chen')) return 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('watson') || name.includes('emily')) return 'https://images.unsplash.com/photo-1594824813573-246434de83fb?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('john') || name.includes('miller') || name.includes('orthopedic')) return 'https://images.unsplash.com/photo-1606318801954-d46d47d3368a?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('sophia') || name.includes('davis') || name.includes('dermatologist')) return 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('garcia') || name.includes('william') || name.includes('physician')) return 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=500&auto=format&fit=crop&q=60';
-    return 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=500&auto=format&fit=crop&q=60';
-  } else if (vendorType.startsWith('Education')) {
-    if (name.includes('coding') || name.includes('programming') || name.includes('web') || name.includes('software')) return 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('english') || name.includes('language') || name.includes('speaking')) return 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('math') || name.includes('science') || name.includes('physics')) return 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('design') || name.includes('art') || name.includes('drawing')) return 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=500&auto=format&fit=crop&q=60';
-    return 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=500&auto=format&fit=crop&q=60';
-  } else if (vendorType.startsWith('Job')) {
-    if (name.includes('software') || name.includes('developer') || name.includes('engineer')) return 'https://images.unsplash.com/photo-1605379399642-870262d3d051?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('marketing') || name.includes('sale') || name.includes('business')) return 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('intern') || name.includes('training')) return 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=500&auto=format&fit=crop&q=60';
-    return 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=500&auto=format&fit=crop&q=60';
-  } else if (vendorType.startsWith('Restaurant')) {
-    if (name.includes('margherita') || (name.includes('pizza') && !name.includes('pepperoni'))) return 'https://images.unsplash.com/photo-1604068549290-dea0e4a305ca?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('pepperoni')) return 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('tikka') || name.includes('chicken') || name.includes('masala')) return 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('tiramisu') || name.includes('dessert')) return 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('bread') || name.includes('garlic')) return 'https://images.unsplash.com/photo-1573140401552-3fab0b24306f?w=500&auto=format&fit=crop&q=60';
-    return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=60';
-  } else if (vendorType.startsWith('Pharmacy')) {
-    if (name.includes('amoxicillin') || name.includes('antibiotic')) return 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('multivitamin') || name.includes('supplement')) return 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('paracetamol') || name.includes('painkiller') || name.includes('pain')) return 'https://images.unsplash.com/photo-1550572017-edd951b55104?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('syrup') || name.includes('cough') || name.includes('cold')) return 'https://images.unsplash.com/photo-1512438248247-f0f2a5a8b7f0?w=500&auto=format&fit=crop&q=60';
-    if (name.includes('vitamin c') || name.includes('vitamin')) return 'https://images.unsplash.com/photo-1616679911721-fe6eec10fcd5?w=500&auto=format&fit=crop&q=60';
-    return 'https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=500&auto=format&fit=crop&q=60';
-  } else if (vendorType.startsWith('Hotel')) {
-    if (name.includes('presidential')) return 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('deluxe') || name.includes('deluxe')) return 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('suite') || name.includes('suite')) return 'https://images.unsplash.com/photo-1582719508461-905c673771fd?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('family') || name.includes('family')) return 'https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('standard') || name.includes('standard')) return 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=500&auto=format&fit=crop&q=60';
-    return 'https://images.unsplash.com/photo-1611891405122-45c52143739b?w=500&auto=format&fit=crop&q=60';
-  } else if (vendorType.startsWith('Service Provider')) {
-    if (category.includes('clean') || name.includes('clean')) return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('plumb') || name.includes('plumb') || name.includes('leak')) return 'https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('electrical') || name.includes('electrical') || name.includes('wire') || name.includes('wiring')) return 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('ac') || category.includes('hvac') || name.includes('ac') || name.includes('conditioner')) return 'https://images.unsplash.com/photo-1563720223185-11003d516935?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('salon') || category.includes('spa') || name.includes('massage') || name.includes('spa')) return 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('paint') || name.includes('paint') || name.includes('painting')) return 'https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('carpentry') || name.includes('carpentry') || name.includes('wood')) return 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('pest') || name.includes('pest')) return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('garden') || name.includes('garden') || name.includes('gardening')) return 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('move') || category.includes('moving') || name.includes('move') || name.includes('moving')) return 'https://images.unsplash.com/photo-1603796846097-bee99e4a60c9?w=500&auto=format&fit=crop&q=60';
-    if (category.includes('appliance') || name.includes('appliance') || name.includes('repair')) return 'https://images.unsplash.com/photo-1581092921461-eab62e97a780?w=500&auto=format&fit=crop&q=60';
-    return 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=500&auto=format&fit=crop&q=60';
-  } else {
-    if (name.includes('wallet') || name.includes('purse')) {
-      return 'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('shirt') || name.includes('tshirt') || name.includes('clothing') || name.includes('t-shirt') || category.includes('clothing')) {
-      return 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('earbud') || name.includes('headphone') || name.includes('earphone') || name.includes('audio') || name.includes('sound') || name.includes('wireless') || name.includes('bud')) {
-      return 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('watch') || name.includes('smartwatch') || name.includes('chrono')) {
-      return 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('perfume') || name.includes('fragrance') || name.includes('cologne') || name.includes('scent')) {
-      return 'https://images.unsplash.com/photo-1541643600914-78b084683601?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('shoe') || name.includes('sneaker') || name.includes('boot') || name.includes('footwear')) {
-      return 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('jacket') || name.includes('coat') || name.includes('hoodie') || name.includes('sweater')) {
-      return 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('bag') || name.includes('backpack') || name.includes('handbag') || name.includes('luggage')) {
-      return 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('phone') || name.includes('mobile') || name.includes('smartphone') || name.includes('iphone')) {
-      return 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('laptop') || name.includes('computer') || name.includes('pc') || name.includes('macbook')) {
-      return 'https://images.unsplash.com/photo-1496181130204-7552cc14b1e0?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('table')) {
-      return 'https://images.unsplash.com/photo-1577140917170-285929fb55b7?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('chair') || name.includes('sofa') || name.includes('desk') || name.includes('furniture') || category.includes('furniture')) {
-      return 'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('bedsheet') || name.includes('bedding')) {
-      return 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('mattress') || name.includes('bed')) {
-      return 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('lamp') || name.includes('light')) {
-      return 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('tv') || name.includes('television') || name.includes('led')) {
-      return 'https://images.unsplash.com/photo-1593305841991-05c297ba4575?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('camera')) {
-      return 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('router') || name.includes('wifi')) {
-      return 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('massage') || name.includes('spa')) {
-      return 'https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('ac ') || name.includes(' air conditioner') || name.includes('hvac')) {
-      return 'https://images.unsplash.com/photo-1563720223185-11003d516935?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('rice')) {
-      return 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('egg')) {
-      return 'https://images.unsplash.com/photo-1506976785307-8732e854ad03?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('oil')) {
-      return 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('apple')) {
-      return 'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('bread')) {
-      return 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('band') || name.includes('tracker') || name.includes('fitness')) {
-      return 'https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('grocery') || name.includes('food') || name.includes('fresh') || name.includes('fruit') || name.includes('vegetable') || category.includes('grocery') || category.includes('groceries')) {
-      return 'https://images.unsplash.com/photo-1610348725531-843dff163e2c?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('mug') || name.includes('cup')) {
-      return 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop&q=60';
-    }
-    if (name.includes('bottle') || name.includes('flask') || name.includes('thermos')) {
-      return 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=500&auto=format&fit=crop&q=60';
-    }
-    return 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60';
-  }
+  return '';
 };
 
 const getItemRating = (item) => {
@@ -3843,13 +3699,19 @@ const VendorDashboard = () => {
                                           {item.status && item.status.toLowerCase().includes('service') ? 'OUT OF SERVICE' : 'OUT OF STOCK'}
                                         </div>
                                       )}
-                                      <img
-                                        src={item.imageUrl ? (item.imageUrl.startsWith('http') ? item.imageUrl : `${getBackendUrl()}${item.imageUrl}`) : getFallbackImageUrl(item, vendorType)}
-                                        alt={item.name}
-                                        className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
-                                          isOutOfStock ? 'grayscale opacity-50' : ''
-                                        }`}
-                                      />
+                                      {item.imageUrl ? (
+                                        <img
+                                          src={item.imageUrl.startsWith('http') ? item.imageUrl : `${getBackendUrl()}${item.imageUrl}`}
+                                          alt={item.name}
+                                          className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
+                                            isOutOfStock ? 'grayscale opacity-50' : ''
+                                          }`}
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full bg-slate-100 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-300 dark:text-slate-700">
+                                          <ImageIcon size={32} strokeWidth={1.5} />
+                                        </div>
+                                      )}
                                     </div>
                                     <div className="flex justify-between items-start mb-1.5">
                                       <div className="flex items-center gap-1.5">
@@ -8430,58 +8292,68 @@ required
           <div className="space-y-2">
             <div className="flex items-center justify-between pl-1">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{terms.imageLabel}</label>
-              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 italic">Optional – auto image used if skipped</span>
+              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 italic">Optional</span>
             </div>
 
             {/* Live image preview area */}
             {(() => {
-              const hasImages = (itemForm.imageUrls && itemForm.imageUrls.length > 0) || itemForm.imageUrl;
               const displayUrls = itemForm.imageUrls && itemForm.imageUrls.length > 0
                 ? itemForm.imageUrls
                 : (itemForm.imageUrl ? [itemForm.imageUrl] : []);
 
-              const autoFallback = getFallbackImageUrl(itemForm, vendorType);
-
               return (
                 <div className="space-y-3">
-                  {/* Primary image preview (uploaded or auto fallback) */}
-                  <div className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 group">
-                    <img
-                      src={displayUrls.length > 0
-                        ? (displayUrls[0].startsWith('http') ? displayUrls[0] : `${getBackendUrl()}${displayUrls[0]}`)
-                        : autoFallback}
-                      alt="Item preview"
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-102"
-                    />
-
-                    {/* Overlay badge – shows source */}
-                    <div className={`absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider shadow-sm ${
-                      displayUrls.length > 0
-                        ? 'bg-emerald-500/90 text-white'
-                        : 'bg-slate-700/80 text-white/80'
-                    }`}>
-                      {displayUrls.length > 0 ? '✓ Custom Photo' : '⚡ Auto Image'}
-                    </div>
-
-                    {/* Upload / Change button overlay */}
-                    <label className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        disabled={imageUploading}
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                      />
-                      <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                        {imageUploading
-                          ? <span className="text-[10px] font-bold text-primary-600 animate-pulse">...</span>
-                          : <Camera size={18} className="text-slate-700" />
-                        }
-                      </div>
-                      <span className="text-[11px] font-bold text-white drop-shadow">
-                        {imageUploading ? 'Uploading…' : displayUrls.length > 0 ? 'Change Photo' : 'Upload Photo'}
-                      </span>
-                    </label>
+                  {/* Primary image preview (uploaded or empty box) */}
+                  <div className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 group">
+                    {displayUrls.length > 0 ? (
+                      <>
+                        <img
+                          src={displayUrls[0].startsWith('http') ? displayUrls[0] : `${getBackendUrl()}${displayUrls[0]}`}
+                          alt="Item preview"
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-102"
+                        />
+                        <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider shadow-sm bg-emerald-500/90 text-white">
+                          ✓ Custom Photo
+                        </div>
+                        <label className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            disabled={imageUploading}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                          <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                            {imageUploading
+                              ? <span className="text-[10px] font-bold text-primary-600 animate-pulse">...</span>
+                              : <Camera size={18} className="text-slate-700" />
+                            }
+                          </div>
+                          <span className="text-[11px] font-bold text-white drop-shadow">
+                            {imageUploading ? 'Uploading…' : 'Change Photo'}
+                          </span>
+                        </label>
+                      </>
+                    ) : (
+                      <label className="w-full h-full flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors p-4">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          disabled={imageUploading}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                        />
+                        <div className="w-12 h-12 rounded-full bg-slate-200/60 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-1">
+                          {imageUploading ? <span className="text-xs font-bold text-primary-600 animate-pulse">...</span> : <Camera size={22} />}
+                        </div>
+                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                          {imageUploading ? 'Uploading Image...' : 'Click to Upload Photo'}
+                        </span>
+                        <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                          Leave blank for empty box
+                        </span>
+                      </label>
+                    )}
                   </div>
 
                   {/* Additional uploaded images grid (if more than 1) */}
@@ -8532,7 +8404,7 @@ required
 
                   {/* Quick upload CTA when no image */}
                   {displayUrls.length === 0 && (
-                    <div className="relative flex items-center gap-3 p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30">
+                    <div className="relative flex items-center gap-3 p-3 rounded-xl bg-slate-100/60 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
                       <input
                         type="file"
                         accept="image/*"
@@ -8540,9 +8412,9 @@ required
                         disabled={imageUploading}
                         className="absolute inset-0 opacity-0 cursor-pointer"
                       />
-                      <Camera size={14} className="text-amber-500 shrink-0" />
-                      <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
-                        {imageUploading ? 'Uploading image...' : 'Click anywhere here to upload a custom photo, or leave blank to use the auto-selected image above.'}
+                      <Camera size={14} className="text-slate-500 shrink-0" />
+                      <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                        {imageUploading ? 'Uploading image...' : 'Click anywhere here to upload a custom photo.'}
                       </p>
                     </div>
                   )}

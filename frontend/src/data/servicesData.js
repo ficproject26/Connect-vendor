@@ -3,7 +3,6 @@ export const vendorTaxonomy = {
     emoji: "🛠️",
     categories: {
       "Healthcare Services": [
-        "Hospitals",
         "Clinics",
         "Diagnostic Centers",
         "Pharmacies",
