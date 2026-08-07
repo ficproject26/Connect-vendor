@@ -637,21 +637,7 @@ const getCustomers = async (req, res) => {
 
     const customerMap = {};
 
-    // Add existing Customer collection entries
-    dbCustomers.forEach(c => {
-      const obj = c.toObject ? c.toObject() : c;
-      const key = (obj.email || obj.memberId || obj.name || obj._id).toString().toLowerCase();
-      customerMap[key] = {
-        _id: obj._id,
-        name: obj.name || 'Customer',
-        email: obj.email || '',
-        phone: obj.phone || '',
-        ordersCount: obj.ordersCount || 0,
-        totalSpent: obj.totalSpent || 0
-      };
-    });
-
-    // Aggregate all customers who have placed orders / applied / booked
+    // 1. First aggregate from actual orders placed/booked with this vendor
     rawOrders.forEach(o => {
       const name = o.memberName || o.customer_name || 'Customer';
       const email = o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
@@ -659,20 +645,40 @@ const getCustomers = async (req, res) => {
 
       const amount = Number(o.finalAmount || o.totalAmount || o.amount || 0);
 
-      if (customerMap[key]) {
-        customerMap[key].ordersCount += 1;
-        customerMap[key].totalSpent += amount;
-        if (!customerMap[key].name || customerMap[key].name === 'Customer') customerMap[key].name = name;
-        if (!customerMap[key].email) customerMap[key].email = email;
-      } else {
+      if (!customerMap[key]) {
         customerMap[key] = {
           _id: o.memberId || o._id,
           name: name,
           email: email,
           phone: o.customer_phone || '+91 9876543210',
-          ordersCount: 1,
-          totalSpent: amount
+          ordersCount: 0,
+          totalSpent: 0
         };
+      }
+      customerMap[key].ordersCount += 1;
+      customerMap[key].totalSpent += amount;
+      if (customerMap[key].name === 'Customer' && name !== 'Customer') {
+        customerMap[key].name = name;
+      }
+    });
+
+    // 2. Supplement with Customer collection records if not already in customerMap
+    dbCustomers.forEach(c => {
+      const obj = c.toObject ? c.toObject() : c;
+      const key = (obj.email || obj.memberId || obj.name || obj._id).toString().toLowerCase();
+      if (!customerMap[key]) {
+        customerMap[key] = {
+          _id: obj._id,
+          name: obj.name || 'Customer',
+          email: obj.email || '',
+          phone: obj.phone || '',
+          ordersCount: obj.ordersCount || 1,
+          totalSpent: obj.totalSpent || 0
+        };
+      } else {
+        if (obj.phone && (!customerMap[key].phone || customerMap[key].phone.startsWith('+91 98765'))) {
+          customerMap[key].phone = obj.phone;
+        }
       }
     });
 

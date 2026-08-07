@@ -934,16 +934,24 @@ const VendorDashboard = () => {
   const [isCustomerDetailsModalOpen, setIsCustomerDetailsModalOpen] = useState(false);
 
   const getCustomerAddress = (order) => {
-    if (!order) return 'Main St, Bangalore';
+    if (!order) return 'MG Road, Indiranagar, Bangalore';
     if (order.customer_address && order.customer_address !== 'N/A') return order.customer_address;
     if (order.address && order.address !== 'N/A') return order.address;
     if (order.deliveryAddress) return order.deliveryAddress;
+    if (order.shippingAddress) return order.shippingAddress;
+    if (order.location) return order.location;
     if (order.tableNumber) return `Table #${order.tableNumber}`;
     if (order.roomNumber) return `Room #${order.roomNumber}`;
     if (order.memberAddress) return order.memberAddress;
     
-    const cust = customers.find(c => String(c._id) === String(order.memberId || order.customerId) || c.name === (order.memberName || order.customer_name));
-    if (cust && cust.address) return cust.address;
+    const custIdStr = String(order.memberId || order.customerId || order.id || order._id || '');
+    const cust = customers.find(c => 
+      String(c._id || c.id) === custIdStr || 
+      c.name === (order.memberName || order.customer_name) ||
+      (c.email && order.candidateEmail && c.email.toLowerCase() === order.candidateEmail.toLowerCase()) ||
+      (c.email && order.customer_email && c.email.toLowerCase() === order.customer_email.toLowerCase())
+    );
+    if (cust && cust.address && cust.address !== 'N/A') return cust.address;
     if (cust && (cust.city || cust.state)) return [cust.city, cust.state].filter(Boolean).join(', ');
 
     return 'MG Road, Indiranagar, Bangalore';
@@ -4023,6 +4031,15 @@ const VendorDashboard = () => {
                                   <th className="px-6 py-4">Job Location</th>
                                   <th className="px-6 py-4 text-right">Actions / View</th>
                                 </>
+                              ) : (selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || vendorType.startsWith('Products') || vendorType.startsWith('Daily Needs')) ? (
+                                <>
+                                  <th className="px-6 py-4">Customer Name</th>
+                                  <th className="px-6 py-4">Product / Items</th>
+                                  <th className="px-6 py-4">Delivery Address</th>
+                                  <th className="px-6 py-4">Order Date & Time</th>
+                                  <th className="px-6 py-4">Payment & Status</th>
+                                  <th className="px-6 py-4 text-right">Actions / View</th>
+                                </>
                               ) : (terms.ordersName !== 'Orders' || hasBookingBusiness) ? (
                                 <>
                                   <th className="px-6 py-4">Customer Name</th>
@@ -4047,7 +4064,8 @@ const VendorDashboard = () => {
                             {filteredOrders.map(order => {
                               const orderVType = getOrderVendorType(order);
                               const isJob = orderVType.startsWith('Job') || vendorType.startsWith('Job');
-                              const isService = orderVType.startsWith('Hospital') || orderVType.startsWith('Service') || orderVType.startsWith('Education') || terms.ordersName !== 'Orders' || hasBookingBusiness;
+                              const isProductOrderTab = selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || vendorType.startsWith('Products') || vendorType.startsWith('Daily Needs');
+                              const isService = !isProductOrderTab && (orderVType.startsWith('Hospital') || orderVType.startsWith('Service') || orderVType.startsWith('Education') || terms.ordersName !== 'Orders' || hasBookingBusiness);
 
                               return (
                                 <tr key={order._id} className="border-b border-slate-200 dark:border-slate-800/60 hover:bg-slate-100/40 dark:hover:bg-slate-900/20 text-sm text-slate-700 dark:text-slate-200">
@@ -4530,8 +4548,19 @@ const VendorDashboard = () => {
           <div className="animate-fadeIn">
             <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Ecosystem {terms.customersName}</h2>
-                  <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">Customers who interacted with your business (purchased products, booked services, or applied for jobs)</p>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                      {selectedMainCat ? `${selectedMainCat} Customers` : `Ecosystem ${terms.customersName}`}
+                    </h2>
+                    {selectedMainCat && (
+                      <span className="px-3 py-1 bg-yellow-400/20 text-yellow-800 dark:text-yellow-300 border border-yellow-400/30 text-xs font-bold rounded-full">
+                        Active Category: {selectedMainCat}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">
+                    Customers who interacted with your {selectedMainCat ? `${selectedMainCat} business` : 'business'} (purchased products, booked services, or applied for jobs)
+                  </p>
                 </div>
 
             {/* Filter controls with Grid/List view switcher */}
@@ -4690,16 +4719,34 @@ const VendorDashboard = () => {
                           </div>
 
                           {/* Stats Metrics Sub-grid */}
-                          <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
-                            <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
-                              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Visits</span>
-                              <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">{c.ordersCount} times</span>
-                            </div>
-                            <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
-                              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">{terms.customerSpentLabel.replace('Total ', '').replace(' (₹)', '')}</span>
-                              <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">₹{c.totalSpent}</span>
-                            </div>
-                          </div>
+                          {(() => {
+                            const custIdStr = String(c._id || c.id || '');
+                            const matchingOrders = orders.filter(o => 
+                              String(o.memberId || o.customerId || o._id) === custIdStr || 
+                              o.memberName === c.name ||
+                              o.customer_name === c.name ||
+                              (o.email && c.email && o.email.toLowerCase() === c.email.toLowerCase()) ||
+                              (o.candidateEmail && c.email && o.candidateEmail.toLowerCase() === c.email.toLowerCase()) ||
+                              (o.customer_email && c.email && o.customer_email.toLowerCase() === c.email.toLowerCase())
+                            );
+                            const actualVisits = matchingOrders.length > 0 ? matchingOrders.length : (c.ordersCount || 1);
+                            const actualSpent = matchingOrders.length > 0 
+                              ? matchingOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
+                              : (c.totalSpent || 0);
+
+                            return (
+                              <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                                <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
+                                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Visits</span>
+                                  <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">{actualVisits} times</span>
+                                </div>
+                                <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
+                                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">{terms.customerSpentLabel.replace('Total ', '').replace(' (₹)', '')}</span>
+                                  <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">₹{actualSpent}</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex justify-end">
@@ -9928,7 +9975,7 @@ required
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Job Location</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedBillOrder.customer_address || 'Koramangala, Bangalore'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{getCustomerAddress(selectedBillOrder)}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Application Date</span>
@@ -9993,7 +10040,7 @@ required
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Address</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedBillOrder.customer_address || 'N/A'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{getCustomerAddress(selectedBillOrder)}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Booking Schedule</span>
@@ -10078,7 +10125,7 @@ required
               {/* Delivery Address Field */}
               <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-850 p-4 rounded-2xl text-xs">
                 <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider mb-0.5">Delivery Address</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedBillOrder.customer_address || 'Not Provided / N/A'}</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{getCustomerAddress(selectedBillOrder)}</span>
               </div>
 
               {/* Items Listing */}
@@ -11022,12 +11069,20 @@ required
           title={`Customer Purchase Details - ${selectedCustomerForDetails.name}`}
         >
           {(() => {
-            const custIdStr = String(selectedCustomerForDetails._id);
+            const custIdStr = String(selectedCustomerForDetails._id || selectedCustomerForDetails.id || '');
             const custOrders = orders.filter(o => 
-              String(o.memberId || o.customerId) === custIdStr || 
+              String(o.memberId || o.customerId || o._id) === custIdStr || 
               o.memberName === selectedCustomerForDetails.name || 
-              (o.email && o.email === selectedCustomerForDetails.email)
+              o.customer_name === selectedCustomerForDetails.name ||
+              (o.email && selectedCustomerForDetails.email && o.email.toLowerCase() === selectedCustomerForDetails.email.toLowerCase()) ||
+              (o.candidateEmail && selectedCustomerForDetails.email && o.candidateEmail.toLowerCase() === selectedCustomerForDetails.email.toLowerCase()) ||
+              (o.customer_email && selectedCustomerForDetails.email && o.customer_email.toLowerCase() === selectedCustomerForDetails.email.toLowerCase())
             );
+
+            const actualVisits = custOrders.length > 0 ? custOrders.length : (selectedCustomerForDetails.ordersCount || 1);
+            const actualTotalSpent = custOrders.length > 0
+              ? custOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
+              : (selectedCustomerForDetails.totalSpent || 0);
 
             return (
               <div className="space-y-6 text-slate-800 dark:text-slate-100 animate-fadeIn">
@@ -11048,11 +11103,11 @@ required
                   <div className="flex gap-3 text-center sm:text-right">
                     <div className="bg-white dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
                       <span className="block text-[9px] font-extrabold uppercase text-slate-400">Total Visits</span>
-                      <span className="text-sm font-black text-slate-900 dark:text-white">{selectedCustomerForDetails.ordersCount} times</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-white">{actualVisits} times</span>
                     </div>
                     <div className="bg-white dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
                       <span className="block text-[9px] font-extrabold uppercase text-slate-400">Total Spent</span>
-                      <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">₹{selectedCustomerForDetails.totalSpent}</span>
+                      <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">₹{actualTotalSpent}</span>
                     </div>
                   </div>
                 </div>
@@ -11070,9 +11125,10 @@ required
                   ) : (
                     <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
                       {custOrders.map((ord, idx) => {
+                        const isJobApp = ord.candidateEducation || ord.candidateResume || ord.type === 'Job Application' || ord.category === 'Jobs' || (ord.items && ord.items[0]?.category === 'Jobs');
                         const firstItem = ord.items && ord.items[0];
-                        const itemCategory = firstItem?.category || ord.category || 'General';
-                        const itemName = firstItem?.name || ord.product_details || 'Catalog Item';
+                        const itemCategory = isJobApp ? 'Job Application' : (firstItem?.category || ord.category || 'General');
+                        const itemName = ord.product_details || (firstItem?.name) || (isJobApp ? 'Job Application' : 'Catalog Item');
 
                         return (
                           <div 
@@ -11081,13 +11137,15 @@ required
                           >
                             <div className="flex justify-between items-start">
                               <div>
-                                <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/40 mb-1">
+                                <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md border mb-1 ${
+                                  isJobApp ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200/40' : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200/40'
+                                }`}>
                                   {itemCategory}
                                 </span>
                                 <h5 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">{itemName}</h5>
                               </div>
                               <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase ${
-                                ord.status === 'Completed' || ord.status === 'Delivered' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' :
+                                ord.status === 'Completed' || ord.status === 'Delivered' || ord.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' :
                                 ord.status === 'Pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400' :
                                 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400'
                               }`}>
@@ -11095,23 +11153,40 @@ required
                               </span>
                             </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
-                              <div>
-                                <span className="text-[10px] text-slate-400 block">Amount Paid</span>
-                                <span className="font-extrabold text-emerald-600 dark:text-emerald-400">₹{ord.finalAmount || ord.amount || 0}</span>
-                                {ord.discountApplied > 0 && (
-                                  <span className="text-[9px] text-slate-400 block">(Saved ₹{ord.discountApplied})</span>
-                                )}
+                            {isJobApp ? (
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block">Applied Role</span>
+                                  <span className="font-semibold text-slate-800 dark:text-slate-200">{itemName}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block">Education</span>
+                                  <span className="font-semibold text-slate-700 dark:text-slate-300 truncate block">{ord.candidateEducation || 'Graduate'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block">Application Time</span>
+                                  <span className="font-semibold text-indigo-600 dark:text-indigo-400 block">⌚ {getBookingTimeSlot(ord)}</span>
+                                </div>
                               </div>
-                              <div>
-                                <span className="text-[10px] text-slate-400 block">Address / Location</span>
-                                <span className="font-semibold text-slate-700 dark:text-slate-300 truncate block">{getCustomerAddress(ord)}</span>
+                            ) : (
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block">Amount Paid</span>
+                                  <span className="font-extrabold text-emerald-600 dark:text-emerald-400">₹{ord.finalAmount || ord.amount || 0}</span>
+                                  {ord.discountApplied > 0 && (
+                                    <span className="text-[9px] text-slate-400 block">(Saved ₹{ord.discountApplied})</span>
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block">Address / Location</span>
+                                  <span className="font-semibold text-slate-700 dark:text-slate-300 truncate block">{getCustomerAddress(ord)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-400 block">Booking Time</span>
+                                  <span className="font-semibold text-indigo-600 dark:text-indigo-400 block">⌚ {getBookingTimeSlot(ord)}</span>
+                                </div>
                               </div>
-                              <div>
-                                <span className="text-[10px] text-slate-400 block">Booking Time</span>
-                                <span className="font-semibold text-indigo-600 dark:text-indigo-400 block">⌚ {getBookingTimeSlot(ord)}</span>
-                              </div>
-                            </div>
+                            )}
                           </div>
                         );
                       })}
