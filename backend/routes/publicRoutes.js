@@ -73,25 +73,49 @@ router.get('/products', async (req, res) => {
     const vendorMap = {};
 
     allVendorUsers.forEach(vendor => {
-      const vStatus = (vendor.status || '').toLowerCase().trim();
-      const isUserSuspended = ['suspended', 'inactive', 'rejected'].includes(vStatus) || vendor.isActive === false || vendor.isLocked === true;
+      const vStatus = (vendor.status || vendor.vendorStatus || '').toString().toLowerCase().trim();
+      const isUserSuspended = 
+        ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
+        vendor.isActive === false || 
+        vendor.isLocked === true || 
+        vendor.isSuspended === true ||
+        vendor.status === 'SUSPENDED' ||
+        vendor.vendorStatus === 'SUSPENDED';
 
-      const vendorIdStr = vendor._id ? vendor._id.toString() : '';
-      const emailLower = vendor.email ? vendor.email.toLowerCase().trim() : '';
+      const vendorKeys = [
+        vendor._id ? vendor._id.toString() : '',
+        vendor.vendorId ? vendor.vendorId.toString() : '',
+        vendor.registrationId ? vendor.registrationId.toString() : '',
+        vendor.id ? vendor.id.toString() : '',
+        vendor.email ? vendor.email.toLowerCase().trim() : '',
+        vendor.phone ? vendor.phone.toString().replace(/\D/g, '') : '',
+        vendor.mobileNumber ? vendor.mobileNumber.toString().replace(/\D/g, '') : '',
+        vendor.businessName ? vendor.businessName.toLowerCase().trim() : '',
+        vendor.name ? vendor.name.toLowerCase().trim() : '',
+        vendor.companyName ? vendor.companyName.toLowerCase().trim() : '',
+        vendor.brand ? vendor.brand.toLowerCase().trim() : ''
+      ].filter(Boolean);
 
       if (isUserSuspended) {
-        if (vendorIdStr) suspendedIds.add(vendorIdStr);
-        if (vendor.vendorId) suspendedIds.add(vendor.vendorId.toString());
-        if (vendor.registrationId) suspendedIds.add(vendor.registrationId.toString());
-        if (emailLower) suspendedIds.add(emailLower);
-        if (vendor.businessName) suspendedNames.add(vendor.businessName.toLowerCase().trim());
-        if (vendor.name) suspendedNames.add(vendor.name.toLowerCase().trim());
+        vendorKeys.forEach(k => {
+          suspendedIds.add(k);
+          suspendedNames.add(k);
+        });
 
         if (vendor.businesses && Array.isArray(vendor.businesses)) {
           vendor.businesses.forEach(b => {
-            if (b._id) suspendedIds.add(b._id.toString());
-            if (b.businessName) suspendedNames.add(b.businessName.toLowerCase().trim());
-            if (b.name) suspendedNames.add(b.name.toLowerCase().trim());
+            if (b._id) {
+              suspendedIds.add(b._id.toString());
+              suspendedNames.add(b._id.toString());
+            }
+            if (b.businessName) {
+              suspendedIds.add(b.businessName.toLowerCase().trim());
+              suspendedNames.add(b.businessName.toLowerCase().trim());
+            }
+            if (b.name) {
+              suspendedIds.add(b.name.toLowerCase().trim());
+              suspendedNames.add(b.name.toLowerCase().trim());
+            }
           });
         }
       } else {
@@ -99,26 +123,21 @@ router.get('/products', async (req, res) => {
         if (vendor.businesses && Array.isArray(vendor.businesses)) {
           vendor.businesses.forEach(biz => {
             const bizStatus = (biz.status || '').toLowerCase().trim();
-            const isBizSuspended = ['suspended', 'inactive', 'rejected'].includes(bizStatus) || biz.isActive === false;
+            const isBizSuspended = ['suspended', 'inactive', 'rejected', 'deactivated'].includes(bizStatus) || biz.isActive === false;
             
             if (isBizSuspended) {
-              if (biz._id) suspendedIds.add(biz._id.toString());
-              if (biz.businessName) suspendedNames.add(biz.businessName.toLowerCase().trim());
-              if (biz.name) suspendedNames.add(biz.name.toLowerCase().trim());
-
-              const catArr = [
-                biz.category,
-                biz.vendorType,
-                biz.baseVendorType,
-                biz.subcategory,
-                getItemMainCategory(biz.category),
-                getSubNavbarCategory(biz.vendorType, biz.category)
-              ].filter(Boolean).map(s => String(s).toLowerCase().trim());
-
-              catArr.forEach(cKey => {
-                if (vendorIdStr) suspendedCategoryKeys.add(`${vendorIdStr}_${cKey}`);
-                if (emailLower) suspendedCategoryKeys.add(`${emailLower}_${cKey}`);
-              });
+              if (biz._id) {
+                suspendedIds.add(biz._id.toString());
+                suspendedNames.add(biz._id.toString());
+              }
+              if (biz.businessName) {
+                suspendedIds.add(biz.businessName.toLowerCase().trim());
+                suspendedNames.add(biz.businessName.toLowerCase().trim());
+              }
+              if (biz.name) {
+                suspendedIds.add(biz.name.toLowerCase().trim());
+                suspendedNames.add(biz.name.toLowerCase().trim());
+              }
             } else if (biz._id) {
               const vCity = biz.city || vendor.city || vendor.bankCity || 'Bangalore';
               const bData = {
@@ -149,53 +168,64 @@ router.get('/products', async (req, res) => {
           mobileNumber: vendor.mobileNumber || vendor.telephone || '',
           operatingHours: vendor.operatingHours || ''
         };
-        if (vendorIdStr) vendorMap[vendorIdStr] = vData;
-        if (vendor.vendorId) vendorMap[vendor.vendorId.toString()] = vData;
-        if (vendor.registrationId) vendorMap[vendor.registrationId.toString()] = vData;
-        if (emailLower) vendorMap[emailLower] = vData;
-        if (vendor.businessName) vendorMap[vendor.businessName.toLowerCase().trim()] = vData;
-        if (vendor.name) vendorMap[vendor.name.toLowerCase().trim()] = vData;
+        vendorKeys.forEach(k => {
+          vendorMap[k] = vData;
+        });
       }
     });
 
     // 2. Fetch all products
     const products = await Product.find({});
 
-    // Filter products: must belong to an active vendor in vendorMap, and must NOT be in suspendedIds, suspendedNames, or suspendedCategoryKeys
+    // Filter products: exclude any product belonging to a suspended vendor or marked suspended
     const activeProducts = products.filter(p => {
-      const vIdStr = (p.vendorId || p.vendor_id || '').toString().trim();
-      const pBizId = (p.businessId || p.outletId || p.storeId || '').toString().trim();
-      const vEmail = (p.vendorEmail || '').toLowerCase().trim();
-      const pVendorName = (p.vendorName || p.brand || p.companyName || p.businessName || '').toLowerCase().trim();
-
-      // If vendor or business is explicitly suspended by ID, email, or brand name -> exclude
-      if (
-        (vIdStr && suspendedIds.has(vIdStr)) ||
-        (pBizId && suspendedIds.has(pBizId)) ||
-        (vEmail && suspendedIds.has(vEmail)) ||
-        (pVendorName && suspendedNames.has(pVendorName))
-      ) {
+      const pStatus = (p.status || p.productStatus || '').toString().toLowerCase().trim();
+      if (['suspended', 'inactive', 'rejected', 'deactivated', 'blocked'].includes(pStatus) || p.isSuspended === true || p.isVendorSuspended === true) {
         return false;
       }
 
-      // If product belongs to a category/vendorType of this vendor that is suspended -> exclude
-      const pCatKeys = [
-        p.category,
-        p.vendorType,
-        p.subcategory,
-        p.subNavbarCategory,
-        p.mainCategory,
-        getItemMainCategory(p.category),
-        getSubNavbarCategory(p.vendorType, p.category)
-      ].filter(Boolean).map(s => String(s).toLowerCase().trim());
+      const productVendorKeys = [
+        p.vendorId ? p.vendorId.toString() : '',
+        p.vendor_id ? p.vendor_id.toString() : '',
+        p.businessId ? p.businessId.toString() : '',
+        p.outletId ? p.outletId.toString() : '',
+        p.storeId ? p.storeId.toString() : '',
+        p.vendorEmail ? p.vendorEmail.toLowerCase().trim() : '',
+        p.vendorPhone ? p.vendorPhone.toString().replace(/\D/g, '') : '',
+        p.phone ? p.phone.toString().replace(/\D/g, '') : '',
+        p.vendorName ? p.vendorName.toLowerCase().trim() : '',
+        p.brand ? p.brand.toLowerCase().trim() : '',
+        p.companyName ? p.companyName.toLowerCase().trim() : '',
+        p.businessName ? p.businessName.toLowerCase().trim() : ''
+      ].filter(Boolean);
 
-      const isProductCategorySuspended = pCatKeys.some(cKey => 
-        (vIdStr && suspendedCategoryKeys.has(`${vIdStr}_${cKey}`)) ||
-        (vEmail && suspendedCategoryKeys.has(`${vEmail}_${cKey}`))
-      );
-
-      if (isProductCategorySuspended) {
+      // 1. If ANY key of this product matches suspendedIds or suspendedNames -> EXCLUDE IT!
+      const isProductSuspended = productVendorKeys.some(k => suspendedIds.has(k) || suspendedNames.has(k));
+      if (isProductSuspended) {
         return false;
+      }
+
+      // 2. Cross-reference matching vendor user in allVendorUsers
+      const matchingVendorUser = allVendorUsers.find(v => {
+        const vId = v._id ? v._id.toString() : '';
+        const vVenId = v.vendorId ? v.vendorId.toString() : '';
+        const vRegId = v.registrationId ? v.registrationId.toString() : '';
+        const vEmail = v.email ? v.email.toLowerCase().trim() : '';
+        const vBiz = v.businessName ? v.businessName.toLowerCase().trim() : '';
+        const vName = v.name ? v.name.toLowerCase().trim() : '';
+
+        return productVendorKeys.some(k => k === vId || k === vVenId || k === vRegId || k === vEmail || k === vBiz || k === vName);
+      });
+
+      if (matchingVendorUser) {
+        const vStatus = (matchingVendorUser.status || matchingVendorUser.vendorStatus || '').toString().toLowerCase().trim();
+        const isSusp = ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
+                       matchingVendorUser.isActive === false || 
+                       matchingVendorUser.isLocked === true || 
+                       matchingVendorUser.isSuspended === true;
+        if (isSusp) {
+          return false;
+        }
       }
 
       return true;
