@@ -674,6 +674,9 @@ const VendorDashboard = () => {
         // Admin added categories exist for this section! Show ONLY admin added categories.
         Object.keys(dbSubMap).forEach(subK => {
           mergedSubMap[subK] = [...dbSubMap[subK]];
+          if ((!mergedSubMap[subK] || mergedSubMap[subK].length === 0) && defaultTaxForMain[subK] && defaultTaxForMain[subK].length > 0) {
+            mergedSubMap[subK] = [...defaultTaxForMain[subK]];
+          }
         });
       } else {
         // Fallback to static taxonomy only if admin has not added any categories for this section
@@ -7719,19 +7722,37 @@ const VendorDashboard = () => {
                       {(() => {
                         const currentTax = getCategoryTaxonomy();
                         let taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
+                        const normCat = (itemForm.category || '').toLowerCase();
+
                         if (!taxonomySubOpts || taxonomySubOpts.length === 0) {
-                          const normCat = (itemForm.category || '').toLowerCase();
-                          for (const mainK of Object.keys(currentTax)) {
-                            if (!currentTax[mainK]) continue;
-                            for (const subK of Object.keys(currentTax[mainK])) {
-                              if (subK.toLowerCase() === normCat || (normCat.includes('veg') && subK.toLowerCase().includes('veg'))) {
-                                taxonomySubOpts = currentTax[mainK][subK];
-                                break;
+                          for (const topK of Object.keys(COMPLETE_CAT_TAXONOMY)) {
+                            const secTax = COMPLETE_CAT_TAXONOMY[topK];
+                            if (!secTax) continue;
+                            for (const subK of Object.keys(secTax)) {
+                              const lowerSub = subK.toLowerCase();
+                              if (lowerSub === normCat || (normCat.includes('veg') && lowerSub.includes('veg'))) {
+                                if (secTax[subK] && secTax[subK].length > 0) {
+                                  taxonomySubOpts = secTax[subK];
+                                  break;
+                                }
                               }
                             }
                             if (taxonomySubOpts && taxonomySubOpts.length > 0) break;
                           }
                         }
+
+                        if (!taxonomySubOpts || taxonomySubOpts.length === 0) {
+                          if (normCat.includes('veg')) {
+                            taxonomySubOpts = ["Fresh Vegetables", "Onion", "Tomato", "Potato", "Carrot", "Cabbage", "Green Vegetables", "Cauliflower", "Brinjal", "Garlic", "Ginger", "Chilli", "Capsicum"];
+                          } else if (normCat.includes('fruit')) {
+                            taxonomySubOpts = ["Fresh Fruits", "Apple", "Banana", "Orange", "Mango", "Grapes", "Pomegranate", "Papaya", "Watermelon"];
+                          } else if (normCat.includes('groc') || normCat.includes('staple')) {
+                            taxonomySubOpts = ["Staples", "Rice", "Wheat", "Flour", "Pulses", "Dal", "Sugar", "Cooking Oil", "Spices", "Packaged Foods", "Snacks"];
+                          } else if (normCat.includes('dair')) {
+                            taxonomySubOpts = ["Milk", "Curd", "Butter", "Ghee", "Cheese", "Paneer", "Yogurt"];
+                          }
+                        }
+
                         const allSubOpts = (taxonomySubOpts && taxonomySubOpts.length > 0)
                           ? (taxonomySubOpts.includes(itemForm.subcategory) ? taxonomySubOpts : [...taxonomySubOpts, itemForm.subcategory].filter(Boolean))
                           : (itemForm.subcategory ? [itemForm.subcategory] : []);
@@ -8022,19 +8043,37 @@ const VendorDashboard = () => {
                   {(() => {
                     const currentTax = getCategoryTaxonomy();
                     let taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
+                    const normCat = (itemForm.category || '').toLowerCase();
+
                     if (!taxonomySubOpts || taxonomySubOpts.length === 0) {
-                      const normCat = (itemForm.category || '').toLowerCase();
-                      for (const mainK of Object.keys(currentTax)) {
-                        if (!currentTax[mainK]) continue;
-                        for (const subK of Object.keys(currentTax[mainK])) {
-                          if (subK.toLowerCase() === normCat || (normCat.includes('veg') && subK.toLowerCase().includes('veg'))) {
-                            taxonomySubOpts = currentTax[mainK][subK];
-                            break;
+                      for (const topK of Object.keys(COMPLETE_CAT_TAXONOMY)) {
+                        const secTax = COMPLETE_CAT_TAXONOMY[topK];
+                        if (!secTax) continue;
+                        for (const subK of Object.keys(secTax)) {
+                          const lowerSub = subK.toLowerCase();
+                          if (lowerSub === normCat || (normCat.includes('veg') && lowerSub.includes('veg'))) {
+                            if (secTax[subK] && secTax[subK].length > 0) {
+                              taxonomySubOpts = secTax[subK];
+                              break;
+                            }
                           }
                         }
                         if (taxonomySubOpts && taxonomySubOpts.length > 0) break;
                       }
                     }
+
+                    if (!taxonomySubOpts || taxonomySubOpts.length === 0) {
+                      if (normCat.includes('veg')) {
+                        taxonomySubOpts = ["Fresh Vegetables", "Onion", "Tomato", "Potato", "Carrot", "Cabbage", "Green Vegetables", "Cauliflower", "Brinjal", "Garlic", "Ginger", "Chilli", "Capsicum"];
+                      } else if (normCat.includes('fruit')) {
+                        taxonomySubOpts = ["Fresh Fruits", "Apple", "Banana", "Orange", "Mango", "Grapes", "Pomegranate", "Papaya", "Watermelon"];
+                      } else if (normCat.includes('groc') || normCat.includes('staple')) {
+                        taxonomySubOpts = ["Staples", "Rice", "Wheat", "Flour", "Pulses", "Dal", "Sugar", "Cooking Oil", "Spices", "Packaged Foods", "Snacks"];
+                      } else if (normCat.includes('dair')) {
+                        taxonomySubOpts = ["Milk", "Curd", "Butter", "Ghee", "Cheese", "Paneer", "Yogurt"];
+                      }
+                    }
+
                     const allSubOpts = (taxonomySubOpts && taxonomySubOpts.length > 0)
                       ? (taxonomySubOpts.includes(itemForm.subcategory) ? taxonomySubOpts : [...taxonomySubOpts, itemForm.subcategory].filter(Boolean))
                       : (itemForm.subcategory ? [itemForm.subcategory] : []);
