@@ -981,7 +981,22 @@ const VendorDashboard = () => {
   const [isNewQueryModalOpen, setIsNewQueryModalOpen] = useState(false);
   const [newQueryForm, setNewQueryForm] = useState({ subject: '', category: 'General Inquiry', message: '', priority: 'Medium' });
   const [replyText, setReplyText] = useState('');
-  const [vendorQueriesList, setVendorQueriesList] = useState([]);
+  const [vendorQueriesList, setVendorQueriesList] = useState(() => {
+    try {
+      const saved = localStorage.getItem('vendor_support_tickets');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (vendorQueriesList && vendorQueriesList.length > 0) {
+      try {
+        localStorage.setItem('vendor_support_tickets', JSON.stringify(vendorQueriesList));
+      } catch (e) {}
+    }
+  }, [vendorQueriesList]);
   
   // Member Search and Storefront States
   const [memberCategorySearch, setMemberCategorySearch] = useState('');
@@ -3097,7 +3112,15 @@ const VendorDashboard = () => {
                   <div className="p-3.5 bg-pink-100 dark:bg-pink-900/40 text-pink-600 dark:text-pink-300 rounded-2xl shadow-inner"><CreditCard size={24} /></div>
                   <div>
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider font-semibold">Active Memberships</p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-pink-600 dark:text-pink-400">{analytics.activeMembershipsCount || 0}</p>
+                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-pink-600 dark:text-pink-400">
+                      {Math.max(
+                        customers.filter(c => c.status === 'Active' || c.membershipStatus === 'Active' || c.cardTier || c.isMember).length,
+                        orders.filter(o => o.memberId || o.cardType).length > 0
+                          ? new Set(orders.map(o => o.memberId || o.customerId).filter(Boolean)).size
+                          : 0,
+                        analytics.activeMembershipsCount || 0
+                      )}
+                    </p>
                   </div>
                 </div>
 
@@ -3618,14 +3641,14 @@ const VendorDashboard = () => {
                       </div>
                       <div className="w-full sm:w-48">
                         <select
-                          value={catalogCardFilter}
-                          onChange={(e) => setCatalogCardFilter(e.target.value)}
+                          value={catalogCategoryFilter}
+                          onChange={(e) => setCatalogCategoryFilter(e.target.value)}
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-700 dark:text-slate-300"
                         >
-                          <option value="All">All Cards</option>
-                          <option value="Silver">Silver Card</option>
-                          <option value="Gold">Gold Card</option>
-                          <option value="Diamond">Diamond Card</option>
+                          <option value="All">All Categories</option>
+                          {[...new Set(catalog.map(item => item.category || item.subCategory || item.childCategory).filter(Boolean))].map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
                         </select>
                       </div>
                       <div className="w-full sm:w-48">
@@ -5355,18 +5378,22 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         required
+                        maxLength={10}
                         value={profileForm.mobileNumber}
-                        onChange={e => setProfileForm({ ...profileForm, mobileNumber: e.target.value })}
-                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                        onChange={e => setProfileForm({ ...profileForm, mobileNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        placeholder="10-digit mobile number"
+                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                       />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Telephone</label>
                       <input
                         type="text"
+                        maxLength={10}
                         value={profileForm.telephone}
-                        onChange={e => setProfileForm({ ...profileForm, telephone: e.target.value })}
-                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                        onChange={e => setProfileForm({ ...profileForm, telephone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        placeholder="10-digit telephone"
+                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                       />
                     </div>
                     <div className="space-y-1">
@@ -5382,9 +5409,11 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Alternate Number</label>
                       <input
                         type="text"
+                        maxLength={10}
                         value={profileForm.alternateNumber}
-                        onChange={e => setProfileForm({ ...profileForm, alternateNumber: e.target.value })}
-                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                        onChange={e => setProfileForm({ ...profileForm, alternateNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        placeholder="10-digit alternate number"
+                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                       />
                     </div>
                   </div>
@@ -6352,6 +6381,33 @@ const VendorDashboard = () => {
                     )}
                   </div>
 
+                  {/* Row 2: Payment Status Overview KPI Cards */}
+                  {user?.role !== 'Member' && (
+                    <div className="glass-card p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm space-y-4">
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        💳 Payment Status Overview
+                      </h3>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-bold">
+                        <div className="bg-emerald-50/40 dark:bg-emerald-950/15 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
+                          <span className="text-emerald-600 dark:text-emerald-300 font-extrabold uppercase text-[10px]">Successful Payments</span>
+                          <span className="text-2xl font-black text-slate-900 dark:text-white">{compOrders.length}</span>
+                        </div>
+                        <div className="bg-amber-50/40 dark:bg-amber-950/15 border border-amber-100 dark:border-amber-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
+                          <span className="text-amber-600 dark:text-amber-300 font-extrabold uppercase text-[10px]">Pending Payments</span>
+                          <span className="text-2xl font-black text-slate-900 dark:text-white">{pendingOrdersList.length}</span>
+                        </div>
+                        <div className="bg-red-50/40 dark:bg-red-950/15 border border-red-100 dark:border-red-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
+                          <span className="text-red-600 dark:text-red-300 font-extrabold uppercase text-[10px]">Failed Payments</span>
+                          <span className="text-2xl font-black text-slate-900 dark:text-white">{failedOrdersList.length}</span>
+                        </div>
+                        <div className="bg-purple-50/40 dark:bg-purple-950/15 border border-purple-100 dark:border-purple-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
+                          <span className="text-purple-600 dark:text-purple-300 font-extrabold uppercase text-[10px]">Refunded Payments</span>
+                          <span className="text-2xl font-black text-slate-900 dark:text-white">0</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Row 2: Earnings Analytics (Today's, Weekly, Monthly, Total) */}
                   {user?.role !== 'Member' && (
                     <div className="glass-card p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm space-y-4">
@@ -6831,32 +6887,7 @@ const VendorDashboard = () => {
                     </div>
                   )}
 
-                  {/* Row 6: Payment Status Overview */}
-                  {user?.role !== 'Member' && (
-                    <div className="glass-card p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm space-y-4">
-                      <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        💳 Payment Status Overview
-                      </h3>
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-bold">
-                        <div className="bg-emerald-50/40 dark:bg-emerald-950/15 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
-                          <span className="text-emerald-600 dark:text-emerald-300 font-extrabold uppercase text-[10px]">Successful Payments</span>
-                          <span className="text-2xl font-black text-slate-900 dark:text-white">{compOrders.length}</span>
-                        </div>
-                        <div className="bg-amber-50/40 dark:bg-amber-950/15 border border-amber-100 dark:border-amber-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
-                          <span className="text-amber-600 dark:text-amber-300 font-extrabold uppercase text-[10px]">Pending Payments</span>
-                          <span className="text-2xl font-black text-slate-900 dark:text-white">{pendingOrdersList.length}</span>
-                        </div>
-                        <div className="bg-red-50/40 dark:bg-red-950/15 border border-red-100 dark:border-red-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
-                          <span className="text-red-600 dark:text-red-300 font-extrabold uppercase text-[10px]">Failed Payments</span>
-                          <span className="text-2xl font-black text-slate-900 dark:text-white">{failedOrdersList.length}</span>
-                        </div>
-                        <div className="bg-purple-50/40 dark:bg-purple-950/15 border border-purple-100 dark:border-purple-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
-                          <span className="text-purple-600 dark:text-purple-300 font-extrabold uppercase text-[10px]">Refunded Payments</span>
-                          <span className="text-2xl font-black text-slate-900 dark:text-white">0</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+
 
                   {/* Row 7: Policy & Notifications Row */}
                   <div className="grid lg:grid-cols-3 gap-8">
@@ -11023,7 +11054,11 @@ required
                   }
                 ]
               };
-              setVendorQueriesList(prev => [newTicket, ...prev]);
+              const updatedQueries = [newTicket, ...vendorQueriesList];
+              setVendorQueriesList(updatedQueries);
+              try {
+                localStorage.setItem('vendor_support_tickets', JSON.stringify(updatedQueries));
+              } catch (e) {}
               setActiveQueryTab('my_tickets');
               setMessage('Support query ticket raised successfully! Admin will review your request.');
               setIsNewQueryModalOpen(false);

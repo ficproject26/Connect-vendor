@@ -368,14 +368,14 @@ const ProductList = () => {
                       </div>
                       <div className="w-full sm:w-48">
                         <select
-                          value={catalogCardFilter}
-                          onChange={(e) => setCatalogCardFilter(e.target.value)}
+                          value={catalogCategoryFilter}
+                          onChange={(e) => setCatalogCategoryFilter(e.target.value)}
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-700 dark:text-slate-300"
                         >
-                          <option value="All">All Cards</option>
-                          <option value="Silver">Silver Card</option>
-                          <option value="Gold">Gold Card</option>
-                          <option value="Diamond">Diamond Card</option>
+                          <option value="All">All Categories</option>
+                          {[...new Set(catalog.map(item => item.category || item.subCategory || item.childCategory).filter(Boolean))].map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
                         </select>
                       </div>
                       <div className="w-full sm:w-48">

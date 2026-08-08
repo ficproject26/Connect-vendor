@@ -403,6 +403,33 @@ const Wallet = () => {
                     )}
                   </div>
 
+                  {/* Payment Status Overview KPI Cards */}
+                  {user?.role !== 'Member' && (
+                    <div className="glass-card p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm space-y-4">
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        💳 Payment Status Overview
+                      </h3>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-bold">
+                        <div className="bg-emerald-50/40 dark:bg-emerald-950/15 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
+                          <span className="text-emerald-600 dark:text-emerald-300 font-extrabold uppercase text-[10px]">Successful Payments</span>
+                          <span className="text-2xl font-black text-slate-900 dark:text-white">{compOrders.length}</span>
+                        </div>
+                        <div className="bg-amber-50/40 dark:bg-amber-950/15 border border-amber-100 dark:border-amber-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
+                          <span className="text-amber-600 dark:text-amber-300 font-extrabold uppercase text-[10px]">Pending Payments</span>
+                          <span className="text-2xl font-black text-slate-900 dark:text-white">{pendingOrdersList.length}</span>
+                        </div>
+                        <div className="bg-red-50/40 dark:bg-red-950/15 border border-red-100 dark:border-red-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
+                          <span className="text-red-600 dark:text-red-300 font-extrabold uppercase text-[10px]">Failed Payments</span>
+                          <span className="text-2xl font-black text-slate-900 dark:text-white">{failedOrdersList.length}</span>
+                        </div>
+                        <div className="bg-purple-50/40 dark:bg-purple-950/15 border border-purple-100 dark:border-purple-900/30 rounded-2xl p-4 flex flex-col justify-between h-24">
+                          <span className="text-purple-600 dark:text-purple-300 font-extrabold uppercase text-[10px]">Refunded Payments</span>
+                          <span className="text-2xl font-black text-slate-900 dark:text-white">0</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Row 2: Earnings Analytics (Today's, Weekly, Monthly, Total) */}
                   {user?.role !== 'Member' && (
                     <div className="glass-card p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm space-y-4">

@@ -274,18 +274,22 @@ const Profile = () => {
                   <input
                     type="text"
                     required
+                    maxLength={10}
                     value={profileForm.mobileNumber}
-                    onChange={e => setProfileForm({ ...profileForm, mobileNumber: e.target.value })}
-                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                    onChange={e => setProfileForm({ ...profileForm, mobileNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                    placeholder="10-digit mobile number"
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Telephone</label>
                   <input
                     type="text"
+                    maxLength={10}
                     value={profileForm.telephone}
-                    onChange={e => setProfileForm({ ...profileForm, telephone: e.target.value })}
-                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                    onChange={e => setProfileForm({ ...profileForm, telephone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                    placeholder="10-digit telephone"
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                   />
                 </div>
                 <div className="space-y-1">
@@ -301,9 +305,11 @@ const Profile = () => {
                   <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Alternate Number</label>
                   <input
                     type="text"
+                    maxLength={10}
                     value={profileForm.alternateNumber}
-                    onChange={e => setProfileForm({ ...profileForm, alternateNumber: e.target.value })}
-                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                    onChange={e => setProfileForm({ ...profileForm, alternateNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                    placeholder="10-digit alternate number"
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                   />
                 </div>
               </div>
