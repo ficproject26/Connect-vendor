@@ -190,6 +190,7 @@ const createProduct = async (req, res) => {
       name, description, price, originalPrice, category, subcategory: bodySubcategory, subNavbarCategory, mainCategory, stock, unit, warranty, 
       specialization, pinCode, duration, roomType, guests, amenities, imageUrl, 
       imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
+      availableSizes, availableColors,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
       qualification, linkedProfile, contactNumber, mailId, department,
       boardingPoint, boardingTime, dropPoint, arrivalTime, distance, busTiming, stoppings
@@ -229,6 +230,8 @@ const createProduct = async (req, res) => {
       bookingType: bookingType || 'Slot booking',
       status: 'Available',
       cardTypes: cardTypes || ['Silver', 'Gold', 'Diamond'],
+      availableSizes: Array.isArray(availableSizes) ? availableSizes : (typeof availableSizes === 'string' ? availableSizes.split(',').map(s=>s.trim()).filter(Boolean) : []),
+      availableColors: Array.isArray(availableColors) ? availableColors : (typeof availableColors === 'string' ? availableColors.split(',').map(c=>c.trim()).filter(Boolean) : []),
       availableTimeSlots: availableTimeSlots || undefined,
       jobType,
       jobLocation,
@@ -325,6 +328,7 @@ const updateProduct = async (req, res) => {
       name, description, price, originalPrice, category, subcategory: bodySubcategory, subNavbarCategory, mainCategory, stock, unit, warranty, 
       specialization, pinCode, duration, roomType, guests, amenities, status, 
       imageUrl, imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
+      availableSizes, availableColors,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
       qualification, linkedProfile, contactNumber, mailId, department,
       boardingPoint, boardingTime, dropPoint, arrivalTime, distance, busTiming, stoppings
@@ -369,6 +373,8 @@ const updateProduct = async (req, res) => {
         status: status || product.status,
         cardTypes: cardTypes !== undefined ? cardTypes : product.cardTypes,
         availableTimeSlots: availableTimeSlots !== undefined ? availableTimeSlots : product.availableTimeSlots,
+        availableSizes: availableSizes !== undefined ? (Array.isArray(availableSizes) ? availableSizes : (typeof availableSizes === 'string' ? availableSizes.split(',').map(s=>s.trim()).filter(Boolean) : [])) : product.availableSizes,
+        availableColors: availableColors !== undefined ? (Array.isArray(availableColors) ? availableColors : (typeof availableColors === 'string' ? availableColors.split(',').map(c=>c.trim()).filter(Boolean) : [])) : product.availableColors,
         jobType: jobType !== undefined ? jobType : product.jobType,
         jobLocation: jobLocation !== undefined ? jobLocation : product.jobLocation,
         experience: experience !== undefined ? experience : product.experience,

@@ -68,11 +68,26 @@ const getFallbackImageUrl = (item, vendorType) => {
   return '';
 };
 
-const getItemRating = (item) => {
+const getItemRating = (item, orders = []) => {
+  if (!item) return { rating: '5.0', reviews: 0 };
+  let liveCount = 0;
+  if (Array.isArray(orders) && orders.length > 0) {
+    liveCount = orders.filter(o => {
+      if (!o || o.status === 'Cancelled' || o.status === 'Rejected') return false;
+      if (o.items && Array.isArray(o.items)) {
+        return o.items.some(i => (i.productId && String(i.productId) === String(item._id)) || i.name === item.name);
+      }
+      return String(o.productId || '') === String(item._id) || o.product_details === item.name;
+    }).reduce((sum, o) => {
+      const match = o.items?.find(i => (i.productId && String(i.productId) === String(item._id)) || i.name === item.name);
+      return sum + (match ? (match.quantity || 1) : 1);
+    }, 0);
+  } else if (item.salesCount !== undefined) {
+    liveCount = Number(item.salesCount || 0);
+  }
   const charCodeSum = (item.name || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  const rating = (4.0 + (charCodeSum % 10) / 10).toFixed(1);
-  const reviewsCount = 10 + (charCodeSum % 190);
-  return { rating, reviews: reviewsCount };
+  const rating = liveCount > 0 ? (4.2 + (charCodeSum % 8) / 10).toFixed(1) : '5.0';
+  return { rating, reviews: liveCount };
 };
 
 const getPartnerAvatarUrl = (partner) => {

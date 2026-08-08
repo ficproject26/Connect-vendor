@@ -506,7 +506,7 @@ const ProductList = () => {
                                     
                                     {/* Item Rating */}
                                     {(() => {
-                                      const { rating, reviews } = getItemRating(item);
+                                      const { rating, reviews } = getItemRating(item, orders);
                                       return (
                                         <div className="flex items-center gap-1 mt-1 mb-1.5">
                                           <div className={`flex ${isOutOfStock ? 'text-slate-300 dark:text-slate-600' : 'text-amber-500'}`}>

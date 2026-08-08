@@ -138,6 +138,8 @@ const ProductSchema = new mongoose.Schema({
   bookingType: { type: String, enum: ['Slot booking', 'technician booking'], default: 'Slot booking' }, // Service booking type categories
   status: { type: String, default: 'Available' }, // e.g. Available, Out of Stock, Booked
   cardTypes: { type: [String], enum: ['Silver', 'Gold', 'Diamond'], default: ['Silver', 'Gold', 'Diamond'] },
+  availableSizes: { type: [String], default: [] },   // Shoe & Clothing Sizes
+  availableColors: { type: [String], default: [] },  // Shoe & Clothing Colors
   availableTimeSlots: { type: [String], default: [
     '09:00 AM - 09:30 AM',
     '09:30 AM - 10:00 AM',

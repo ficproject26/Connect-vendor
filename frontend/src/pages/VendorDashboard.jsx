@@ -91,11 +91,26 @@ const getFallbackImageUrl = (item, vendorType) => {
   return '';
 };
 
-const getItemRating = (item) => {
+const getItemRating = (item, orders = []) => {
+  if (!item) return { rating: '5.0', reviews: 0 };
+  let liveCount = 0;
+  if (Array.isArray(orders) && orders.length > 0) {
+    liveCount = orders.filter(o => {
+      if (!o || o.status === 'Cancelled' || o.status === 'Rejected') return false;
+      if (o.items && Array.isArray(o.items)) {
+        return o.items.some(i => (i.productId && String(i.productId) === String(item._id)) || i.name === item.name);
+      }
+      return String(o.productId || '') === String(item._id) || o.product_details === item.name;
+    }).reduce((sum, o) => {
+      const match = o.items?.find(i => (i.productId && String(i.productId) === String(item._id)) || i.name === item.name);
+      return sum + (match ? (match.quantity || 1) : 1);
+    }, 0);
+  } else if (item.salesCount !== undefined) {
+    liveCount = Number(item.salesCount || 0);
+  }
   const charCodeSum = (item.name || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  const rating = (4.0 + (charCodeSum % 10) / 10).toFixed(1);
-  const reviewsCount = 10 + (charCodeSum % 190);
-  return { rating, reviews: reviewsCount };
+  const rating = liveCount > 0 ? (4.2 + (charCodeSum % 8) / 10).toFixed(1) : '5.0';
+  return { rating, reviews: liveCount };
 };
 
 const getPartnerAvatarUrl = (partner) => {
@@ -938,6 +953,7 @@ const VendorDashboard = () => {
 
   const getCustomerAddress = (order) => {
     if (!order) return 'Not Specified';
+    if (order.jobLocation && order.jobLocation !== 'N/A') return order.jobLocation;
     if (order.customer_address && order.customer_address !== 'N/A') return order.customer_address;
     if (order.address && order.address !== 'N/A') return order.address;
     if (order.deliveryAddress) return order.deliveryAddress;
@@ -2000,6 +2016,7 @@ const VendorDashboard = () => {
       warranty: '', specialization: '', pinCode: '', duration: '', roomType: 'Standard', guests: '2', amenities: [], imageUrl: '', imageUrls: [],
       foodType: 'Veg', status: terms.catalogStatuses[0],
       cardTypes: ['Silver', 'Gold', 'Diamond'],
+      availableSizes: [], availableColors: [],
       jobType: 'Full-time', jobLocation: '', experience: '', skills: '', qualification: '', linkedProfile: '', contactNumber: '', mailId: '', department: '',
       deadline: '', applicationTips: '',
       boardingPoint: '', boardingTime: '', dropPoint: '', arrivalTime: '', distance: '', busTiming: '', stoppings: []
@@ -2041,6 +2058,8 @@ const VendorDashboard = () => {
       roomType: item.roomType || '',
       guests: item.guests ? item.guests.toString() : '2',
       amenities: item.amenities || [],
+      availableSizes: item.availableSizes || item.sizes || [],
+      availableColors: item.availableColors || item.colors || [],
       imageUrl: item.imageUrl || '',
       imageUrls: item.imageUrls || (item.imageUrl ? [item.imageUrl] : []),
       foodType: item.foodType || 'Veg',
@@ -3800,7 +3819,7 @@ const VendorDashboard = () => {
                                     
                                     {/* Item Rating */}
                                     {(() => {
-                                      const { rating, reviews } = getItemRating(item);
+                                      const { rating, reviews } = getItemRating(item, orders);
                                       return (
                                         <div className="flex items-center gap-1 mt-1 mb-1.5">
                                           <div className={`flex ${isOutOfStock ? 'text-slate-300 dark:text-slate-600' : 'text-amber-500'}`}>
@@ -4159,7 +4178,7 @@ const VendorDashboard = () => {
                                       </td>
                                       {/* Job Location */}
                                       <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
-                                        {order.customer_address || 'Koramangala, Bangalore'}
+                                        {getCustomerAddress(order)}
                                       </td>
                                     </>
                                   ) : isService ? (
@@ -4765,19 +4784,26 @@ const VendorDashboard = () => {
 
                           {/* Stats Metrics Sub-grid */}
                           {(() => {
+                            const cNameLower = (c.name || '').trim().toLowerCase();
+                            const cEmailLower = (c.email || '').trim().toLowerCase();
                             const custIdStr = String(c._id || c.id || '');
-                            const matchingOrders = orders.filter(o => 
-                              String(o.memberId || o.customerId || o._id) === custIdStr || 
-                              o.memberName === c.name ||
-                              o.customer_name === c.name ||
-                              (o.email && c.email && o.email.toLowerCase() === c.email.toLowerCase()) ||
-                              (o.candidateEmail && c.email && o.candidateEmail.toLowerCase() === c.email.toLowerCase()) ||
-                              (o.customer_email && c.email && o.customer_email.toLowerCase() === c.email.toLowerCase())
-                            );
-                            const actualVisits = matchingOrders.length > 0 ? matchingOrders.length : (c.ordersCount || 1);
+
+                            const matchingOrders = orders.filter(o => {
+                              if (!o) return false;
+                              const oName = (o.memberName || o.customer_name || '').trim().toLowerCase();
+                              const oEmail = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
+                              const oMemberId = String(o.memberId || o.customerId || '');
+
+                              if (cEmailLower && oEmail && cEmailLower === oEmail) return true;
+                              if (cNameLower && oName && cNameLower === oName) return true;
+                              if (custIdStr && oMemberId && custIdStr === oMemberId) return true;
+                              return false;
+                            });
+
+                            const actualVisits = matchingOrders.length > 0 ? matchingOrders.length : (c.ordersCount !== undefined ? c.ordersCount : 1);
                             const actualSpent = matchingOrders.length > 0 
                               ? matchingOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
-                              : (c.totalSpent || 0);
+                              : (c.totalSpent !== undefined ? c.totalSpent : 0);
 
                             return (
                               <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
@@ -8449,6 +8475,102 @@ required
             </div>
           )}
 
+          {/* Sizes & Colors for Shoes, Dress, Fashion, Footwear, Clothing */}
+          {selectedMainCat === 'Products' && (
+            <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800 animate-fadeIn">
+              {/* Sizes Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1 flex items-center justify-between">
+                  <span>Available Sizes</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Select or type custom sizes</span>
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(() => {
+                    const isShoe = (itemForm.category || '').toLowerCase().includes('shoe') || (itemForm.subcategory || '').toLowerCase().includes('shoe') || (vendorType || '').toLowerCase().includes('shoe') || (vendorType || '').toLowerCase().includes('footwear');
+                    const sizeOpts = isShoe
+                      ? ['6', '7', '8', '9', '10', '11', '12', 'Euro 38', 'Euro 39', 'Euro 40', 'Euro 41', 'Euro 42']
+                      : ['S', 'M', 'L', 'XL', 'XXL', '3XL', 'Free Size'];
+                    
+                    return sizeOpts.map(sz => {
+                      const sizesArr = Array.isArray(itemForm.availableSizes) ? itemForm.availableSizes : (typeof itemForm.availableSizes === 'string' ? itemForm.availableSizes.split(',').map(s => s.trim()).filter(Boolean) : []);
+                      const isSelected = sizesArr.includes(sz);
+                      return (
+                        <button
+                          key={sz}
+                          type="button"
+                          onClick={() => {
+                            const updated = isSelected ? sizesArr.filter(s => s !== sz) : [...sizesArr, sz];
+                            setItemForm({ ...itemForm, availableSizes: updated });
+                          }}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border ${
+                            isSelected 
+                              ? 'bg-amber-500 text-white border-amber-600 shadow-sm' 
+                              : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                          }`}
+                        >
+                          {sz}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Custom sizes (comma separated, e.g. 7 UK, 8 UK, 9 UK)"
+                  value={Array.isArray(itemForm.availableSizes) ? itemForm.availableSizes.join(', ') : (itemForm.availableSizes || '')}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const parsed = val.split(',').map(s => s.trim()).filter(Boolean);
+                    setItemForm({ ...itemForm, availableSizes: parsed });
+                  }}
+                  className="w-full glass-input rounded-xl px-4 py-2 text-xs focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* Colors Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1 flex items-center justify-between">
+                  <span>Available Colors</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Select or type custom colors</span>
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {['Black', 'White', 'Red', 'Blue', 'Green', 'Yellow', 'Brown', 'Grey', 'Beige', 'Pink', 'Maroon', 'Navy'].map(col => {
+                    const colorsArr = Array.isArray(itemForm.availableColors) ? itemForm.availableColors : (typeof itemForm.availableColors === 'string' ? itemForm.availableColors.split(',').map(c => c.trim()).filter(Boolean) : []);
+                    const isSelected = colorsArr.includes(col);
+                    return (
+                      <button
+                        key={col}
+                        type="button"
+                        onClick={() => {
+                          const updated = isSelected ? colorsArr.filter(c => c !== col) : [...colorsArr, col];
+                          setItemForm({ ...itemForm, availableColors: updated });
+                        }}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border ${
+                          isSelected 
+                            ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' 
+                            : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                        }`}
+                      >
+                        {col}
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Custom colors (comma separated, e.g. Navy Blue, Olive Green, Rose Gold)"
+                  value={Array.isArray(itemForm.availableColors) ? itemForm.availableColors.join(', ') : (itemForm.availableColors || '')}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const parsed = val.split(',').map(c => c.trim()).filter(Boolean);
+                    setItemForm({ ...itemForm, availableColors: parsed });
+                  }}
+                  className="w-full glass-input rounded-xl px-4 py-2 text-xs focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+            </div>
+          )}
+
           {(selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || selectedMainCat === 'Food' || selectedMainCat === 'Jobs' || selectedMainCat === 'Education') && (
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
@@ -10468,8 +10590,17 @@ required
               
               {(() => {
                 const rawResume = selectedBillOrder.candidateResume?.trim() || '';
-                const isUrlOrFile = rawResume.startsWith('http') || rawResume.startsWith('/') || rawResume.includes('/uploads/') || rawResume.includes('\\') || /\.(pdf|png|jpg|jpeg|doc|docx)$/i.test(rawResume);
-                const resumeUrl = isUrlOrFile ? (rawResume.startsWith('http') ? rawResume : `${getBackendUrl()}${rawResume.startsWith('/') ? '' : '/'}${rawResume.replace(/\\/g, '/')}`) : null;
+                let resumeUrl = null;
+                if (rawResume) {
+                  if (rawResume.startsWith('http://') || rawResume.startsWith('https://') || rawResume.startsWith('data:')) {
+                    resumeUrl = rawResume;
+                  } else if (rawResume.startsWith('/') || rawResume.includes('uploads/')) {
+                    const clean = rawResume.replace(/\\/g, '/');
+                    resumeUrl = `${getBackendUrl()}${clean.startsWith('/') ? '' : '/'}${clean}`;
+                  } else if (/\.(pdf|png|jpg|jpeg|doc|docx)$/i.test(rawResume)) {
+                    resumeUrl = `${getBackendUrl()}/uploads/resumes/${rawResume.replace(/\\/g, '/')}`;
+                  }
+                }
 
                 if (resumeUrl) {
                   return (
@@ -10500,14 +10631,14 @@ required
                         </div>
                       </div>
 
-                      <div className="w-full h-[450px] bg-slate-100 dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-inner">
+                      <div className="w-full h-[450px] bg-slate-100 dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-inner flex items-center justify-center">
                         {/\.(png|jpg|jpeg|webp)$/i.test(rawResume) ? (
                           <img src={resumeUrl} alt="Candidate Resume" className="w-full h-full object-contain p-2" />
                         ) : (
                           <iframe
                             src={resumeUrl}
                             title="Candidate Uploaded Resume"
-                            className="w-full h-full border-none"
+                            className="w-full h-full border-none bg-white"
                           />
                         )}
                       </div>
