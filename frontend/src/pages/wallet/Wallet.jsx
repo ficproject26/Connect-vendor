@@ -649,7 +649,45 @@ const Wallet = () => {
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold"
                         />
                       </div>
+                      <div className="w-full sm:w-56 flex gap-2">
+                        <select
+                          value={txFilterPeriod}
+                          onChange={(e) => {
+                            setTxFilterPeriod(e.target.value);
+                            setTxCurrentPage(1);
+                          }}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-primary-500 font-bold text-slate-700 dark:text-slate-300"
+                        >
+                          <option value="Last 7 Days">Last 7 Days</option>
+                          <option value="Today">Today</option>
+                          <option value="Last 30 Days">Last 30 Days</option>
+                          <option value="All Time">All Time</option>
+                          <option value="Custom">Custom Date Range</option>
+                        </select>
+                      </div>
                     </div>
+                    {txFilterPeriod === 'Custom' && (
+                      <div className="flex flex-wrap items-center gap-3 pt-2">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                          <span>From:</span>
+                          <input
+                            type="date"
+                            value={txDateRange.start}
+                            onChange={(e) => setTxDateRange(prev => ({ ...prev, start: e.target.value }))}
+                            className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-mono"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                          <span>To:</span>
+                          <input
+                            type="date"
+                            value={txDateRange.end}
+                            onChange={(e) => setTxDateRange(prev => ({ ...prev, end: e.target.value }))}
+                            className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-mono"
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     {/* Table */}
                     {sortedTxs.length === 0 ? (

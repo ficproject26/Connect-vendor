@@ -6630,7 +6630,45 @@ const VendorDashboard = () => {
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold"
                         />
                       </div>
+                      <div className="w-full sm:w-56 flex gap-2">
+                        <select
+                          value={txFilterPeriod}
+                          onChange={(e) => {
+                            setTxFilterPeriod(e.target.value);
+                            setTxCurrentPage(1);
+                          }}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-primary-500 font-bold text-slate-700 dark:text-slate-300"
+                        >
+                          <option value="Last 7 Days">Last 7 Days</option>
+                          <option value="Today">Today</option>
+                          <option value="Last 30 Days">Last 30 Days</option>
+                          <option value="All Time">All Time</option>
+                          <option value="Custom">Custom Date Range</option>
+                        </select>
+                      </div>
                     </div>
+                    {txFilterPeriod === 'Custom' && (
+                      <div className="flex flex-wrap items-center gap-3 pt-2">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                          <span>From:</span>
+                          <input
+                            type="date"
+                            value={txDateRange.start}
+                            onChange={(e) => setTxDateRange(prev => ({ ...prev, start: e.target.value }))}
+                            className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-mono"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                          <span>To:</span>
+                          <input
+                            type="date"
+                            value={txDateRange.end}
+                            onChange={(e) => setTxDateRange(prev => ({ ...prev, end: e.target.value }))}
+                            className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-mono"
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     {/* Table */}
                     {sortedTxs.length === 0 ? (
@@ -7699,15 +7737,29 @@ const VendorDashboard = () => {
                         const currentTax = getCategoryTaxonomy();
                         const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
                         const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+                        const invalidCategories = ['membership', 'count', 'general', 'standard', 'all_subcategories_deleted_marker', 'all_child_deleted_marker', 'na', 'n/a', 'undefined', 'null', 'orders'];
                         
                         const rawKeys = taxParentKeys.length > 0 ? taxParentKeys : (itemForm.category ? [itemForm.category] : []);
-                        const parentKeys = [...new Set(rawKeys)].filter(cat => cat && !mainCatNames.includes(cat));
+                        const parentKeys = [...new Set(rawKeys.map(k => (k || '').trim()))].filter(cat => {
+                          if (!cat) return false;
+                          const lower = cat.toLowerCase();
+                          if (mainCatNames.some(m => m.toLowerCase() === lower)) return false;
+                          if (invalidCategories.includes(lower)) return false;
+                          return true;
+                        });
 
-                        return parentKeys.map(cat => (
-                          <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {cat}
-                          </option>
-                        ));
+                        return (
+                          <>
+                            <option value="" disabled={Boolean(itemForm.category)} className="bg-white dark:bg-slate-900 text-slate-400">
+                              -- Select Category --
+                            </option>
+                            {parentKeys.map(cat => (
+                              <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                                {cat}
+                              </option>
+                            ))}
+                          </>
+                        );
                       })()}
                     </select>
                   </div>
@@ -8020,15 +8072,29 @@ const VendorDashboard = () => {
                     const currentTax = getCategoryTaxonomy();
                     const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
                     const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+                    const invalidCategories = ['membership', 'count', 'general', 'standard', 'all_subcategories_deleted_marker', 'all_child_deleted_marker', 'na', 'n/a', 'undefined', 'null', 'orders'];
                     
                     const rawKeys = taxParentKeys.length > 0 ? taxParentKeys : (itemForm.category ? [itemForm.category] : []);
-                    const parentKeys = [...new Set(rawKeys)].filter(cat => cat && !mainCatNames.includes(cat));
+                    const parentKeys = [...new Set(rawKeys.map(k => (k || '').trim()))].filter(cat => {
+                      if (!cat) return false;
+                      const lower = cat.toLowerCase();
+                      if (mainCatNames.some(m => m.toLowerCase() === lower)) return false;
+                      if (invalidCategories.includes(lower)) return false;
+                      return true;
+                    });
 
-                    return parentKeys.map(cat => (
-                      <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                        {cat}
-                      </option>
-                    ));
+                    return (
+                      <>
+                        <option value="" disabled={Boolean(itemForm.category)} className="bg-white dark:bg-slate-900 text-slate-400">
+                          -- Select Category --
+                        </option>
+                        {parentKeys.map(cat => (
+                          <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {cat}
+                          </option>
+                        ))}
+                      </>
+                    );
                   })()}
                 </select>
               </div>
@@ -10016,7 +10082,9 @@ required
                 />
                 <div>
                   <h4 className="text-sm font-bold text-slate-900 dark:text-white">{selectedSoldItem.name}</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Price: ₹{selectedSoldItem.price}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {vendorType.startsWith('Job') || selectedSoldItem.category === 'Jobs' ? 'Salary: ' : 'Price: '}₹{selectedSoldItem.price}
+                  </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Category: {selectedSoldItem.category}</p>
                 </div>
               </div>
@@ -10033,24 +10101,32 @@ required
                   </div>
                 ) : (
                   <div className="max-h-[200px] overflow-y-auto pr-1 space-y-2">
-                    {salesData.orders.map((ord, idx) => (
-                      <div key={idx} className="flex justify-between items-center p-3 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200/50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                        <div>
-                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{ord.memberName}</div>
-                          <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{ord.date} • Qty: {ord.quantity}</div>
+                    {salesData.orders.map((ord, idx) => {
+                      const isJobItem = vendorType.startsWith('Job') || selectedSoldItem.category === 'Jobs';
+                      return (
+                        <div key={idx} className="flex justify-between items-center p-3 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200/50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                          <div>
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{ord.memberName}</div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                              {ord.date}
+                              {!isJobItem && ` • Qty: ${ord.quantity}`}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            {!isJobItem && (
+                              <div className="text-xs font-bold text-slate-850 dark:text-slate-150">₹{ord.amount}</div>
+                            )}
+                            <span className={`inline-block text-[9px] font-extrabold px-1.5 py-0.5 rounded-full ${!isJobItem ? 'mt-1' : ''} ${
+                              ord.status === 'Completed' || ord.status === 'Delivered' || ord.status === 'Checked Out' ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/35' :
+                              ord.status === 'Pending' ? 'bg-amber-100 dark:bg-yellow-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-yellow-900/35' :
+                              'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200/50 dark:border-blue-900/35'
+                            }`}>
+                              {ord.status}
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-xs font-bold text-slate-850 dark:text-slate-150">₹{ord.amount}</div>
-                          <span className={`inline-block text-[9px] font-extrabold px-1.5 py-0.5 rounded-full mt-1 ${
-                            ord.status === 'Completed' || ord.status === 'Delivered' || ord.status === 'Checked Out' ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/35' :
-                            ord.status === 'Pending' ? 'bg-amber-100 dark:bg-yellow-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-yellow-900/35' :
-                            'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200/50 dark:border-blue-900/35'
-                          }`}>
-                            {ord.status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
