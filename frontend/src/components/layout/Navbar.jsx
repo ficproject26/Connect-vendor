@@ -294,8 +294,12 @@ const Navbar = () => {
               <span className="font-semibold text-slate-900 dark:text-white">{user?.email}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/40">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Business Name:</span>
-              <span className="font-semibold text-slate-900 dark:text-white">{user?.businessName || 'N/A'}</span>
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Business Name{user?.businesses && user.businesses.length > 1 ? 's' : ''}:</span>
+              <span className="font-semibold text-slate-900 dark:text-white text-right max-w-[60%] truncate" title={user?.businesses && user.businesses.length > 0 ? [...new Set(user.businesses.map(b => b.businessName || user.businessName).filter(Boolean))].join(', ') : (user?.businessName || 'N/A')}>
+                {user?.businesses && user.businesses.length > 0
+                  ? [...new Set(user.businesses.map(b => b.businessName || user.businessName).filter(Boolean))].join(', ')
+                  : (user?.businessName || 'N/A')}
+              </span>
             </div>
             <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/40">
               <span className="text-slate-500 dark:text-slate-400 font-medium">Role:</span>

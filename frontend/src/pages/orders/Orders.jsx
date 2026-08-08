@@ -268,6 +268,7 @@ const Orders = () => {
                 <option value="Yesterday">Yesterday</option>
                 <option value="LastWeek">Last Week</option>
                 <option value="LastMonth">Last Month</option>
+                <option value="Last30Days">Last 30 Days</option>
                 <option value="LastYear">Last Year</option>
               </select>
             </div>
@@ -308,27 +309,38 @@ const Orders = () => {
                       
                       let matchesTime = true;
                       if (orderTimeFilter !== 'All') {
-                        if (!order.createdAt) {
+                        const rawDateStr = order.createdAt || order.created_at || order.appointmentDate || order.orderDate || order.date;
+                        if (!rawDateStr) {
                           matchesTime = false;
                         } else {
-                          const orderTime = new Date(order.createdAt).getTime();
-                          const now = new Date();
-                          const nowTime = now.getTime();
-                          
-                          if (orderTimeFilter === 'Today') {
-                            const orderDateStr = new Date(order.createdAt).toDateString();
-                            matchesTime = orderDateStr === now.toDateString();
-                          } else if (orderTimeFilter === 'Yesterday') {
-                            const orderDateStr = new Date(order.createdAt).toDateString();
-                            const yesterday = new Date();
-                            yesterday.setDate(yesterday.getDate() - 1);
-                            matchesTime = orderDateStr === yesterday.toDateString();
-                          } else if (orderTimeFilter === 'LastWeek') {
-                            matchesTime = (nowTime - orderTime) <= 7 * 24 * 60 * 60 * 1000;
-                          } else if (orderTimeFilter === 'LastMonth') {
-                            matchesTime = (nowTime - orderTime) <= 30 * 24 * 60 * 60 * 1000;
-                          } else if (orderTimeFilter === 'LastYear') {
-                            matchesTime = (nowTime - orderTime) <= 365 * 24 * 60 * 60 * 1000;
+                          const orderDateObj = new Date(rawDateStr);
+                          if (isNaN(orderDateObj.getTime())) {
+                            matchesTime = false;
+                          } else {
+                            const orderTime = orderDateObj.getTime();
+                            const now = new Date();
+                            const nowTime = now.getTime();
+                            
+                            if (orderTimeFilter === 'Today') {
+                              matchesTime = orderDateObj.toDateString() === now.toDateString();
+                            } else if (orderTimeFilter === 'Yesterday') {
+                              const yesterday = new Date();
+                              yesterday.setDate(yesterday.getDate() - 1);
+                              matchesTime = orderDateObj.toDateString() === yesterday.toDateString();
+                            } else if (orderTimeFilter === 'LastWeek') {
+                              matchesTime = (nowTime - orderTime) <= 7 * 24 * 60 * 60 * 1000;
+                            } else if (orderTimeFilter === 'LastMonth') {
+                              const curYear = now.getFullYear();
+                              const curMonth = now.getMonth();
+                              const targetMonth = curMonth === 0 ? 11 : curMonth - 1;
+                              const targetYear = curMonth === 0 ? curYear - 1 : curYear;
+                              matchesTime = orderDateObj.getFullYear() === targetYear && orderDateObj.getMonth() === targetMonth;
+                            } else if (orderTimeFilter === 'Last30Days') {
+                              matchesTime = (nowTime - orderTime) <= 30 * 24 * 60 * 60 * 1000;
+                            } else if (orderTimeFilter === 'LastYear') {
+                              const targetYear = now.getFullYear() - 1;
+                              matchesTime = orderDateObj.getFullYear() === targetYear;
+                            }
                           }
                         }
                       }

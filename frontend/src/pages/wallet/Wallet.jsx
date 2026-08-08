@@ -522,19 +522,21 @@ const Wallet = () => {
 
                               {/* Bars */}
                               {chartData.map((d, idx) => {
-                                const barWidth = Math.max(10, Math.min(40, 400 / chartData.length));
-                                const spacing = (540 / chartData.length);
+                                const barWidth = Math.max(2, Math.min(40, (380 / chartData.length)));
+                                const spacing = (530 / chartData.length);
                                 const x = 50 + idx * spacing;
-                                const barHeight = (d.value / maxChartValue) * 160;
+                                const barHeight = maxChartValue > 0 ? (d.value / maxChartValue) * 160 : 0;
                                 const y = 200 - barHeight;
+                                const labelStep = Math.max(1, Math.ceil(chartData.length / 8));
+                                const shouldShowLabel = idx % labelStep === 0 || idx === chartData.length - 1;
 
                                 return (
                                   <g key={idx} className="group">
                                     {/* Highlight Bar Background */}
                                     <rect 
-                                      x={x - 5}
+                                      x={x - 2}
                                       y="40"
-                                      width={barWidth + 10}
+                                      width={barWidth + 4}
                                       height="165"
                                       className="fill-transparent group-hover:fill-slate-100/30 dark:group-hover:fill-slate-800/10 transition-colors duration-200"
                                     />
@@ -544,7 +546,7 @@ const Wallet = () => {
                                       y={y} 
                                       width={barWidth} 
                                       height={barHeight} 
-                                      rx="6"
+                                      rx={chartData.length > 25 ? "1" : "6"}
                                       className="fill-indigo-600 dark:fill-indigo-500 transition-all duration-300 group-hover:fill-indigo-400"
                                     />
                                     {/* Top marker label */}
@@ -559,14 +561,16 @@ const Wallet = () => {
                                       </text>
                                     )}
                                     {/* X-axis labels */}
-                                    <text 
-                                      x={x + barWidth / 2} 
-                                      y="218" 
-                                      textAnchor="middle" 
-                                      className="fill-slate-400 text-[9px] font-semibold"
-                                    >
-                                      {d.label}
-                                    </text>
+                                    {shouldShowLabel && (
+                                      <text 
+                                        x={x + barWidth / 2} 
+                                        y="218" 
+                                        textAnchor="middle" 
+                                        className="fill-slate-400 text-[9px] font-semibold"
+                                      >
+                                        {d.label}
+                                      </text>
+                                    )}
                                   </g>
                                 );
                               })}

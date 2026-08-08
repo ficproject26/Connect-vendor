@@ -3082,7 +3082,13 @@ const VendorDashboard = () => {
                   <div className="p-3.5 bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400 rounded-2xl shadow-inner"><Users size={24} /></div>
                   <div>
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Total {terms.customersName}</p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-teal-600 dark:text-teal-455">{analytics.customersCount || 0}</p>
+                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-teal-600 dark:text-teal-455">
+                      {Math.max(
+                        customers.length,
+                        new Set(orders.map(o => o.memberId || o.customerId || o.customer_email || o.candidateEmail || o.memberName || o.customer_name).filter(Boolean)).size,
+                        analytics.customersCount || 0
+                      )}
+                    </p>
                   </div>
                 </div>
 
@@ -3934,6 +3940,7 @@ const VendorDashboard = () => {
                       <option value="Yesterday">Yesterday</option>
                       <option value="LastWeek">Last Week</option>
                       <option value="LastMonth">Last Month</option>
+                      <option value="Last30Days">Last 30 Days</option>
                       <option value="LastYear">Last Year</option>
                     </select>
                   </div>
@@ -3982,27 +3989,38 @@ const VendorDashboard = () => {
                       
                       let matchesTime = true;
                       if (orderTimeFilter !== 'All') {
-                        if (!order.createdAt) {
+                        const rawDateStr = order.createdAt || order.created_at || order.appointmentDate || order.orderDate || order.date;
+                        if (!rawDateStr) {
                           matchesTime = false;
                         } else {
-                          const orderTime = new Date(order.createdAt).getTime();
-                          const now = new Date();
-                          const nowTime = now.getTime();
-                          
-                          if (orderTimeFilter === 'Today') {
-                            const orderDateStr = new Date(order.createdAt).toDateString();
-                            matchesTime = orderDateStr === now.toDateString();
-                          } else if (orderTimeFilter === 'Yesterday') {
-                            const orderDateStr = new Date(order.createdAt).toDateString();
-                            const yesterday = new Date();
-                            yesterday.setDate(yesterday.getDate() - 1);
-                            matchesTime = orderDateStr === yesterday.toDateString();
-                          } else if (orderTimeFilter === 'LastWeek') {
-                            matchesTime = (nowTime - orderTime) <= 7 * 24 * 60 * 60 * 1000;
-                          } else if (orderTimeFilter === 'LastMonth') {
-                            matchesTime = (nowTime - orderTime) <= 30 * 24 * 60 * 60 * 1000;
-                          } else if (orderTimeFilter === 'LastYear') {
-                            matchesTime = (nowTime - orderTime) <= 365 * 24 * 60 * 60 * 1000;
+                          const orderDateObj = new Date(rawDateStr);
+                          if (isNaN(orderDateObj.getTime())) {
+                            matchesTime = false;
+                          } else {
+                            const orderTime = orderDateObj.getTime();
+                            const now = new Date();
+                            const nowTime = now.getTime();
+                            
+                            if (orderTimeFilter === 'Today') {
+                              matchesTime = orderDateObj.toDateString() === now.toDateString();
+                            } else if (orderTimeFilter === 'Yesterday') {
+                              const yesterday = new Date();
+                              yesterday.setDate(yesterday.getDate() - 1);
+                              matchesTime = orderDateObj.toDateString() === yesterday.toDateString();
+                            } else if (orderTimeFilter === 'LastWeek') {
+                              matchesTime = (nowTime - orderTime) <= 7 * 24 * 60 * 60 * 1000;
+                            } else if (orderTimeFilter === 'LastMonth') {
+                              const curYear = now.getFullYear();
+                              const curMonth = now.getMonth();
+                              const targetMonth = curMonth === 0 ? 11 : curMonth - 1;
+                              const targetYear = curMonth === 0 ? curYear - 1 : curYear;
+                              matchesTime = orderDateObj.getFullYear() === targetYear && orderDateObj.getMonth() === targetMonth;
+                            } else if (orderTimeFilter === 'Last30Days') {
+                              matchesTime = (nowTime - orderTime) <= 30 * 24 * 60 * 60 * 1000;
+                            } else if (orderTimeFilter === 'LastYear') {
+                              const targetYear = now.getFullYear() - 1;
+                              matchesTime = orderDateObj.getFullYear() === targetYear;
+                            }
                           }
                         }
                       }
@@ -6453,19 +6471,21 @@ const VendorDashboard = () => {
 
                               {/* Bars */}
                               {chartData.map((d, idx) => {
-                                const barWidth = Math.max(10, Math.min(40, 400 / chartData.length));
-                                const spacing = (540 / chartData.length);
+                                const barWidth = Math.max(2, Math.min(40, (380 / chartData.length)));
+                                const spacing = (530 / chartData.length);
                                 const x = 50 + idx * spacing;
-                                const barHeight = (d.value / maxChartValue) * 160;
+                                const barHeight = maxChartValue > 0 ? (d.value / maxChartValue) * 160 : 0;
                                 const y = 200 - barHeight;
+                                const labelStep = Math.max(1, Math.ceil(chartData.length / 8));
+                                const shouldShowLabel = idx % labelStep === 0 || idx === chartData.length - 1;
 
                                 return (
                                   <g key={idx} className="group">
                                     {/* Highlight Bar Background */}
                                     <rect 
-                                      x={x - 5}
+                                      x={x - 2}
                                       y="40"
-                                      width={barWidth + 10}
+                                      width={barWidth + 4}
                                       height="165"
                                       className="fill-transparent group-hover:fill-slate-100/30 dark:group-hover:fill-slate-800/10 transition-colors duration-200"
                                     />
@@ -6475,7 +6495,7 @@ const VendorDashboard = () => {
                                       y={y} 
                                       width={barWidth} 
                                       height={barHeight} 
-                                      rx="6"
+                                      rx={chartData.length > 25 ? "1" : "6"}
                                       className="fill-indigo-600 dark:fill-indigo-500 transition-all duration-300 group-hover:fill-indigo-400"
                                     />
                                     {/* Top marker label */}
@@ -6490,14 +6510,16 @@ const VendorDashboard = () => {
                                       </text>
                                     )}
                                     {/* X-axis labels */}
-                                    <text 
-                                      x={x + barWidth / 2} 
-                                      y="218" 
-                                      textAnchor="middle" 
-                                      className="fill-slate-400 text-[9px] font-semibold"
-                                    >
-                                      {d.label}
-                                    </text>
+                                    {shouldShowLabel && (
+                                      <text 
+                                        x={x + barWidth / 2} 
+                                        y="218" 
+                                        textAnchor="middle" 
+                                        className="fill-slate-400 text-[9px] font-semibold"
+                                      >
+                                        {d.label}
+                                      </text>
+                                    )}
                                   </g>
                                 );
                               })}
@@ -9824,8 +9846,12 @@ required
               <span className="font-semibold text-slate-900 dark:text-white">{user?.email}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/40">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Business Name:</span>
-              <span className="font-semibold text-slate-900 dark:text-white">{user?.businessName}</span>
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Business Name{user?.businesses && user.businesses.length > 1 ? 's' : ''}:</span>
+              <span className="font-semibold text-slate-900 dark:text-white text-right max-w-[60%] truncate" title={user?.businesses && user.businesses.length > 0 ? [...new Set(user.businesses.map(b => b.businessName || user.businessName).filter(Boolean))].join(', ') : (user?.businessName || 'N/A')}>
+                {user?.businesses && user.businesses.length > 0
+                  ? [...new Set(user.businesses.map(b => b.businessName || user.businessName).filter(Boolean))].join(', ')
+                  : (user?.businessName || 'N/A')}
+              </span>
             </div>
             <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/40">
               <span className="text-slate-500 dark:text-slate-400 font-medium">Role:</span>
@@ -10229,22 +10255,6 @@ required
                       <span className="text-slate-900 dark:text-white">Amount Paid by Member:</span>
                       <span className="text-primary-600 dark:text-[#faed26] font-mono text-base">₹{totalAmountPaid}</span>
                     </div>
-
-                    {/* Commission cuts (only for Admin and Vendor roles) */}
-                    {user?.role !== 'Member' && (
-                      <div className="bg-orange-50/40 dark:bg-orange-950/15 border border-orange-100/40 dark:border-orange-900/20 p-3.5 rounded-2xl text-xs space-y-2 mt-4">
-                        <div className="flex justify-between text-orange-700 dark:text-orange-400 font-semibold">
-                          <span>Platform Commission Cut (0.0%):</span>
-                          <span className="font-mono">₹0</span>
-                        </div>
-                        <div className="flex justify-between border-t border-orange-200/50 dark:border-orange-900/30 pt-2 font-bold text-slate-800 dark:text-slate-200">
-                          <span>Merchant Net Settlement Payout:</span>
-                          <span className="font-mono text-emerald-600 dark:text-emerald-450">
-                            ₹{totalAmountPaid}
-                          </span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })()}
