@@ -2686,7 +2686,7 @@ const VendorDashboard = () => {
                               }}
                               title={biz.name}
                               className={`w-full flex items-center justify-between text-left ${sidebarCollapsed ? 'md:justify-center px-4' : 'px-4'} py-3 rounded-2xl text-sm font-semibold transition-all border border-transparent ${
-                                biz.isActive && activeTab === 'catalog'
+                                biz.isActive
                                   ? 'bg-[#faed26] text-[#0B3C7B] shadow-lg shadow-yellow-500/10 font-bold animate-fadeIn' 
                                   : 'text-white/70 hover:bg-white/10 hover:text-white'
                               }`}
