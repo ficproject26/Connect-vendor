@@ -222,6 +222,12 @@ const BusinessList = () => {
     }
   };
 
+  const [isAddBusinessModalOpen, setIsAddBusinessModalOpen] = useState(false);
+  const [addBizForm, setAddBizForm] = useState({ businessName: '', vendorType: '', category: '', subcategory: '', address: '', pincode: '', phone: '' });
+  const [addingBizLoading, setAddingBizLoading] = useState(false);
+  const [selectedBusinessForModal, setSelectedBusinessForModal] = useState(null);
+  const [isBusinessDetailsModalOpen, setIsBusinessDetailsModalOpen] = useState(false);
+
   const handleAddBusinessSubmit = async (e) => {
     e.preventDefault();
     if (!addBizForm.vendorType) {
@@ -242,7 +248,10 @@ const BusinessList = () => {
         businessName: addBizForm.businessName,
         vendorType: addBizForm.vendorType,
         category: addBizForm.category || addBizForm.vendorType,
-        subcategory: addBizForm.subcategory || addBizForm.vendorType
+        subcategory: addBizForm.subcategory || addBizForm.vendorType,
+        address: addBizForm.address,
+        pincode: addBizForm.pincode,
+        phone: addBizForm.phone
       }, getAxiosConfig());
 
       if (res.data && res.data.success) {
@@ -252,7 +261,7 @@ const BusinessList = () => {
           dispatch(switchBusinessSuccess(res.data.newBusinessId));
         }
         setIsAddBusinessModalOpen(false);
-        setAddBizForm({ businessName: '', vendorType: '', category: '', subcategory: '' });
+        setAddBizForm({ businessName: '', vendorType: '', category: '', subcategory: '', address: '', pincode: '', phone: '' });
 
         if (typeof setNotifications === 'function') {
           const newNotification = {
@@ -308,14 +317,16 @@ const BusinessList = () => {
         {(user?.businesses || [{ _id: user?._id || 'primary', vendorType: user?.vendorType || 'Store Vendor', subcategory: user?.subcategory || 'General', businessName: user?.businessName }]).map((biz) => {
           const isActive = biz._id === activeBusinessId;
           const emoji = vendorTaxonomy[biz.vendorType]?.emoji || "🏢";
+          const bizAddress = biz.address || user.address || 'Not Specified';
+          const bizPincode = biz.pincode || user.pinCode || user.postalCode || 'Not Specified';
+          const bizPhone = biz.phone || user.mobileNumber || user.telephone || 'Not Specified';
+
           return (
             <div
               key={biz._id}
               onClick={() => {
-                if (!isActive) {
-                  dispatch(switchBusinessSuccess(biz._id));
-                  setMessage(`Switched business profile to ${biz.vendorType}!`);
-                }
+                setSelectedBusinessForModal(biz);
+                setIsBusinessDetailsModalOpen(true);
               }}
               className={`glass-card p-6 rounded-3xl space-y-4 border transition-all duration-300 hover:scale-[1.02] cursor-pointer flex flex-col justify-between ${
                 isActive
@@ -331,8 +342,11 @@ const BusinessList = () => {
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-1 leading-tight truncate">
                     {biz.businessName || user.businessName}
                   </h3>
-                  <div className="text-xs text-slate-500 space-y-0.5">
-                    <div>Category: <span className="font-semibold text-slate-700 dark:text-slate-350">{biz.vendorType}</span></div>
+                  <div className="text-xs text-slate-500 space-y-1 mt-2">
+                    <div><span className="font-semibold text-slate-400">Category:</span> <span className="font-semibold text-slate-700 dark:text-slate-350">{biz.vendorType}</span></div>
+                    <div><span className="font-semibold text-slate-400">Address:</span> <span className="font-semibold text-slate-700 dark:text-slate-350">{bizAddress}</span></div>
+                    <div><span className="font-semibold text-slate-400">Pincode:</span> <span className="font-semibold text-slate-700 dark:text-slate-350">{bizPincode}</span></div>
+                    <div><span className="font-semibold text-slate-400">Phone:</span> <span className="font-semibold text-slate-700 dark:text-slate-350">{bizPhone}</span></div>
                   </div>
                 </div>
                 <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 flex items-center justify-center shrink-0">
@@ -361,9 +375,17 @@ const BusinessList = () => {
                       Active
                     </span>
                   ) : (
-                    <span className="text-[#faed26] hover:underline font-bold transition-all">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        dispatch(switchBusinessSuccess(biz._id));
+                        setMessage(`Switched business profile to ${biz.vendorType}!`);
+                      }}
+                      className="text-[#faed26] hover:underline font-bold transition-all"
+                    >
                       Switch Profile &rarr;
-                    </span>
+                    </button>
                   )}
                 </div>
               </div>
@@ -431,6 +453,42 @@ const BusinessList = () => {
             </select>
           </div>
 
+          {/* Address */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Address</label>
+            <input
+              type="text"
+              placeholder="Enter Street / Shop / Area Address"
+              value={addBizForm.address}
+              onChange={(e) => setAddBizForm({ ...addBizForm, address: e.target.value })}
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
+            />
+          </div>
+
+          {/* Pincode & Phone */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Pincode</label>
+              <input
+                type="text"
+                placeholder="e.g. 636112"
+                value={addBizForm.pincode}
+                onChange={(e) => setAddBizForm({ ...addBizForm, pincode: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Phone Number</label>
+              <input
+                type="text"
+                placeholder="e.g. 9876543210"
+                value={addBizForm.phone}
+                onChange={(e) => setAddBizForm({ ...addBizForm, phone: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
+              />
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={addingBizLoading}
@@ -440,6 +498,84 @@ const BusinessList = () => {
           </button>
         </form>
       </Modal>
+
+      {/* Business Details Modal */}
+      {selectedBusinessForModal && (
+        <Modal
+          isOpen={isBusinessDetailsModalOpen}
+          onClose={() => {
+            setIsBusinessDetailsModalOpen(false);
+            setSelectedBusinessForModal(null);
+          }}
+          title="Business Profile Details"
+        >
+          <div className="space-y-5 text-left">
+            <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800">
+              <div className="w-14 h-14 rounded-2xl bg-[#faed26]/20 text-[#0B3C7B] dark:text-[#faed26] flex items-center justify-center text-3xl shrink-0 font-bold">
+                {vendorTaxonomy[selectedBusinessForModal.vendorType]?.emoji || "🏢"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="bg-[#faed26] text-slate-950 text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">
+                  {selectedBusinessForModal.vendorType}
+                </span>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1 leading-tight truncate">
+                  {selectedBusinessForModal.businessName || user.businessName}
+                </h3>
+              </div>
+            </div>
+
+            <div className="space-y-3 bg-slate-50/50 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 text-sm">
+              <div className="flex justify-between py-2 border-b border-slate-200/40 dark:border-slate-800/40">
+                <span className="text-slate-450 dark:text-slate-500 font-semibold">Business Name</span>
+                <span className="font-bold text-slate-900 dark:text-white text-right">{selectedBusinessForModal.businessName || user.businessName || 'Default'}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-slate-200/40 dark:border-slate-800/40">
+                <span className="text-slate-450 dark:text-slate-500 font-semibold">Category / Product or Service</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400 text-right">{selectedBusinessForModal.vendorType}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-slate-200/40 dark:border-slate-800/40">
+                <span className="text-slate-450 dark:text-slate-500 font-semibold">Address</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-right">{selectedBusinessForModal.address || user.address || 'Not Specified'}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-slate-200/40 dark:border-slate-800/40">
+                <span className="text-slate-450 dark:text-slate-500 font-semibold">Pincode</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-right">{selectedBusinessForModal.pincode || user.pinCode || user.postalCode || 'Not Specified'}</span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-slate-450 dark:text-slate-500 font-semibold">Phone Number</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-right">{selectedBusinessForModal.phone || user.mobileNumber || user.telephone || 'Not Specified'}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              {selectedBusinessForModal._id !== activeBusinessId ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    dispatch(switchBusinessSuccess(selectedBusinessForModal._id));
+                    setMessage(`Switched business profile to ${selectedBusinessForModal.vendorType}!`);
+                    setIsBusinessDetailsModalOpen(false);
+                  }}
+                  className="flex-1 bg-[#faed26] hover:bg-[#faed26]/90 text-slate-950 font-bold py-3 rounded-xl transition-all shadow-md active:scale-95"
+                >
+                  Switch To This Profile
+                </button>
+              ) : (
+                <div className="flex-1 text-center py-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold rounded-xl text-xs uppercase tracking-wider">
+                  Currently Active Profile
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsBusinessDetailsModalOpen(false)}
+                className="px-5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold py-3 rounded-xl transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

@@ -93,24 +93,25 @@ const getFallbackImageUrl = (item, vendorType) => {
 
 const getItemRating = (item, orders = []) => {
   if (!item) return { rating: '5.0', reviews: 0 };
-  let liveCount = 0;
+  let uniqueCount = 0;
   if (Array.isArray(orders) && orders.length > 0) {
-    liveCount = orders.filter(o => {
-      if (!o || o.status === 'Cancelled' || o.status === 'Rejected') return false;
-      if (o.items && Array.isArray(o.items)) {
-        return o.items.some(i => (i.productId && String(i.productId) === String(item._id)) || i.name === item.name);
+    const custSet = new Set();
+    orders.forEach(o => {
+      if (!o || o.status === 'Cancelled' || o.status === 'Rejected') return;
+      const matches = (o.items && Array.isArray(o.items) && o.items.some(i => (i.productId && String(i.productId) === String(item._id)) || i.name === item.name)) ||
+                      String(o.productId || '') === String(item._id) || o.product_details === item.name;
+      if (matches) {
+        const custKey = o.memberId || o.customerId || o.memberName || o.candidateEmail || o._id;
+        if (custKey) custSet.add(String(custKey));
       }
-      return String(o.productId || '') === String(item._id) || o.product_details === item.name;
-    }).reduce((sum, o) => {
-      const match = o.items?.find(i => (i.productId && String(i.productId) === String(item._id)) || i.name === item.name);
-      return sum + (match ? (match.quantity || 1) : 1);
-    }, 0);
+    });
+    uniqueCount = custSet.size;
   } else if (item.salesCount !== undefined) {
-    liveCount = Number(item.salesCount || 0);
+    uniqueCount = Number(item.salesCount || 0);
   }
   const charCodeSum = (item.name || '').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  const rating = liveCount > 0 ? (4.2 + (charCodeSum % 8) / 10).toFixed(1) : '5.0';
-  return { rating, reviews: liveCount };
+  const rating = uniqueCount > 0 ? (4.2 + (charCodeSum % 8) / 10).toFixed(1) : '5.0';
+  return { rating, reviews: uniqueCount };
 };
 
 const getPartnerAvatarUrl = (partner) => {
@@ -798,8 +799,10 @@ const VendorDashboard = () => {
 
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAddBusinessModalOpen, setIsAddBusinessModalOpen] = useState(false);
-  const [addBizForm, setAddBizForm] = useState({ businessName: '', vendorType: '', category: '', subcategory: '' });
+  const [addBizForm, setAddBizForm] = useState({ businessName: '', vendorType: '', category: '', subcategory: '', address: '', pincode: '', phone: '' });
   const [addingBizLoading, setAddingBizLoading] = useState(false);
+  const [selectedBusinessForModal, setSelectedBusinessForModal] = useState(null);
+  const [isBusinessDetailsModalOpen, setIsBusinessDetailsModalOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -953,7 +956,20 @@ const VendorDashboard = () => {
 
   const getCustomerAddress = (order) => {
     if (!order) return 'Not Specified';
-    if (order.jobLocation && order.jobLocation !== 'N/A') return order.jobLocation;
+    if (order.jobLocation && order.jobLocation !== 'N/A' && String(order.jobLocation).trim() !== '') return order.jobLocation;
+    
+    // Look up job location from catalogItem if order has items or product_details
+    if (catalogItems && Array.isArray(catalogItems) && catalogItems.length > 0) {
+      const matchProd = catalogItems.find(p => 
+        (order.items && order.items.length > 0 && String(p._id || p.id) === String(order.items[0]?.productId)) || 
+        p.name === (order.items && order.items[0]?.name) || 
+        p.name === order.product_details
+      );
+      if (matchProd && (matchProd.jobLocation || matchProd.location || matchProd.city || matchProd.pinCode)) {
+        return matchProd.jobLocation || matchProd.location || [matchProd.city, matchProd.pinCode].filter(Boolean).join(', ') || matchProd.address;
+      }
+    }
+
     if (order.customer_address && order.customer_address !== 'N/A') return order.customer_address;
     if (order.address && order.address !== 'N/A') return order.address;
     if (order.deliveryAddress) return order.deliveryAddress;
@@ -1049,11 +1065,12 @@ const VendorDashboard = () => {
   };
 
   const getItemSalesData = (itemId) => {
-    if (!orders || orders.length === 0) return { count: 0, orders: [], revenue: 0 };
+    if (!orders || orders.length === 0) return { count: 0, customersCount: 0, orders: [], revenue: 0 };
     
     let count = 0;
     let revenue = 0;
     const itemOrders = [];
+    const uniqueCustomers = new Set();
     
     orders.forEach(order => {
       if (order.status !== 'Cancelled') {
@@ -1062,6 +1079,8 @@ const VendorDashboard = () => {
           const qty = orderItem.quantity || 1;
           count += qty;
           revenue += (orderItem.price || 0) * qty;
+          const custKey = order.memberId || order.customerId || order.memberName || order.candidateEmail || order._id;
+          if (custKey) uniqueCustomers.add(String(custKey));
           itemOrders.push({
             orderId: order._id,
             memberName: order.memberName,
@@ -1074,7 +1093,7 @@ const VendorDashboard = () => {
       }
     });
     
-    return { count, orders: itemOrders, revenue };
+    return { count, customersCount: uniqueCustomers.size, orders: itemOrders, revenue };
   };
 
   const handleOpenSalesDetails = (item) => {
@@ -1418,7 +1437,10 @@ const VendorDashboard = () => {
         businessName: addBizForm.businessName,
         vendorType: addBizForm.vendorType,
         category: addBizForm.category || addBizForm.vendorType,
-        subcategory: addBizForm.subcategory || addBizForm.vendorType
+        subcategory: addBizForm.subcategory || addBizForm.vendorType,
+        address: addBizForm.address,
+        pincode: addBizForm.pincode,
+        phone: addBizForm.phone
       }, getAxiosConfig());
 
       if (res.data && res.data.success) {
@@ -1428,7 +1450,7 @@ const VendorDashboard = () => {
           dispatch(switchBusinessSuccess(res.data.newBusinessId));
         }
         setIsAddBusinessModalOpen(false);
-        setAddBizForm({ businessName: '', vendorType: '', category: '', subcategory: '' });
+        setAddBizForm({ businessName: '', vendorType: '', category: '', subcategory: '', address: '', pincode: '', phone: '' });
 
         // Add a notification if notification state handler exists
         if (typeof setNotifications === 'function') {
@@ -3840,25 +3862,27 @@ const VendorDashboard = () => {
                                     {(() => {
                                       const mainCat = getProductMainCategory(item.category, vendorType);
                                       const shouldShowStock = ['Products', 'Daily Needs', 'Food', 'Jobs', 'Education'].includes(mainCat);
-                                      const salesCount = getItemSalesData(item._id).count;
-                                      const remainingStock = item.stock !== undefined ? Math.max(0, item.stock - salesCount) : 0;
-                                      const isItemOutOfStock = remainingStock === 0 || item.status === 'Unavailable' || item.status === 'Out of Stock';
+                                      const salesInfo = getItemSalesData(item._id);
+                                      const salesCount = salesInfo.count;
+                                      const customersCount = salesInfo.customersCount;
+                                      const isItemOutOfStock = Number(item.stock) <= 0 || item.status === 'Unavailable' || item.status === 'Out of Stock';
+                                      const currentStatus = isItemOutOfStock ? 'Out of Stock' : (item.status || 'Available');
 
                                       return (
                                         <div className={`mt-2.5 grid gap-1 text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                           <div className="text-center">
                                             <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
-                                            <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{isItemOutOfStock ? 'Out of Stock' : item.status}</span>
+                                            <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{currentStatus}</span>
                                           </div>
                                           {shouldShowStock && item.stock !== undefined && (
                                             <div className="text-center border-l border-slate-200 dark:border-slate-800">
                                               <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
-                                              <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{remainingStock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
+                                              <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
                                             </div>
                                           )}
                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Sold'}</span>
-                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{salesCount}</span>
+                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Customers'}</span>
+                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{customersCount}</span>
                                           </div>
                                         </div>
                                       );
@@ -4203,7 +4227,10 @@ const VendorDashboard = () => {
                                       </td>
                                       {/* Payment & Status */}
                                       <td className="px-6 py-4 text-xs">
-                                        <div className="font-semibold text-slate-850 dark:text-slate-350">Amt: ₹{order.finalAmount || order.amount || 0}</div>
+                                        <div className="font-semibold text-slate-850 dark:text-slate-350 flex items-center gap-1">
+                                          <span className="text-[#faed26]">💳</span>
+                                          <span>{order.membershipPlanName || order.planName || order.membershipCardName || (order.finalAmount >= 5000 ? 'Diamond' : order.finalAmount >= 3000 ? 'Gold' : 'Silver')} Card</span>
+                                        </div>
                                         <div className="mt-1">
                                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                                             order.status === 'Completed' || order.status === 'Delivered' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200/30' :
@@ -5011,14 +5038,16 @@ const VendorDashboard = () => {
               {user?.businesses && user.businesses.map((biz) => {
                 const isActive = biz._id === activeBusinessId;
                 const emoji = vendorTaxonomy[biz.vendorType]?.emoji || "🏢";
+                const bizAddress = biz.address || user.address || 'Not Specified';
+                const bizPincode = biz.pincode || user.pinCode || user.postalCode || 'Not Specified';
+                const bizPhone = biz.phone || user.mobileNumber || user.telephone || 'Not Specified';
+
                 return (
                   <div
                     key={biz._id}
                     onClick={() => {
-                      if (!isActive) {
-                        dispatch(switchBusinessSuccess(biz._id));
-                        setMessage(`Switched business profile to ${biz.subcategory}!`);
-                      }
+                      setSelectedBusinessForModal(biz);
+                      setIsBusinessDetailsModalOpen(true);
                     }}
                     className={`glass-card p-6 rounded-3xl space-y-4 border transition-all duration-300 hover:scale-[1.02] cursor-pointer flex flex-col justify-between ${
                       isActive
@@ -5034,8 +5063,11 @@ const VendorDashboard = () => {
                         <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-1 leading-tight truncate">
                           {biz.businessName || user.businessName}
                         </h3>
-                        <div className="text-xs text-slate-500 space-y-0.5">
-                          <div>Product or Service or etc: <span className="font-semibold text-slate-700 dark:text-slate-350">{biz.vendorType}</span></div>
+                        <div className="text-xs text-slate-500 space-y-1 mt-2">
+                          <div><span className="font-semibold text-slate-400">Category:</span> <span className="font-semibold text-slate-700 dark:text-slate-300">{biz.vendorType}</span></div>
+                          <div><span className="font-semibold text-slate-400">Address:</span> <span className="font-semibold text-slate-700 dark:text-slate-300">{bizAddress}</span></div>
+                          <div><span className="font-semibold text-slate-400">Pincode:</span> <span className="font-semibold text-slate-700 dark:text-slate-300">{bizPincode}</span></div>
+                          <div><span className="font-semibold text-slate-400">Phone:</span> <span className="font-semibold text-slate-700 dark:text-slate-300">{bizPhone}</span></div>
                         </div>
                       </div>
                       <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 flex items-center justify-center shrink-0">
@@ -5064,9 +5096,17 @@ const VendorDashboard = () => {
                             Active
                           </span>
                         ) : (
-                          <span className="text-[#faed26] hover:underline font-bold transition-all">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              dispatch(switchBusinessSuccess(biz._id));
+                              setMessage(`Switched business profile to ${biz.vendorType}!`);
+                            }}
+                            className="text-[#faed26] hover:underline font-bold transition-all"
+                          >
                             Switch Profile &rarr;
-                          </span>
+                          </button>
                         )}
                       </div>
                     </div>
@@ -8865,6 +8905,42 @@ required
             </select>
           </div>
 
+          {/* Address */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Address</label>
+            <input
+              type="text"
+              placeholder="Enter Street / Shop / Area Address"
+              value={addBizForm.address}
+              onChange={(e) => setAddBizForm({ ...addBizForm, address: e.target.value })}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
+            />
+          </div>
+
+          {/* Pincode & Phone */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Pincode</label>
+              <input
+                type="text"
+                placeholder="e.g. 636112"
+                value={addBizForm.pincode}
+                onChange={(e) => setAddBizForm({ ...addBizForm, pincode: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Phone Number</label>
+              <input
+                type="text"
+                placeholder="e.g. 9876543210"
+                value={addBizForm.phone}
+                onChange={(e) => setAddBizForm({ ...addBizForm, phone: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
+              />
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={addingBizLoading}
@@ -8874,6 +8950,84 @@ required
           </button>
         </form>
       </Modal>
+
+      {/* Business Details Modal */}
+      {selectedBusinessForModal && (
+        <Modal
+          isOpen={isBusinessDetailsModalOpen}
+          onClose={() => {
+            setIsBusinessDetailsModalOpen(false);
+            setSelectedBusinessForModal(null);
+          }}
+          title="Business Profile Details"
+        >
+          <div className="space-y-5 text-left">
+            <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800">
+              <div className="w-14 h-14 rounded-2xl bg-[#faed26]/20 text-[#0B3C7B] dark:text-[#faed26] flex items-center justify-center text-3xl shrink-0 font-bold">
+                {vendorTaxonomy[selectedBusinessForModal.vendorType]?.emoji || "🏢"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="bg-[#faed26] text-slate-950 text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">
+                  {selectedBusinessForModal.vendorType}
+                </span>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1 leading-tight truncate">
+                  {selectedBusinessForModal.businessName || user.businessName}
+                </h3>
+              </div>
+            </div>
+
+            <div className="space-y-3 bg-slate-50/50 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 text-sm">
+              <div className="flex justify-between py-2 border-b border-slate-200/40 dark:border-slate-800/40">
+                <span className="text-slate-450 dark:text-slate-500 font-semibold">Business Name</span>
+                <span className="font-bold text-slate-900 dark:text-white text-right">{selectedBusinessForModal.businessName || user.businessName || 'Default'}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-slate-200/40 dark:border-slate-800/40">
+                <span className="text-slate-450 dark:text-slate-500 font-semibold">Category / Product or Service</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400 text-right">{selectedBusinessForModal.vendorType}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-slate-200/40 dark:border-slate-800/40">
+                <span className="text-slate-450 dark:text-slate-500 font-semibold">Address</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-right">{selectedBusinessForModal.address || user.address || 'Not Specified'}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-slate-200/40 dark:border-slate-800/40">
+                <span className="text-slate-450 dark:text-slate-500 font-semibold">Pincode</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-right">{selectedBusinessForModal.pincode || user.pinCode || user.postalCode || 'Not Specified'}</span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-slate-450 dark:text-slate-500 font-semibold">Phone Number</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-right">{selectedBusinessForModal.phone || user.mobileNumber || user.telephone || 'Not Specified'}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              {selectedBusinessForModal._id !== activeBusinessId ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    dispatch(switchBusinessSuccess(selectedBusinessForModal._id));
+                    setMessage(`Switched business profile to ${selectedBusinessForModal.vendorType}!`);
+                    setIsBusinessDetailsModalOpen(false);
+                  }}
+                  className="flex-1 bg-[#faed26] hover:bg-[#faed26]/90 text-slate-950 font-bold py-3 rounded-xl transition-all shadow-md active:scale-95"
+                >
+                  Switch To This Profile
+                </button>
+              ) : (
+                <div className="flex-1 text-center py-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold rounded-xl text-xs uppercase tracking-wider">
+                  Currently Active Profile
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsBusinessDetailsModalOpen(false)}
+                className="px-5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold py-3 rounded-xl transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Add / Edit Delivery Partner Modal */}
       <Modal isOpen={isPartnerModalOpen} onClose={() => setIsPartnerModalOpen(false)} title={`${isEditPartner ? 'Edit' : 'Add'} ${getPartnerPageTerms().modalTitle}`}>

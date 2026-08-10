@@ -453,8 +453,10 @@ const getOrders = async (req, res) => {
       ]
     });
 
+    const productMap = {};
     const productToBusinessMap = {};
     products.forEach(p => {
+      productMap[p._id.toString()] = p;
       let bizId = p.vendorId || p.vendor_id;
       if (bizId) {
         if (bizId.toString() === parentUserId.toString()) {
@@ -491,6 +493,16 @@ const getOrders = async (req, res) => {
       ]
     }).sort({ createdAt: -1 });
 
+    // Fetch membership cards for memberIds in orders
+    const memberIds = [...new Set(orders.map(o => o.memberId || o.customer_id).filter(Boolean))];
+    const membershipCards = await MembershipCard.find({ userId: { $in: memberIds } });
+    const membershipMap = {};
+    membershipCards.forEach(c => {
+      if (c.userId && c.planName) {
+        membershipMap[c.userId.toString()] = c.planName;
+      }
+    });
+
     const normalizedOrders = orders.map(o => {
       const obj = o.toObject ? o.toObject() : o;
       if (!obj.vendorId && obj.vendor_id) obj.vendorId = obj.vendor_id;
@@ -498,6 +510,19 @@ const getOrders = async (req, res) => {
       if (!obj.memberId && obj.customer_id) obj.memberId = obj.customer_id;
       if (obj.finalAmount === undefined && obj.amount !== undefined) obj.finalAmount = obj.amount;
       if (obj.totalAmount === undefined && obj.amount !== undefined) obj.totalAmount = obj.amount;
+
+      // Attach Membership Plan Name
+      if (obj.memberId && membershipMap[obj.memberId.toString()]) {
+        obj.membershipPlanName = membershipMap[obj.memberId.toString()];
+      }
+
+      // Populate Job Location from product if missing
+      if (!obj.jobLocation && obj.items && obj.items.length > 0 && obj.items[0].productId) {
+        const prod = productMap[obj.items[0].productId.toString()];
+        if (prod && (prod.jobLocation || prod.location || prod.pinCode || prod.address)) {
+          obj.jobLocation = prod.jobLocation || prod.location || [prod.address, prod.city, prod.pinCode].filter(Boolean).join(', ');
+        }
+      }
 
       // Dynamically override parent vendorId with correct business ID if it's a legacy parent order
       const orderVendorId = obj.vendorId ? obj.vendorId.toString() : '';
@@ -861,6 +886,15 @@ const updateProfile = async (req, res) => {
         if (req.body.businessName !== undefined) {
           user.businesses[bizIndex].businessName = req.body.businessName;
         }
+        if (req.body.address !== undefined) {
+          user.businesses[bizIndex].address = req.body.address;
+        }
+        if (req.body.pincode !== undefined || req.body.postalCode !== undefined || req.body.pinCode !== undefined) {
+          user.businesses[bizIndex].pincode = req.body.pincode || req.body.postalCode || req.body.pinCode;
+        }
+        if (req.body.phone !== undefined || req.body.mobileNumber !== undefined || req.body.telephone !== undefined) {
+          user.businesses[bizIndex].phone = req.body.phone || req.body.mobileNumber || req.body.telephone;
+        }
         if (req.body.logo !== undefined) {
           user.businesses[bizIndex].logo = req.body.logo;
         }
@@ -1195,7 +1229,7 @@ const getBaseVendorTypeLocal = (vendorType, category, subcategory) => {
 const addBusiness = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
-    const { vendorType, category, subcategory, businessName } = req.body;
+    const { vendorType, category, subcategory, businessName, address, pincode, phone } = req.body;
 
     if (!vendorType) {
       return res.status(400).json({ success: false, message: 'Vendor Type / Product or Service is required' });
@@ -1232,6 +1266,9 @@ const addBusiness = async (req, res) => {
       subcategory: finalSubcategory,
       baseVendorType,
       businessName: businessName || user.businessName || `${vendorType} Store`,
+      address: address || user.address || '',
+      pincode: pincode || user.pinCode || user.postalCode || '',
+      phone: phone || user.mobileNumber || user.telephone || '',
       logo: user.logo || '',
       businessLicense: user.businessLicense || '',
       businessImages: user.businessImages || []

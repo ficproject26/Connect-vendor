@@ -525,27 +525,49 @@ const ProductList = () => {
                                     
                                     {/* Compact metadata fields grid */}
                                     {(() => {
-                                      const mainCat = getProductMainCategory(item.category, vendorType);
-                                      const shouldShowStock = ['Products', 'Daily Needs', 'Food', 'Stay', 'Jobs', 'Education'].includes(mainCat);
-                                      return (
-                                        <div className={`mt-2.5 grid gap-1 text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                                          <div className="text-center">
-                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
-                                            <span className={`font-bold ${isOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.status}</span>
-                                          </div>
-                                          {shouldShowStock && item.stock !== undefined && (
-                                            <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                              <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
-                                              <span className={`font-bold ${isOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
-                                            </div>
-                                          )}
-                                          <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : 'Sold'}</span>
-                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{getItemSalesData(item._id).count}</span>
-                                          </div>
-                                        </div>
-                                      );
-                                    })()}
+                                       const mainCat = getProductMainCategory(item.category, vendorType);
+                                       const shouldShowStock = ['Products', 'Daily Needs', 'Food', 'Stay', 'Jobs', 'Education'].includes(mainCat);
+                                       
+                                       const getSalesData = (itemId) => {
+                                         if (!orders || orders.length === 0) return { count: 0, customersCount: 0 };
+                                         const custSet = new Set();
+                                         let count = 0;
+                                         orders.forEach(order => {
+                                           if (order.status !== 'Cancelled' && order.status !== 'Rejected') {
+                                             const match = (order.items && order.items.find(i => String(i.productId || '') === String(itemId) || i.name === item.name)) || String(order.productId || '') === String(itemId) || order.product_details === item.name;
+                                             if (match) {
+                                               count += (typeof match === 'object' && match.quantity) ? match.quantity : 1;
+                                               const custKey = order.memberId || order.customerId || order.memberName || order.candidateEmail || order._id;
+                                               if (custKey) custSet.add(String(custKey));
+                                             }
+                                           }
+                                         });
+                                         return { count, customersCount: custSet.size };
+                                       };
+                                       const salesInfo = getSalesData(item._id);
+                                       const isItemOutOfStock = Number(item.stock) <= 0 || item.status === 'Unavailable' || item.status === 'Out of Stock';
+                                       const currentStatus = isItemOutOfStock ? 'Out of Stock' : (item.status || 'Available');
+
+                                       return (
+                                         <div className={`mt-2.5 grid gap-1 text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                           <div className="text-center">
+                                             <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
+                                             <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{currentStatus}</span>
+                                           </div>
+                                           {shouldShowStock && item.stock !== undefined && (
+                                             <div className="text-center border-l border-slate-200 dark:border-slate-800">
+                                               <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
+                                               <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
+                                             </div>
+                                           )}
+                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
+                                             <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : 'Customers'}</span>
+                                             <span className="font-bold text-emerald-600 dark:text-emerald-400">{salesInfo.customersCount}</span>
+                                           </div>
+                                         </div>
+                                       );
+                                     })()}
+
                                   </div>
 
                                   <div className="flex justify-end gap-1.5 mt-3 pt-2">

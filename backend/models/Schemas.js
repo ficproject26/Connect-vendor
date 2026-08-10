@@ -66,6 +66,9 @@ const UserSchema = new mongoose.Schema({
     logo: { type: String },
     businessLicense: { type: String },
     businessImages: [{ type: String }],
+    address: { type: String },
+    pincode: { type: String },
+    phone: { type: String },
     status: { type: String, default: 'Active' },
     isActive: { type: Boolean, default: true }
   }],
@@ -217,6 +220,7 @@ const OrderSchema = new mongoose.Schema({
   candidateResume: { type: String },
   experience: { type: String },
   candidateEducation: { type: String },
+  jobLocation: { type: String },
   
   // Custom fields based on Vendor Type
   appointmentDate: { type: String },         // Hospital
