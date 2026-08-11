@@ -208,7 +208,7 @@ const ProductList = () => {
 
                 {/* ── Catalog Summary Cards ── */}
                 {(() => {
-                  const savedActiveId = localStorage.getItem('active_business_id') || activeBusinessId || user?.activeBusinessId;
+                  const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
                   const bizOrders = orders.filter(o => !savedActiveId || o.vendorId === savedActiveId || o.vendor_id === savedActiveId);
 
                   const totalItems = catalog.length;

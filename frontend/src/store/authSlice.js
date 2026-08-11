@@ -77,6 +77,11 @@ const authSlice = createSlice({
       state.card = action.payload.card || null;
       state.error = null;
 
+      // Clear legacy/un-scoped ticket cache on login
+      try {
+        localStorage.removeItem('vendor_support_tickets');
+      } catch (e) {}
+
       let payloadUser = action.payload.user;
       if (payloadUser && payloadUser.role === 'Vendor' && payloadUser.businesses && payloadUser.businesses.length > 0) {
         const activeId = payloadUser.primaryBusinessId || payloadUser.businesses[0]._id;
@@ -179,6 +184,7 @@ const authSlice = createSlice({
       localStorage.removeItem('vendor_token');
       localStorage.removeItem('vendor_card');
       localStorage.removeItem('active_business_id');
+      localStorage.removeItem('vendor_support_tickets');
     },
     clearError: (state) => {
       state.error = null;

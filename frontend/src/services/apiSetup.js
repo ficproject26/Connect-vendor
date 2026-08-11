@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { store } from '../store';
 
 export const getBackendUrl = () => {
   const hostname = window.location.hostname;
@@ -19,7 +20,7 @@ export const getBackendUrl = () => {
   return import.meta.env.VITE_BACKEND_URL || 'https://connect-vendor.onrender.com';
 };
 
-// Set up Axios request interceptor to dynamically rewrite backend URLs
+// Set up Axios request interceptor to dynamically rewrite backend URLs and inject headers
 axios.interceptors.request.use(
   (config) => {
     const backendUrl = getBackendUrl();
@@ -30,8 +31,30 @@ axios.interceptors.request.use(
       // If we are communicating over HTTPS, rewrite the URL protocol to https
       if (backendUrl.startsWith('https://')) {
         config.url = config.url.replace(/^http:\/\//, 'https://');
-        }
+      }
     }
+
+    if (!config.headers) {
+      config.headers = {};
+    }
+
+    // Attach token automatically if missing
+    try {
+      const state = store?.getState();
+      const token = state?.auth?.token || localStorage.getItem('vendor_token');
+      if (token && !config.headers.Authorization && !config.headers.authorization) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+
+      // Attach activeBusinessId header automatically if missing
+      const activeBusinessId = state?.auth?.activeBusinessId || localStorage.getItem('active_business_id');
+      if (activeBusinessId && !config.headers['x-business-id']) {
+        config.headers['x-business-id'] = activeBusinessId;
+      }
+    } catch (e) {
+      console.warn('Error applying auth/business headers in Axios interceptor:', e);
+    }
+
     return config;
   },
   (error) => {

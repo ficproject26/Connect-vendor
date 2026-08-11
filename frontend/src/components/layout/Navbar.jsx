@@ -39,9 +39,11 @@ const Navbar = () => {
     if (!isAuthenticated || !token || user?.role !== 'Vendor') return;
     const fetchOrders = async () => {
       try {
-        const res = await fetch(`${getVendorBackendUrl()}/api/vendor/orders`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const headers = { 'Authorization': `Bearer ${token}` };
+        if (activeBusinessId) {
+          headers['x-business-id'] = activeBusinessId;
+        }
+        const res = await fetch(`${getVendorBackendUrl()}/api/vendor/orders`, { headers });
         const data = await res.json();
         if (data.success && Array.isArray(data.data)) {
           const newOrders = data.data;
@@ -68,7 +70,7 @@ const Navbar = () => {
     const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 5000;
     const interval = setInterval(fetchOrders, syncInterval);
     return () => clearInterval(interval);
-  }, [isAuthenticated, token, user]);
+  }, [isAuthenticated, token, user, activeBusinessId]);
 
   const [isUserInfoOpen, setIsUserInfoOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);

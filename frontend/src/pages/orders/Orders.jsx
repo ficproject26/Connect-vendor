@@ -296,7 +296,7 @@ const Orders = () => {
                   </div>
                 ) : (
                   (() => {
-                    const savedActiveId = localStorage.getItem('active_business_id') || activeBusinessId || user?.activeBusinessId;
+                    const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
                     const userBizIds = [user?._id, user?.parentUserId, activeBusinessId, savedActiveId, ...(user?.businesses?.map(b => b._id ? b._id.toString() : '') || [])].filter(Boolean);
 
                     const filteredOrders = orders.filter(order => {

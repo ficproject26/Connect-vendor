@@ -1018,7 +1018,8 @@ const VendorDashboard = () => {
   const [replyText, setReplyText] = useState('');
   const [vendorQueriesList, setVendorQueriesList] = useState(() => {
     try {
-      const saved = localStorage.getItem('vendor_support_tickets');
+      const ticketKey = user?._id ? `vendor_support_tickets_${user._id}` : 'vendor_support_tickets';
+      const saved = localStorage.getItem(ticketKey);
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
       return [];
@@ -1026,12 +1027,13 @@ const VendorDashboard = () => {
   });
 
   useEffect(() => {
-    if (vendorQueriesList && vendorQueriesList.length > 0) {
+    if (user?._id) {
+      const ticketKey = `vendor_support_tickets_${user._id}`;
       try {
-        localStorage.setItem('vendor_support_tickets', JSON.stringify(vendorQueriesList));
+        localStorage.setItem(ticketKey, JSON.stringify(vendorQueriesList));
       } catch (e) {}
     }
-  }, [vendorQueriesList]);
+  }, [vendorQueriesList, user?._id]);
   
   // Member Search and Storefront States
   const [memberCategorySearch, setMemberCategorySearch] = useState('');
@@ -1397,7 +1399,7 @@ const VendorDashboard = () => {
     const config = {
       headers: { Authorization: `Bearer ${token}` }
     };
-    const savedActiveId = localStorage.getItem('active_business_id') || activeBusinessId || user?.activeBusinessId;
+    const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
     if (savedActiveId) {
       config.headers['x-business-id'] = savedActiveId;
     }
@@ -1677,6 +1679,16 @@ const VendorDashboard = () => {
 
     fetchTabData();
   }, [activeTab, activeBusinessId]);
+
+  // Clear stale cached data when active business or user session changes
+  useEffect(() => {
+    setOrders([]);
+    setCatalog([]);
+    setCustomers([]);
+    setAnalytics({});
+    setNotifications([]);
+    prevOrdersRef.current = [];
+  }, [activeBusinessId, user?._id]);
 
   // Reset category filter if it doesn't match the current food type filter
   useEffect(() => {
@@ -3512,7 +3524,7 @@ const VendorDashboard = () => {
 
                 {/* ── Catalog Summary Cards ── */}
                 {(() => {
-                  const savedActiveId = localStorage.getItem('active_business_id') || activeBusinessId || user?.activeBusinessId;
+                  const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
                   const bizOrders = orders.filter(o => !savedActiveId || o.vendorId === savedActiveId || o.vendor_id === savedActiveId);
 
                   const totalItems = catalog.length;
@@ -4046,7 +4058,7 @@ const VendorDashboard = () => {
                       type.startsWith('Travel')
                     );
 
-                    const savedActiveId = localStorage.getItem('active_business_id') || activeBusinessId || user?.activeBusinessId;
+                    const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
 
                     const filteredOrders = orders.filter(order => {
                       const matchesBusiness = !savedActiveId || order.vendorId === savedActiveId || order.vendor_id === savedActiveId;
@@ -11457,7 +11469,8 @@ required
               const updatedQueries = [newTicket, ...vendorQueriesList];
               setVendorQueriesList(updatedQueries);
               try {
-                localStorage.setItem('vendor_support_tickets', JSON.stringify(updatedQueries));
+                const ticketKey = user?._id ? `vendor_support_tickets_${user._id}` : 'vendor_support_tickets';
+                localStorage.setItem(ticketKey, JSON.stringify(updatedQueries));
               } catch (e) {}
               setActiveQueryTab('my_tickets');
               setMessage('Support query ticket raised successfully! Admin will review your request.');
