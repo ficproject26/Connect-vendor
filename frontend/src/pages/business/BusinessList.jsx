@@ -222,9 +222,7 @@ const BusinessList = () => {
     }
   };
 
-  const [isAddBusinessModalOpen, setIsAddBusinessModalOpen] = useState(false);
-  const [addBizForm, setAddBizForm] = useState({ businessName: '', vendorType: '', category: '', subcategory: '', address: '', pincode: '', phone: '' });
-  const [addingBizLoading, setAddingBizLoading] = useState(false);
+
   const [selectedBusinessForModal, setSelectedBusinessForModal] = useState(null);
   const [isBusinessDetailsModalOpen, setIsBusinessDetailsModalOpen] = useState(false);
 
