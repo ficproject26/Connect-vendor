@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
@@ -549,22 +550,40 @@ const getOrders = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { status, deliveryPartnerId } = req.body;
-    const order = await Order.findById(req.params.id);
 
-    const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(parentUserId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+      order = await Order.findById(req.params.id);
     }
-
-    const businessIds = [parentUserId.toString()];
-    if (user.businesses && user.businesses.length > 0) {
-      user.businesses.forEach(b => {
-        if (b._id) businessIds.push(b._id.toString());
+    if (!order) {
+      order = await Order.findOne({
+        $or: [
+          { _id: req.params.id },
+          { order_number: req.params.id },
+          { id: req.params.id }
+        ]
       });
     }
 
-    if (!order || !businessIds.includes(order.vendorId.toString())) {
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await User.findById(parentUserId);
+
+    const businessIds = [
+      parentUserId.toString(),
+      req.user._id.toString()
+    ];
+    if (user && user._id) {
+      businessIds.push(user._id.toString());
+    }
+    if (user && user.businesses && user.businesses.length > 0) {
+      user.businesses.forEach(b => {
+        if (b && b._id) businessIds.push(b._id.toString());
+      });
+    }
+
+    const orderVendorId = order ? (order.vendorId || order.vendor_id || '').toString() : '';
+
+    if (!order || (orderVendorId && !businessIds.includes(orderVendorId))) {
       return res.status(404).json({ success: false, message: 'Order/Booking not found or unauthorized' });
     }
 
