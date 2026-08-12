@@ -713,61 +713,74 @@ const getCustomers = async (req, res) => {
 
     const customerMap = {};
 
-    // 1. First aggregate from actual orders placed/booked with this vendor
+    const getCustomerKey = (name, email) => {
+      const cleanEmail = (email || '').trim().toLowerCase();
+      const cleanName = (name || '').trim().toLowerCase();
+      if (cleanEmail && !cleanEmail.includes('customer') && cleanEmail.includes('@')) return cleanEmail;
+      if (cleanName && cleanName !== 'customer') return cleanName;
+      return cleanEmail || cleanName || 'unknown_customer';
+    };
+
+    // 1. Register all DB customer records
+    dbCustomers.forEach(c => {
+      const obj = c.toObject ? c.toObject() : c;
+      const name = (obj.name || 'Customer').trim();
+      const email = (obj.email || obj.memberId || '').trim();
+      const key = getCustomerKey(name, email);
+      const uniqueId = `cust_${key.replace(/[^a-z0-9]/g, '_')}`;
+
+      customerMap[key] = {
+        _id: uniqueId,
+        memberId: obj.memberId || email || uniqueId,
+        name: name,
+        email: email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
+        phone: obj.phone || '',
+        ordersCount: 0,
+        totalSpent: 0,
+        vendorId: obj.vendorId || obj.vendor_id
+      };
+    });
+
+    // 2. Register all customers from orders
     rawOrders.forEach(o => {
       const name = (o.memberName || o.customer_name || 'Customer').trim();
-      const email = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`).trim();
-      const key = (email || name).toLowerCase();
-
-      const amount = Number(o.finalAmount || o.totalAmount || o.amount || 0);
+      const email = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim();
+      const key = getCustomerKey(name, email);
       const uniqueId = `cust_${key.replace(/[^a-z0-9]/g, '_')}`;
 
       if (!customerMap[key]) {
         customerMap[key] = {
           _id: uniqueId,
-          memberId: o.memberId,
+          memberId: o.memberId || email || uniqueId,
           name: name,
-          email: email,
+          email: email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
           phone: o.customer_phone || '+91 9876543210',
           ordersCount: 0,
           totalSpent: 0,
           vendorId: o.vendorId || o.vendor_id
         };
       }
-      customerMap[key].ordersCount += 1;
-      customerMap[key].totalSpent += amount;
-      if (customerMap[key].name === 'Customer' && name !== 'Customer') {
-        customerMap[key].name = name;
-      }
     });
 
-    // 2. Supplement with Customer collection records if not already in customerMap
-    dbCustomers.forEach(c => {
-      const obj = c.toObject ? c.toObject() : c;
-      const name = (obj.name || 'Customer').trim();
-      const email = (obj.email || obj.memberId || '').trim();
-      const key = (email || name || obj._id).toString().toLowerCase();
-      const uniqueId = obj._id ? obj._id.toString() : `cust_${key.replace(/[^a-z0-9]/g, '_')}`;
+    // 3. Calculate ordersCount and totalSpent independently for each customer
+    Object.keys(customerMap).forEach(key => {
+      const cust = customerMap[key];
+      const custNameLower = cust.name.toLowerCase();
+      const custEmailLower = cust.email.toLowerCase();
 
-      if (!customerMap[key]) {
-        customerMap[key] = {
-          _id: uniqueId,
-          memberId: obj.memberId || obj.email,
-          name: name,
-          email: email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-          phone: obj.phone || '',
-          ordersCount: obj.ordersCount || 1,
-          totalSpent: obj.totalSpent || 0,
-          vendorId: obj.vendorId || obj.vendor_id
-        };
-      } else {
-        if (obj._id) {
-          customerMap[key]._id = obj._id.toString();
-        }
-        if (obj.phone && (!customerMap[key].phone || customerMap[key].phone.startsWith('+91 98765'))) {
-          customerMap[key].phone = obj.phone;
-        }
-      }
+      const custOrders = rawOrders.filter(o => {
+        const oName = (o.memberName || o.customer_name || '').trim().toLowerCase();
+        const oEmail = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
+        const oMemberId = (o.memberId || o.customerId || '').toString().trim().toLowerCase();
+
+        if (custEmailLower && oEmail && custEmailLower === oEmail) return true;
+        if (custNameLower && oName && custNameLower === oName && custNameLower !== 'customer') return true;
+        if (cust.memberId && oMemberId && cust.memberId.toLowerCase() === oMemberId) return true;
+        return false;
+      });
+
+      cust.ordersCount = custOrders.length;
+      cust.totalSpent = custOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
     });
 
     const finalCustomers = Object.values(customerMap);

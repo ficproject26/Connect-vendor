@@ -18,12 +18,20 @@ const Customers = () => {
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || 'Customer')}&background=0D8ABC&color=fff`;
   };
 
-  const formatCustomerId = (id) => {
-    if (!id) return 'FIC-CUST-1001';
-    const str = String(id);
-    if (str.startsWith('FIC-CUST-')) return str;
-    const num = Math.abs(str.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a | 0; }, 0));
-    return `FIC-CUST-${String(num).substring(0, 6).padStart(6, '0')}`;
+  const formatCustomerId = (c) => {
+    if (!c) return 'FIC-CUST-100001';
+    if (typeof c === 'object' && c.customerDisplayId) return c.customerDisplayId;
+    const rawId = typeof c === 'object' ? (c._id || c.email || c.name || '') : String(c);
+    if (!rawId || rawId === 'undefined' || rawId === 'null') return 'FIC-CUST-100001';
+    if (rawId.startsWith('FIC-CUST-')) return rawId;
+
+    let hash = 0;
+    for (let i = 0; i < rawId.length; i++) {
+      hash = ((hash << 5) - hash) + rawId.charCodeAt(i);
+      hash |= 0;
+    }
+    const num = (Math.abs(hash) % 899999) + 100001;
+    return `FIC-CUST-${num}`;
   };
 
   return (

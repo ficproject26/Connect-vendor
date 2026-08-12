@@ -17,17 +17,19 @@ import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl } from '../servi
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 
-const formatCustomerId = (memberId) => {
-  if (!memberId || memberId === 'undefined' || memberId === 'null') return 'FIC-CUST-1001';
-  const idStr = String(memberId);
-  if (idStr.startsWith('FIC-CUST-')) return idStr;
+const formatCustomerId = (c) => {
+  if (!c) return 'FIC-CUST-100001';
+  if (typeof c === 'object' && c.customerDisplayId) return c.customerDisplayId;
+  const rawId = typeof c === 'object' ? (c._id || c.email || c.name || '') : String(c);
+  if (!rawId || rawId === 'undefined' || rawId === 'null') return 'FIC-CUST-100001';
+  if (rawId.startsWith('FIC-CUST-')) return rawId;
   
   let hash = 0;
-  for (let i = 0; i < idStr.length; i++) {
-    hash = ((hash << 5) - hash) + idStr.charCodeAt(i);
+  for (let i = 0; i < rawId.length; i++) {
+    hash = ((hash << 5) - hash) + rawId.charCodeAt(i);
     hash |= 0;
   }
-  const num = Math.abs(hash % 900000) + 100000;
+  const num = (Math.abs(hash) % 899999) + 100001;
   return `FIC-CUST-${num}`;
 };
 
