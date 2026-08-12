@@ -678,7 +678,7 @@ const getCustomers = async (req, res) => {
 
       if (!customerMap[key]) {
         customerMap[key] = {
-          _id: o.memberId || o._id,
+          _id: (o.memberId && !o.memberId.startsWith('[object')) ? o.memberId : (o._id ? o._id.toString() : key),
           name: name,
           email: email,
           phone: o.customer_phone || '+91 9876543210',
@@ -699,7 +699,7 @@ const getCustomers = async (req, res) => {
       const key = (obj.email || obj.memberId || obj.name || obj._id).toString().toLowerCase();
       if (!customerMap[key]) {
         customerMap[key] = {
-          _id: obj._id,
+          _id: obj._id ? obj._id.toString() : (obj.memberId || key),
           name: obj.name || 'Customer',
           email: obj.email || '',
           phone: obj.phone || '',
@@ -1267,7 +1267,7 @@ const addBusiness = async (req, res) => {
       baseVendorType,
       businessName: businessName || user.businessName || `${vendorType} Store`,
       address: address || user.address || '',
-      pincode: pincode || user.pinCode || user.postalCode || '',
+      pincode: pincode || req.body.pinCode || req.body.postalCode || '',
       phone: phone || user.mobileNumber || user.telephone || '',
       logo: user.logo || '',
       businessLicense: user.businessLicense || '',

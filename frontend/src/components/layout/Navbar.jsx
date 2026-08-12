@@ -49,6 +49,14 @@ const Navbar = () => {
           const newOrders = data.data;
           if (prevOrdersRef.current.length === 0) {
             prevOrdersRef.current = newOrders;
+            const pending = newOrders.filter(o => ['Pending', 'Accepted', 'Out for Delivery'].includes(o.status));
+            if (pending.length > 0) {
+              const initNotifs = pending.slice(0, 5).map(order => ({
+                id: Date.now() + Math.random(),
+                text: `${order.status === 'Pending' ? 'New' : order.status} ${order.doctorName ? 'Appointment' : 'Order'} from ${order.memberName || order.customer_name || 'Customer'} (₹${order.finalAmount || order.totalAmount || order.amount || 0})`
+              }));
+              setNotifications(initNotifs);
+            }
             return;
           }
           const existingIds = new Set(prevOrdersRef.current.map(o => o._id));
@@ -56,7 +64,7 @@ const Navbar = () => {
           if (actualNewOrders.length > 0) {
             const newNotifications = actualNewOrders.map(order => ({
               id: Date.now() + Math.random(),
-              text: `New ${order.doctorName ? 'Appointment' : 'Order'} from ${order.memberName} (₹${order.finalAmount})`
+              text: `New ${order.doctorName ? 'Appointment' : 'Order'} from ${order.memberName || order.customer_name || 'Customer'} (₹${order.finalAmount || order.totalAmount || order.amount || 0})`
             }));
             setNotifications(prev => [...newNotifications, ...prev]);
           }

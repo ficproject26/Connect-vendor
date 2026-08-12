@@ -171,89 +171,92 @@ const Overview = () => {
     handleStatusChange,
     handlePartnerImageUpload,
     fetchDashboardData,
-    getAxiosConfig
+    getAxiosConfig,
+    toggleTheme,
+    theme,
+    handleRemoveNotification,
+    getDaysRemaining
   } = useDashboard();
 
   return (
-    <>
-      ' && (
-          <div className="absolute top-6 right-6 md:top-8 md:right-8 flex items-center gap-3 z-40">
-            {/* Notifications Dropdown */}
-            <div className="relative" ref={notificationDropdownRef}>
-              <button
-                onClick={() => setShowHeaderNotifications(!showHeaderNotifications)}
-                className="p-2.5 rounded-2xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-800 shadow-sm relative focus:outline-none flex items-center justify-center active:scale-95"
-                title="Notifications"
-              >
-                <Bell size={18} />
+    <div className="space-y-6">
+      <div className="flex justify-end items-center gap-3">
+        {/* Notifications Dropdown */}
+        <div className="relative" ref={notificationDropdownRef}>
+          <button
+            type="button"
+            onClick={() => setShowHeaderNotifications(!showHeaderNotifications)}
+            className="p-2.5 rounded-2xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-800 shadow-sm relative focus:outline-none flex items-center justify-center active:scale-95"
+            title="Notifications"
+          >
+            <Bell size={18} />
+            {notifications.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none border border-white dark:border-slate-900 shadow-md">
+                {notifications.length}
+              </span>
+            )}
+          </button>
+
+          {showHeaderNotifications && (
+            <div className="absolute right-0 mt-2 w-72 md:w-80 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-50 text-slate-800 dark:text-slate-100 animate-fadeIn">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800/80 mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Notifications</span>
                 {notifications.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none border border-white dark:border-slate-900 shadow-md">
-                    {notifications.length}
-                  </span>
+                  <button 
+                    type="button"
+                    onClick={() => setNotifications([])} 
+                    className="text-[10px] text-[#0B3C7B] dark:text-[#faed26] hover:underline font-semibold"
+                  >
+                    Clear All
+                  </button>
                 )}
-              </button>
-
-              {showHeaderNotifications && (
-                <div className="absolute right-0 mt-2 w-72 md:w-80 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-50 text-slate-800 dark:text-slate-100 animate-fadeIn">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800/80 mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Notifications</span>
-                    {notifications.length > 0 && (
-                      <button 
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="text-[11px] text-slate-400 dark:text-slate-500 text-center py-4 font-medium">
+                    No new notifications
+                  </div>
+                ) : (
+                  notifications.map((n) => (
+                    <div key={n.id} className="flex items-start justify-between gap-3 text-[11px] leading-relaxed border-b border-slate-100 dark:border-slate-800/40 pb-2 last:border-b-0 last:pb-0">
+                      <span className="flex-1 text-left">{n.text}</span>
+                      <button
                         type="button"
-                        onClick={() => setNotifications([])} 
-                        className="text-[10px] text-[#0B3C7B] dark:text-[#faed26] hover:underline font-semibold"
+                        onClick={() => handleRemoveNotification(n.id)}
+                        className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold px-1 transition-colors"
                       >
-                        Clear All
+                        ✕
                       </button>
-                    )}
-                  </div>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="text-[11px] text-slate-400 dark:text-slate-500 text-center py-4 font-medium">
-                        No new notifications
-                      </div>
-                    ) : (
-                      notifications.map((n) => (
-                        <div key={n.id} className="flex items-start justify-between gap-3 text-[11px] leading-relaxed border-b border-slate-100 dark:border-slate-800/40 pb-2 last:border-b-0 last:pb-0">
-                          <span className="flex-1 text-left">{n.text}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveNotification(n.id)}
-                            className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold px-1 transition-colors"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
+          )}
+        </div>
 
-            {/* Theme Toggle */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="p-2.5 rounded-2xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-center active:scale-95"
-              title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            >
-              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-          </div>
-        )}
-        
-        {/* Alerts */}
-        {error && (
-          <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 px-5 py-4 rounded-2xl mb-6 text-sm flex items-center gap-2.5 font-medium shadow-sm">
-            <span className="text-lg">⚠️</span> {error}
-          </div>
-        )}
-        {message && (
-          <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-5 py-4 rounded-2xl mb-6 text-sm flex items-center gap-2.5 font-medium shadow-sm">
-            <span className="text-lg">✓</span> {message}
-          </div>
-        )}
+        {/* Theme Toggle */}
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="p-2.5 rounded-2xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-center active:scale-95"
+          title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
+        >
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
+      </div>
+
+      {/* Alerts */}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 px-5 py-4 rounded-2xl mb-6 text-sm flex items-center gap-2.5 font-medium shadow-sm">
+          <span className="text-lg">⚠️</span> {error}
+        </div>
+      )}
+      {message && (
+        <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-5 py-4 rounded-2xl mb-6 text-sm flex items-center gap-2.5 font-medium shadow-sm">
+          <span className="text-lg">✓</span> {message}
+        </div>
+      )}
 
         {/* Subscription Expiry Alert */}
         {user?.role === 'Member' && card && (() => {

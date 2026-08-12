@@ -316,7 +316,7 @@ const BusinessList = () => {
           const isActive = biz._id === activeBusinessId;
           const emoji = vendorTaxonomy[biz.vendorType]?.emoji || "🏢";
           const bizAddress = biz.address || user.address || 'Not Specified';
-          const bizPincode = biz.pincode || user.pinCode || user.postalCode || 'Not Specified';
+          const bizPincode = biz.pincode || biz.pinCode || biz.postalCode || (biz.address?.match(/\b\d{6}\b/)?.[0]) || 'Not Specified';
           const bizPhone = biz.phone || user.mobileNumber || user.telephone || 'Not Specified';
 
           return (
@@ -537,7 +537,7 @@ const BusinessList = () => {
               </div>
               <div className="flex justify-between py-2 border-b border-slate-200/40 dark:border-slate-800/40">
                 <span className="text-slate-450 dark:text-slate-500 font-semibold">Pincode</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 text-right">{selectedBusinessForModal.pincode || user.pinCode || user.postalCode || 'Not Specified'}</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-right">{selectedBusinessForModal.pincode || selectedBusinessForModal.pinCode || selectedBusinessForModal.postalCode || (selectedBusinessForModal.address?.match(/\b\d{6}\b/)?.[0]) || 'Not Specified'}</span>
               </div>
               <div className="flex justify-between py-2">
                 <span className="text-slate-450 dark:text-slate-500 font-semibold">Phone Number</span>

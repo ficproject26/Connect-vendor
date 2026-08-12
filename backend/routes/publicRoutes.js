@@ -508,6 +508,45 @@ router.post('/orders', async (req, res) => {
     }
 
     const order = await Order.create(orderData);
+
+    // Reduce stock count for ordered items
+    try {
+      if (orderData.items && Array.isArray(orderData.items) && orderData.items.length > 0) {
+        for (const item of orderData.items) {
+          const qty = Number(item.quantity || item.qty || 1);
+          let prod = null;
+          if (item.productId || item._id || item.id) {
+            prod = await Product.findById(item.productId || item._id || item.id);
+          }
+          if (!prod && item.name) {
+            prod = await Product.findOne({ name: item.name, $or: [{ vendorId }, { vendor_id: vendorId }] });
+          }
+          if (prod && typeof prod.stock === 'number') {
+            prod.stock = Math.max(0, prod.stock - qty);
+            if (prod.stock === 0) {
+              prod.status = 'Out of Stock';
+            }
+            await prod.save();
+          }
+        }
+      } else if (req.body.productId || req.body.product_details) {
+        let prod = null;
+        if (req.body.productId) prod = await Product.findById(req.body.productId);
+        if (!prod && req.body.product_details) {
+          prod = await Product.findOne({ name: req.body.product_details, $or: [{ vendorId }, { vendor_id: vendorId }] });
+        }
+        if (prod && typeof prod.stock === 'number') {
+          const qty = Number(req.body.quantity || 1);
+          prod.stock = Math.max(0, prod.stock - qty);
+          if (prod.stock === 0) {
+            prod.status = 'Out of Stock';
+          }
+          await prod.save();
+        }
+      }
+    } catch (stockErr) {
+      console.error('Error reducing stock for public order:', stockErr);
+    }
     
     res.status(201).json({ success: true, message: 'Order created in vendor dashboard successfully', data: order });
   } catch (error) {

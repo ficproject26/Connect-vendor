@@ -202,6 +202,15 @@ const createManualOrder = async (req, res) => {
 
     const order = await Order.create(orderData);
 
+    // Reduce product stock count
+    if (typeof product.stock === 'number' && product.stock > 0) {
+      product.stock = Math.max(0, product.stock - qty);
+      if (product.stock === 0) {
+        product.status = 'Out of Stock';
+      }
+      await product.save();
+    }
+
     let customer = await Customer.findOne({ vendorId, name: memberName });
     if (customer) {
       customer.ordersCount += 1;

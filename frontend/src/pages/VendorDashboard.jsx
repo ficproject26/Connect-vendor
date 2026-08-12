@@ -18,7 +18,8 @@ import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 
 const formatCustomerId = (memberId) => {
-  const idStr = String(memberId || 'N/A');
+  if (!memberId || memberId === 'undefined' || memberId === 'null') return 'FIC-CUST-1001';
+  const idStr = String(memberId);
   if (idStr.startsWith('FIC-CUST-')) return idStr;
   
   let hash = 0;
@@ -4827,22 +4828,25 @@ const VendorDashboard = () => {
                             const cEmailLower = (c.email || '').trim().toLowerCase();
                             const custIdStr = String(c._id || c.id || '');
 
-                            const matchingOrders = orders.filter(o => {
+                            const matchingOrders = (orders || []).filter(o => {
                               if (!o) return false;
+                              const matchesVendor = !activeBusinessId || String(o.vendorId || o.vendor_id || '') === String(activeBusinessId) || String(o.vendorId || o.vendor_id || '') === String(user?.parentUserId || user?._id || '');
+                              if (!matchesVendor) return false;
+
                               const oName = (o.memberName || o.customer_name || '').trim().toLowerCase();
                               const oEmail = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
                               const oMemberId = String(o.memberId || o.customerId || '');
 
                               if (cEmailLower && oEmail && cEmailLower === oEmail) return true;
                               if (cNameLower && oName && cNameLower === oName) return true;
-                              if (custIdStr && oMemberId && custIdStr === oMemberId) return true;
+                              if (custIdStr && oMemberId && custIdStr === oMemberId && custIdStr !== '' && !custIdStr.startsWith('[object')) return true;
                               return false;
                             });
 
-                            const actualVisits = matchingOrders.length > 0 ? matchingOrders.length : (c.ordersCount !== undefined ? c.ordersCount : 1);
+                            const actualVisits = matchingOrders.length > 0 ? matchingOrders.length : (c.vendorId && activeBusinessId && String(c.vendorId) !== String(activeBusinessId) ? 0 : (c.ordersCount || 0));
                             const actualSpent = matchingOrders.length > 0 
                               ? matchingOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
-                              : (c.totalSpent !== undefined ? c.totalSpent : 0);
+                              : (c.vendorId && activeBusinessId && String(c.vendorId) !== String(activeBusinessId) ? 0 : (c.totalSpent || 0));
 
                             return (
                               <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
@@ -5051,7 +5055,7 @@ const VendorDashboard = () => {
                 const isActive = biz._id === activeBusinessId;
                 const emoji = vendorTaxonomy[biz.vendorType]?.emoji || "🏢";
                 const bizAddress = biz.address || user.address || 'Not Specified';
-                const bizPincode = biz.pincode || user.pinCode || user.postalCode || 'Not Specified';
+                const bizPincode = biz.pincode || biz.pinCode || biz.postalCode || (biz.address?.match(/\b\d{6}\b/)?.[0]) || 'Not Specified';
                 const bizPhone = biz.phone || user.mobileNumber || user.telephone || 'Not Specified';
 
                 return (
@@ -9003,7 +9007,7 @@ required
               </div>
               <div className="flex justify-between py-2 border-b border-slate-200/40 dark:border-slate-800/40">
                 <span className="text-slate-450 dark:text-slate-500 font-semibold">Pincode</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 text-right">{selectedBusinessForModal.pincode || user.pinCode || user.postalCode || 'Not Specified'}</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-right">{selectedBusinessForModal.pincode || selectedBusinessForModal.pinCode || selectedBusinessForModal.postalCode || (selectedBusinessForModal.address?.match(/\b\d{6}\b/)?.[0]) || 'Not Specified'}</span>
               </div>
               <div className="flex justify-between py-2">
                 <span className="text-slate-450 dark:text-slate-500 font-semibold">Phone Number</span>
@@ -11569,19 +11573,23 @@ required
         >
           {(() => {
             const custIdStr = String(selectedCustomerForDetails._id || selectedCustomerForDetails.id || '');
-            const custOrders = orders.filter(o => 
-              String(o.memberId || o.customerId || o._id) === custIdStr || 
-              o.memberName === selectedCustomerForDetails.name || 
-              o.customer_name === selectedCustomerForDetails.name ||
-              (o.email && selectedCustomerForDetails.email && o.email.toLowerCase() === selectedCustomerForDetails.email.toLowerCase()) ||
-              (o.candidateEmail && selectedCustomerForDetails.email && o.candidateEmail.toLowerCase() === selectedCustomerForDetails.email.toLowerCase()) ||
-              (o.customer_email && selectedCustomerForDetails.email && o.customer_email.toLowerCase() === selectedCustomerForDetails.email.toLowerCase())
-            );
+            const custOrders = (orders || []).filter(o => {
+              if (!o) return false;
+              const matchesVendor = !activeBusinessId || String(o.vendorId || o.vendor_id || '') === String(activeBusinessId) || String(o.vendorId || o.vendor_id || '') === String(user?.parentUserId || user?._id || '');
+              if (!matchesVendor) return false;
 
-            const actualVisits = custOrders.length > 0 ? custOrders.length : (selectedCustomerForDetails.ordersCount || 1);
-            const actualTotalSpent = custOrders.length > 0
-              ? custOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
-              : (selectedCustomerForDetails.totalSpent || 0);
+              const oName = (o.memberName || o.customer_name || '').trim().toLowerCase();
+              const oEmail = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
+              const oMemberId = String(o.memberId || o.customerId || '');
+
+              if (selectedCustomerForDetails.email && oEmail && selectedCustomerForDetails.email.toLowerCase() === oEmail) return true;
+              if (selectedCustomerForDetails.name && oName && selectedCustomerForDetails.name.trim().toLowerCase() === oName) return true;
+              if (custIdStr && oMemberId && custIdStr === oMemberId && custIdStr !== '' && !custIdStr.startsWith('[object')) return true;
+              return false;
+            });
+
+            const actualVisits = custOrders.length;
+            const actualTotalSpent = custOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
 
             return (
               <div className="space-y-6 text-slate-800 dark:text-slate-100 animate-fadeIn">

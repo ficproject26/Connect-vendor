@@ -1,6 +1,7 @@
 
 const formatCustomerId = (memberId) => {
-  const idStr = String(memberId || 'N/A');
+  if (!memberId || memberId === 'undefined' || memberId === 'null') return 'FIC-CUST-1001';
+  const idStr = String(memberId);
   if (idStr.startsWith('FIC-CUST-')) return idStr;
   
   let hash = 0;
@@ -370,7 +371,7 @@ const Orders = () => {
                                   <th className="px-6 py-4">Job Location</th>
                                   <th className="px-6 py-4 text-right">Actions / View</th>
                                 </>
-                              ) : (terms.ordersName !== 'Orders') ? (
+                              ) : (vendorType.startsWith('Hospital') || vendorType.startsWith('Service') || vendorType.startsWith('Education') || terms.ordersName === 'Bookings' || terms.ordersName === 'Appointments' || terms.ordersName === 'Services') ? (
                                 <>
                                   <th className="px-6 py-4">Customer Name</th>
                                   <th className="px-6 py-4">Service Type</th>
@@ -393,7 +394,7 @@ const Orders = () => {
                           <tbody>
                             {filteredOrders.map(order => {
                               const isJob = vendorType.startsWith('Job') || terms.ordersName === 'Applications' || order.type === 'Job Application' || Boolean(order.candidateResume || order.candidateEmail);
-                              const isService = vendorType.startsWith('Hospital') || vendorType.startsWith('Service') || vendorType.startsWith('Education') || terms.ordersName !== 'Orders';
+                              const isService = (vendorType.startsWith('Hospital') || vendorType.startsWith('Service') || vendorType.startsWith('Education') || terms.ordersName === 'Bookings' || terms.ordersName === 'Appointments' || terms.ordersName === 'Services') && !isJob;
 
                               return (
                                 <tr key={order._id} className="border-b border-slate-200 dark:border-slate-800/60 hover:bg-slate-100/40 dark:hover:bg-slate-900/20 text-sm text-slate-700 dark:text-slate-200">
