@@ -80,7 +80,7 @@ const Customers = () => {
               {filteredCustomers.map(c => {
                 const cNameLower = (c.name || '').trim().toLowerCase();
                 const cEmailLower = (c.email || '').trim().toLowerCase();
-                const custIdStr = String(c._id || c.id || '');
+                const cMemberIdStr = String(c.memberId || '').trim();
 
                 const matchingOrders = (orders || []).filter(o => {
                   if (!o) return false;
@@ -89,18 +89,18 @@ const Customers = () => {
 
                   const oName = (o.memberName || o.customer_name || '').trim().toLowerCase();
                   const oEmail = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
-                  const oMemberId = String(o.memberId || o.customerId || '');
+                  const oMemberId = String(o.memberId || o.customerId || '').trim();
 
                   if (cEmailLower && oEmail && cEmailLower === oEmail) return true;
                   if (cNameLower && oName && cNameLower === oName) return true;
-                  if (custIdStr && oMemberId && custIdStr === oMemberId && custIdStr !== '' && !custIdStr.startsWith('[object')) return true;
+                  if (cMemberIdStr && oMemberId && cMemberIdStr === oMemberId && !cMemberIdStr.startsWith('[object')) return true;
                   return false;
                 });
 
-                const actualVisits = matchingOrders.length > 0 ? matchingOrders.length : (c.vendorId && activeBusinessId && String(c.vendorId) !== String(activeBusinessId) ? 0 : (c.ordersCount || 0));
+                const actualVisits = matchingOrders.length > 0 ? matchingOrders.length : (c.ordersCount || 0);
                 const actualSpent = matchingOrders.length > 0 
                   ? matchingOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
-                  : (c.vendorId && activeBusinessId && String(c.vendorId) !== String(activeBusinessId) ? 0 : (c.totalSpent || 0));
+                  : (c.totalSpent || 0);
 
                 return (
                   <div key={c._id} className="glass-card rounded-3xl p-6 flex flex-col justify-between hover-card relative overflow-hidden border border-slate-200/60 dark:border-slate-800/80 shadow-sm transition-all duration-300">

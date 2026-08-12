@@ -4842,7 +4842,7 @@ const VendorDashboard = () => {
                           {(() => {
                             const cNameLower = (c.name || '').trim().toLowerCase();
                             const cEmailLower = (c.email || '').trim().toLowerCase();
-                            const custIdStr = String(c._id || c.id || '');
+                            const cMemberIdStr = String(c.memberId || '').trim();
 
                             const matchingOrders = (orders || []).filter(o => {
                               if (!o) return false;
@@ -4851,18 +4851,18 @@ const VendorDashboard = () => {
 
                               const oName = (o.memberName || o.customer_name || '').trim().toLowerCase();
                               const oEmail = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
-                              const oMemberId = String(o.memberId || o.customerId || '');
+                              const oMemberId = String(o.memberId || o.customerId || '').trim();
 
                               if (cEmailLower && oEmail && cEmailLower === oEmail) return true;
                               if (cNameLower && oName && cNameLower === oName) return true;
-                              if (custIdStr && oMemberId && custIdStr === oMemberId && custIdStr !== '' && !custIdStr.startsWith('[object')) return true;
+                              if (cMemberIdStr && oMemberId && cMemberIdStr === oMemberId && !cMemberIdStr.startsWith('[object')) return true;
                               return false;
                             });
 
-                            const actualVisits = matchingOrders.length > 0 ? matchingOrders.length : (c.vendorId && activeBusinessId && String(c.vendorId) !== String(activeBusinessId) ? 0 : (c.ordersCount || 0));
+                            const actualVisits = matchingOrders.length > 0 ? matchingOrders.length : (c.ordersCount || 0);
                             const actualSpent = matchingOrders.length > 0 
                               ? matchingOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
-                              : (c.vendorId && activeBusinessId && String(c.vendorId) !== String(activeBusinessId) ? 0 : (c.totalSpent || 0));
+                              : (c.totalSpent || 0);
 
                             return (
                               <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
@@ -11588,7 +11588,10 @@ required
           title={`Customer Purchase Details - ${selectedCustomerForDetails.name}`}
         >
           {(() => {
-            const custIdStr = String(selectedCustomerForDetails._id || selectedCustomerForDetails.id || '');
+            const cNameLower = (selectedCustomerForDetails.name || '').trim().toLowerCase();
+            const cEmailLower = (selectedCustomerForDetails.email || '').trim().toLowerCase();
+            const cMemberIdStr = String(selectedCustomerForDetails.memberId || '').trim();
+
             const custOrders = (orders || []).filter(o => {
               if (!o) return false;
               const matchesVendor = !activeBusinessId || String(o.vendorId || o.vendor_id || '') === String(activeBusinessId) || String(o.vendorId || o.vendor_id || '') === String(user?.parentUserId || user?._id || '');
@@ -11596,16 +11599,18 @@ required
 
               const oName = (o.memberName || o.customer_name || '').trim().toLowerCase();
               const oEmail = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
-              const oMemberId = String(o.memberId || o.customerId || '');
+              const oMemberId = String(o.memberId || o.customerId || '').trim();
 
-              if (selectedCustomerForDetails.email && oEmail && selectedCustomerForDetails.email.toLowerCase() === oEmail) return true;
-              if (selectedCustomerForDetails.name && oName && selectedCustomerForDetails.name.trim().toLowerCase() === oName) return true;
-              if (custIdStr && oMemberId && custIdStr === oMemberId && custIdStr !== '' && !custIdStr.startsWith('[object')) return true;
+              if (cEmailLower && oEmail && cEmailLower === oEmail) return true;
+              if (cNameLower && oName && cNameLower === oName) return true;
+              if (cMemberIdStr && oMemberId && cMemberIdStr === oMemberId && !cMemberIdStr.startsWith('[object')) return true;
               return false;
             });
 
-            const actualVisits = custOrders.length;
-            const actualTotalSpent = custOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
+            const actualVisits = custOrders.length > 0 ? custOrders.length : (selectedCustomerForDetails.ordersCount || 0);
+            const actualTotalSpent = custOrders.length > 0 
+              ? custOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
+              : (selectedCustomerForDetails.totalSpent || 0);
 
             return (
               <div className="space-y-6 text-slate-800 dark:text-slate-100 animate-fadeIn">

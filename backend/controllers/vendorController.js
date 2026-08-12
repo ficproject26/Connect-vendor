@@ -715,20 +715,23 @@ const getCustomers = async (req, res) => {
 
     // 1. First aggregate from actual orders placed/booked with this vendor
     rawOrders.forEach(o => {
-      const name = o.memberName || o.customer_name || 'Customer';
-      const email = o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
-      const key = (email || name || o.memberId).toString().toLowerCase();
+      const name = (o.memberName || o.customer_name || 'Customer').trim();
+      const email = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`).trim();
+      const key = (email || name).toLowerCase();
 
       const amount = Number(o.finalAmount || o.totalAmount || o.amount || 0);
+      const uniqueId = `cust_${key.replace(/[^a-z0-9]/g, '_')}`;
 
       if (!customerMap[key]) {
         customerMap[key] = {
-          _id: (o.memberId && !o.memberId.startsWith('[object')) ? o.memberId : (o._id ? o._id.toString() : key),
+          _id: uniqueId,
+          memberId: o.memberId,
           name: name,
           email: email,
           phone: o.customer_phone || '+91 9876543210',
           ordersCount: 0,
-          totalSpent: 0
+          totalSpent: 0,
+          vendorId: o.vendorId || o.vendor_id
         };
       }
       customerMap[key].ordersCount += 1;
@@ -741,17 +744,26 @@ const getCustomers = async (req, res) => {
     // 2. Supplement with Customer collection records if not already in customerMap
     dbCustomers.forEach(c => {
       const obj = c.toObject ? c.toObject() : c;
-      const key = (obj.email || obj.memberId || obj.name || obj._id).toString().toLowerCase();
+      const name = (obj.name || 'Customer').trim();
+      const email = (obj.email || obj.memberId || '').trim();
+      const key = (email || name || obj._id).toString().toLowerCase();
+      const uniqueId = obj._id ? obj._id.toString() : `cust_${key.replace(/[^a-z0-9]/g, '_')}`;
+
       if (!customerMap[key]) {
         customerMap[key] = {
-          _id: obj._id ? obj._id.toString() : (obj.memberId || key),
-          name: obj.name || 'Customer',
-          email: obj.email || '',
+          _id: uniqueId,
+          memberId: obj.memberId || obj.email,
+          name: name,
+          email: email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
           phone: obj.phone || '',
           ordersCount: obj.ordersCount || 1,
-          totalSpent: obj.totalSpent || 0
+          totalSpent: obj.totalSpent || 0,
+          vendorId: obj.vendorId || obj.vendor_id
         };
       } else {
+        if (obj._id) {
+          customerMap[key]._id = obj._id.toString();
+        }
         if (obj.phone && (!customerMap[key].phone || customerMap[key].phone.startsWith('+91 98765'))) {
           customerMap[key].phone = obj.phone;
         }
