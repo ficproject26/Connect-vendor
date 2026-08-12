@@ -4776,7 +4776,7 @@ const VendorDashboard = () => {
                                     />
                                     <div>
                                       <p className="font-bold text-slate-900 dark:text-white">{c.name}</p>
-                                      <p className="text-[10px] text-slate-400 font-mono">ID: {formatCustomerId(c._id)}</p>
+                                      <p className="text-[10px] text-slate-400 font-mono">ID: {formatCustomerId(c)}</p>
                                     </div>
                                   </div>
                                 </td>
@@ -4836,49 +4836,21 @@ const VendorDashboard = () => {
                             <div>
                               <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{c.name}</h3>
                               <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[170px]" title={c.email}>{c.email}</p>
-                              <p className="text-[10px] text-slate-400 mt-0.5">ID: {formatCustomerId(c._id)}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">ID: {formatCustomerId(c)}</p>
                             </div>
                           </div>
 
                           {/* Stats Metrics Sub-grid */}
-                          {(() => {
-                            const cNameLower = (c.name || '').trim().toLowerCase();
-                            const cEmailLower = (c.email || '').trim().toLowerCase();
-                            const cMemberIdStr = String(c.memberId || '').trim();
-
-                            const matchingOrders = (orders || []).filter(o => {
-                              if (!o) return false;
-                              const matchesVendor = !activeBusinessId || String(o.vendorId || o.vendor_id || '') === String(activeBusinessId) || String(o.vendorId || o.vendor_id || '') === String(user?.parentUserId || user?._id || '');
-                              if (!matchesVendor) return false;
-
-                              const oName = (o.memberName || o.customer_name || '').trim().toLowerCase();
-                              const oEmail = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
-                              const oMemberId = String(o.memberId || o.customerId || '').trim();
-
-                              if (cEmailLower && oEmail && cEmailLower === oEmail) return true;
-                              if (cNameLower && oName && cNameLower === oName) return true;
-                              if (cMemberIdStr && oMemberId && cMemberIdStr === oMemberId && !cMemberIdStr.startsWith('[object')) return true;
-                              return false;
-                            });
-
-                            const actualVisits = matchingOrders.length > 0 ? matchingOrders.length : (c.ordersCount || 0);
-                            const actualSpent = matchingOrders.length > 0 
-                              ? matchingOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
-                              : (c.totalSpent || 0);
-
-                            return (
-                              <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
-                                <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
-                                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Visits</span>
-                                  <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">{actualVisits} times</span>
-                                </div>
-                                <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
-                                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">{terms.customerSpentLabel.replace('Total ', '').replace(' (₹)', '')}</span>
-                                  <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">₹{actualSpent}</span>
-                                </div>
-                              </div>
-                            );
-                          })()}
+                          <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                            <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
+                              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Visits</span>
+                              <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">{c.ordersCount || 0} times</span>
+                            </div>
+                            <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
+                              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">{terms.customerSpentLabel.replace('Total ', '').replace(' (₹)', '')}</span>
+                              <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">₹{c.totalSpent || 0}</span>
+                            </div>
+                          </div>
                         </div>
 
                         <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex justify-end">
@@ -11604,15 +11576,15 @@ required
               const oMemberId = String(o.memberId || o.customerId || '').trim();
 
               if (cEmailLower && oEmail && cEmailLower === oEmail) return true;
-              if (cNameLower && oName && cNameLower === oName) return true;
-              if (cMemberIdStr && oMemberId && cMemberIdStr === oMemberId && !cMemberIdStr.startsWith('[object')) return true;
+              if (cNameLower && oName && cNameLower === oName && cNameLower !== 'customer') return true;
+              if (cMemberIdStr && oMemberId && cMemberIdStr === oMemberId && !cMemberIdStr.startsWith('[object') && !cMemberIdStr.startsWith('cust_')) return true;
               return false;
             });
 
-            const actualVisits = custOrders.length > 0 ? custOrders.length : (selectedCustomerForDetails.ordersCount || 0);
-            const actualTotalSpent = custOrders.length > 0 
+            const actualVisits = selectedCustomerForDetails.ordersCount || custOrders.length || 0;
+            const actualTotalSpent = selectedCustomerForDetails.totalSpent || (custOrders.length > 0 
               ? custOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
-              : (selectedCustomerForDetails.totalSpent || 0);
+              : 0);
 
             return (
               <div className="space-y-6 text-slate-800 dark:text-slate-100 animate-fadeIn">
@@ -11627,7 +11599,7 @@ required
                     <div>
                       <h3 className="text-base font-extrabold text-slate-900 dark:text-white">{selectedCustomerForDetails.name}</h3>
                       <p className="text-xs text-slate-500 font-mono">{selectedCustomerForDetails.email || 'No email registered'}</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">ID: {formatCustomerId(selectedCustomerForDetails._id)}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">ID: {formatCustomerId(selectedCustomerForDetails)}</p>
                     </div>
                   </div>
                   <div className="flex gap-3 text-center sm:text-right">
