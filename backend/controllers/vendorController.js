@@ -566,25 +566,42 @@ const updateOrderStatus = async (req, res) => {
     }
 
     const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(parentUserId);
+    const parentUser = await User.findById(parentUserId);
+    const currentUser = await User.findById(req.user._id);
 
     const businessIds = [
       parentUserId.toString(),
       req.user._id.toString()
     ];
-    if (user && user._id) {
-      businessIds.push(user._id.toString());
-    }
-    if (user && user.businesses && user.businesses.length > 0) {
-      user.businesses.forEach(b => {
-        if (b && b._id) businessIds.push(b._id.toString());
-      });
+    if (parentUser && parentUser._id) businessIds.push(parentUser._id.toString());
+    if (currentUser && currentUser._id) businessIds.push(currentUser._id.toString());
+
+    [parentUser, currentUser].forEach(u => {
+      if (u && u.businesses && Array.isArray(u.businesses)) {
+        u.businesses.forEach(b => {
+          if (b && b._id) businessIds.push(b._id.toString());
+          if (b && b.id) businessIds.push(b.id.toString());
+        });
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order/Booking not found' });
     }
 
-    const orderVendorId = order ? (order.vendorId || order.vendor_id || '').toString() : '';
-
-    if (!order || (orderVendorId && !businessIds.includes(orderVendorId))) {
-      return res.status(404).json({ success: false, message: 'Order/Booking not found or unauthorized' });
+    const orderVendorId = (order.vendorId || order.vendor_id || '').toString();
+    if (orderVendorId && !businessIds.includes(orderVendorId)) {
+      // Check product match fallback for legacy orders
+      let isProductMatch = false;
+      if (order.items && order.items.length > 0 && order.items[0].productId) {
+        const prod = await Product.findById(order.items[0].productId);
+        if (prod && (prod.vendorId || prod.vendor_id) && businessIds.includes((prod.vendorId || prod.vendor_id).toString())) {
+          isProductMatch = true;
+        }
+      }
+      if (!isProductMatch) {
+        return res.status(403).json({ success: false, message: 'Order/Booking not found or unauthorized' });
+      }
     }
 
     const oldStatus = order.status;
@@ -632,7 +649,7 @@ const updateOrderStatus = async (req, res) => {
                        await Customer.findOne({ vendorId: order.vendorId, name: order.memberName });
       if (customer) {
         customer.ordersCount += 1;
-        customer.totalSpent += order.finalAmount;
+        customer.totalSpent += (order.finalAmount || order.amount || 0);
         await customer.save();
       } else {
         await Customer.create({
@@ -640,12 +657,19 @@ const updateOrderStatus = async (req, res) => {
           name: order.memberName,
           email: order.memberId,
           ordersCount: 1,
-          totalSpent: order.finalAmount
+          totalSpent: (order.finalAmount || order.amount || 0)
         });
       }
     }
 
-    res.status(200).json({ success: true, message: 'Order status updated successfully', data: order });
+    const normalizedOrder = order.toObject ? order.toObject() : order;
+    if (!normalizedOrder.vendorId && normalizedOrder.vendor_id) normalizedOrder.vendorId = normalizedOrder.vendor_id;
+    if (!normalizedOrder.memberName && normalizedOrder.customer_name) normalizedOrder.memberName = normalizedOrder.customer_name;
+    if (!normalizedOrder.memberId && normalizedOrder.customer_id) normalizedOrder.memberId = normalizedOrder.customer_id;
+    if (normalizedOrder.finalAmount === undefined && normalizedOrder.amount !== undefined) normalizedOrder.finalAmount = normalizedOrder.amount;
+    if (normalizedOrder.totalAmount === undefined && normalizedOrder.amount !== undefined) normalizedOrder.totalAmount = normalizedOrder.amount;
+
+    res.status(200).json({ success: true, message: 'Order status updated successfully', data: normalizedOrder });
   } catch (error) {
     console.error('Update Order Status Error:', error);
     res.status(500).json({ success: false, message: 'Server error updating order status' });

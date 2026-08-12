@@ -2264,7 +2264,23 @@ const VendorDashboard = () => {
         getAxiosConfig()
       );
       if (res.data.success) {
-        setOrders(orders.map(o => o._id === orderId ? res.data.data : o));
+        const updatedData = res.data.data;
+        setOrders(prevOrders => (prevOrders || []).map(o => {
+          if (!o) return o;
+          if (String(o._id || o.id) === String(orderId)) {
+            return {
+              ...o,
+              ...(updatedData || {}),
+              status: updatedData?.status || status,
+              memberName: updatedData?.memberName || updatedData?.customer_name || o.memberName || o.customer_name || 'N/A',
+              memberId: updatedData?.memberId || updatedData?.customer_id || o.memberId || o.customer_id,
+              finalAmount: updatedData?.finalAmount ?? updatedData?.amount ?? o.finalAmount ?? o.amount ?? 0,
+              totalAmount: updatedData?.totalAmount ?? updatedData?.amount ?? o.totalAmount ?? o.amount ?? 0,
+              items: updatedData?.items || o.items || []
+            };
+          }
+          return o;
+        }));
         setMessage(`Order status updated to ${status}`);
         
         // If partner assigned, reload partners status
