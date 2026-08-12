@@ -204,17 +204,7 @@ const OrderSchema = new mongoose.Schema({
   totalAmount: { type: Number, required: true },
   discountApplied: { type: Number, default: 0 },
   finalAmount: { type: Number, required: true },
-  status: { 
-    type: String, 
-    enum: [
-      'Pending', 'Accepted', 'Out for Delivery', 'Delivered', 'Completed', 'Cancelled', 
-      'Checked In', 'Checked Out', 'Shortlisted', 'Interviewing', 'Hired', 'Rejected', 
-      'Approved', 'Enrolled', 'Order Received', 'Order Placed', 'Preparing', 
-      'Ready for Pickup', 'Ready For Pickup', 'Assigned To Delivery Partner', 'Delivery Partner Accepted',
-      'Application Received', 'Resume Screening', 'Interview Scheduled', 'Selected / Offered'
-    ], 
-    default: 'Pending' 
-  },
+  status: { type: String, default: 'Pending' },
   deliveryPartnerId: { type: String },
   candidateEmail: { type: String },
   candidateResume: { type: String },

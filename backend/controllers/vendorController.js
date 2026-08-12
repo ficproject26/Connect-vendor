@@ -552,8 +552,10 @@ const updateOrderStatus = async (req, res) => {
     const { status, deliveryPartnerId } = req.body;
 
     let order = null;
-    if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+    try {
       order = await Order.findById(req.params.id);
+    } catch (e) {
+      order = null;
     }
     if (!order) {
       order = await Order.findOne({
