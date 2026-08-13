@@ -588,6 +588,32 @@ const Profile = () => {
 
           <form onSubmit={showForgotFlow ? handleResetPasswordWithOTP : handleChangePassword} className="space-y-4">
             {!showForgotFlow ? (
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center pl-1">
+                      <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Current Password</label>
+                      <button
+                        type="button"
+                        onClick={handleRequestOTP}
+                        className="text-xs text-primary-600 dark:text-primary-400 hover:underline font-semibold"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                    <input
+                      type="password"
+                      required
+                      value={passwordForm.currentPassword}
+                      onChange={e => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                      className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center pl-1">
+                      <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">One-Time Password (OTP)</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotFlow(false)}
                         className="text-xs text-slate-500 hover:underline font-semibold"
                       >
                         Use Current Password

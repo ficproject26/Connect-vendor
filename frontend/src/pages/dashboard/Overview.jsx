@@ -816,7 +816,7 @@ const Overview = () => {
           );
         })()}
 
-        {/* Catalog T
+        {/* Catalog Tab */}
     </>
   );
 };
