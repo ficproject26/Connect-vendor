@@ -2,6 +2,10 @@ import axios from 'axios';
 import { store } from '../store';
 
 export const getBackendUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  
   const hostname = window.location.hostname;
   
   // If running locally, connect to local backend on port 8001
