@@ -636,7 +636,7 @@ const updateOrderStatus = async (req, res) => {
         if (order.status === 'Accepted') custStatus = 'Preparing';
         else if (order.status === 'Out for Delivery') custStatus = 'Out For Delivery';
 
-        const syncUrl = `http://localhost:8001/api/orders/${order._id}/status`;
+        const syncUrl = `http://localhost:8002/api/orders/${order._id}/status`;
         await fetch(syncUrl, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

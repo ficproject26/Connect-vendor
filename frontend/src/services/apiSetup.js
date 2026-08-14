@@ -8,7 +8,7 @@ export const getBackendUrl = () => {
   
   const hostname = window.location.hostname;
   
-  // If running locally, connect to local backend on port 8001
+  // If running locally, connect to local backend on port 8002
   if (
     !hostname || 
     hostname === 'localhost' || 
@@ -16,7 +16,7 @@ export const getBackendUrl = () => {
     hostname.startsWith('192.168.') || 
     hostname.startsWith('10.')
   ) {
-    return `http://${hostname || 'localhost'}:8001`;
+    return `http://${hostname || 'localhost'}:8002`;
   }
   
   // If running in production (Vercel), connect to deployed backend URL
@@ -28,9 +28,9 @@ export const getBackendUrl = () => {
 axios.interceptors.request.use(
   (config) => {
     const backendUrl = getBackendUrl();
-    if (config.url && (config.url.includes(':8000') || config.url.includes(':8001'))) {
-      // Replaces http://localhost:8001 or http://${window.location.hostname}:8001 with the active backendUrl
-      config.url = config.url.replace(/^http:\/\/[^/]+:(8000|8001)/, backendUrl);
+    if (config.url && (config.url.includes(':8000') || config.url.includes(':8001') || config.url.includes(':8002'))) {
+      // Replaces http://localhost:8002 or http://${window.location.hostname}:8002 with the active backendUrl
+      config.url = config.url.replace(/^http:\/\/[^/]+:(8000|8001|8002)/, backendUrl);
       
       // If we are communicating over HTTPS, rewrite the URL protocol to https
       if (backendUrl.startsWith('https://')) {

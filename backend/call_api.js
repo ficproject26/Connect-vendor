@@ -64,7 +64,7 @@ function get(url, headers = {}) {
 async function main() {
   try {
     console.log('Logging in...');
-    const loginRes = await post('http://localhost:8000/api/auth/login', {
+    const loginRes = await post('http://localhost:8002/api/auth/login', {
       email: 'dhanushiyasri@gmail.com',
       password: 'vendor123'
     });
@@ -83,7 +83,7 @@ async function main() {
 
     // Try fetching products without active business header
     console.log('\nFetching products (default/primary)...');
-    let productsRes = await get('http://localhost:8000/api/vendor/products', {
+    let productsRes = await get('http://localhost:8002/api/vendor/products', {
       'Authorization': `Bearer ${token}`
     });
     console.log(`Success! Found ${productsRes.data.data ? productsRes.data.data.length : 0} products.`);
@@ -97,7 +97,7 @@ async function main() {
     if (user.businesses && user.businesses.length > 0) {
       for (const biz of user.businesses) {
         console.log(`\nFetching products for business: ${biz.businessName} (ID: ${biz._id}, Subcategory: ${biz.subcategory})...`);
-        let bizRes = await get('http://localhost:8000/api/vendor/products', {
+        let bizRes = await get('http://localhost:8002/api/vendor/products', {
           'Authorization': `Bearer ${token}`,
           'x-business-id': biz._id
         });
