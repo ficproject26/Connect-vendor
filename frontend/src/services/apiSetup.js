@@ -3,12 +3,14 @@ import { store } from '../store';
 
 export const getBackendUrl = () => {
   let envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL;
-  if (envUrl) {
+  if (envUrl && typeof envUrl === 'string') {
     envUrl = envUrl.trim().replace(/\/+$/, '');
-    if (envUrl.endsWith('/api')) {
-      envUrl = envUrl.substring(0, envUrl.length - 4);
+    if (!envUrl.includes('trycloudflare.com')) {
+      if (envUrl.endsWith('/api')) {
+        envUrl = envUrl.substring(0, envUrl.length - 4);
+      }
+      return envUrl;
     }
-    return envUrl;
   }
   
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -148,14 +150,13 @@ axios.interceptors.response.use(
 
 // --- WAKE-UP PING ---
 // When the app loads, send a lightweight ping to wake up the Render backend
-// This runs once so that by the time the user interacts, the backend is ready
 const wakeUpBackend = async () => {
   try {
     const backendUrl = getBackendUrl();
-    await fetch(`${backendUrl}/`, { method: 'GET', mode: 'cors' });
-    console.log('✅ Backend is awake');
+    if (!backendUrl) return;
+    await fetch(`${backendUrl}/`, { method: 'GET', mode: 'cors' }).catch(() => {});
   } catch (err) {
-    console.warn('⏳ Backend is waking up, it may take a moment...');
+    // Ignore initial wake-up ping errors
   }
 };
 
