@@ -10,8 +10,17 @@ dotenv.config();
 
 const app = express();
 
-// Middlewares 
-app.use(cors());
+// Configure CORS options to allow requests with custom headers from Vercel & local origins
+const corsOptions = {
+  origin: true, // Allow all origins reflectively
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-business-id', 'Accept', 'Origin']
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

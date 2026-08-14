@@ -2,11 +2,16 @@ import axios from 'axios';
 import { store } from '../store';
 
 export const getBackendUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+  let envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL;
+  if (envUrl) {
+    envUrl = envUrl.trim().replace(/\/+$/, '');
+    if (envUrl.endsWith('/api')) {
+      envUrl = envUrl.substring(0, envUrl.length - 4);
+    }
+    return envUrl;
   }
   
-  const hostname = window.location.hostname;
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   
   // If running locally, connect to local backend on port 8002
   if (
@@ -19,21 +24,29 @@ export const getBackendUrl = () => {
     return `http://${hostname || 'localhost'}:8002`;
   }
   
-  // If running in production (Vercel), connect to deployed backend URL
-  // You can set VITE_BACKEND_URL in Vercel environment variables.
-  return import.meta.env.VITE_BACKEND_URL || 'https://connect-vendor.onrender.com';
+  // If running in production (Vercel), connect to deployed backend URL on Render
+  return 'https://connect-vendor.onrender.com';
 };
 
 // Set up Axios request interceptor to dynamically rewrite backend URLs and inject headers
 axios.interceptors.request.use(
   (config) => {
     const backendUrl = getBackendUrl();
-    if (config.url && (config.url.includes(':8000') || config.url.includes(':8001') || config.url.includes(':8002'))) {
-      // Replaces http://localhost:8002 or http://${window.location.hostname}:8002 with the active backendUrl
-      config.url = config.url.replace(/^http:\/\/[^/]+:(8000|8001|8002)/, backendUrl);
+    if (config.url) {
+      if (
+        config.url.includes(':8000') || 
+        config.url.includes(':8001') || 
+        config.url.includes(':8002') ||
+        config.url.includes('trycloudflare.com')
+      ) {
+        // Replaces localhost ports or stale cloud tunnels with active backendUrl
+        config.url = config.url.replace(/^https?:\/\/[^/]+/, backendUrl);
+      } else if (config.url.startsWith('/api')) {
+        config.url = `${backendUrl}${config.url}`;
+      }
       
-      // If we are communicating over HTTPS, rewrite the URL protocol to https
-      if (backendUrl.startsWith('https://')) {
+      // If backend is HTTPS, enforce HTTPS on config.url
+      if (backendUrl.startsWith('https://') && config.url.startsWith('http://')) {
         config.url = config.url.replace(/^http:\/\//, 'https://');
       }
     }

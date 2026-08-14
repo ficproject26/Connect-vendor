@@ -272,10 +272,28 @@ const VendorDashboard = () => {
   useEffect(() => {
     const fetchDynamicCategories = async () => {
       try {
-        const adminUrl = getAdminBackendUrl();
-        const res = await fetch(`${adminUrl}/api/admin/categories`);
-        if (res.ok) {
-          const dbCats = await res.json();
+        let dbCats = [];
+        try {
+          const vendorBackendUrl = getBackendUrl();
+          const res = await fetch(`${vendorBackendUrl}/api/public/categories`);
+          if (res.ok) {
+            const json = await res.json();
+            dbCats = Array.isArray(json) ? json : (json.data || []);
+          }
+        } catch (e) {
+          try {
+            const adminUrl = getAdminBackendUrl();
+            const res = await fetch(`${adminUrl}/api/admin/categories`);
+            if (res.ok) {
+              const json = await res.json();
+              dbCats = Array.isArray(json) ? json : (json.data || []);
+            }
+          } catch (adminErr) {
+            // Quiet fallback to static taxonomy
+          }
+        }
+
+        if (Array.isArray(dbCats) && dbCats.length > 0) {
           
           const idToCat = {};
           dbCats.forEach(c => { if (c && c._id) idToCat[String(c._id)] = c; });
