@@ -26,8 +26,8 @@ export const getBackendUrl = () => {
     return `http://${hostname || 'localhost'}:8002`;
   }
   
-  // If running in production (Vercel), connect to deployed backend URL on Render
-  return 'https://connect-vendor.onrender.com';
+  // Deployed backend URL fallback
+  return 'http://43.204.141.105:8002';
 };
 
 // Set up Axios request interceptor to dynamically rewrite backend URLs and inject headers

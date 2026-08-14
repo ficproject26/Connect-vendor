@@ -11,21 +11,8 @@ dotenv.config();
 const app = express();
 
 // Configure CORS options
-const allowedOrigins = [
-  'https://connect-vendor.vercel.app',
-  'http://localhost:5174',
-  'http://localhost:5173',
-  'http://localhost:8002'
-];
-
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.vercel.app')) {
-      callback(null, true);
-    } else {
-      callback(null, true);
-    }
-  },
+  origin: true, // Reflective origin matching for all clients
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-business-id', 'Accept', 'Origin']
