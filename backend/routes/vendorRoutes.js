@@ -66,14 +66,15 @@ router.post('/upload', (req, res) => {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
     try {
-      const cloudinaryUrl = await uploadToCloudinary(req.file.buffer, 'product_images');
+      const filenameHint = req.file.originalname || 'upload.jpg';
+      const imageUrl = await uploadToCloudinary(req.file.buffer, 'product_images', filenameHint);
       res.status(200).json({
         success: true,
-        imageUrl: cloudinaryUrl
+        imageUrl: imageUrl
       });
     } catch (uploadErr) {
-      console.error('Cloudinary Upload Error:', uploadErr);
-      res.status(500).json({ success: false, message: 'Failed to upload image to Cloudinary' });
+      console.error('Image Upload Error:', uploadErr);
+      res.status(500).json({ success: false, message: 'Failed to process image upload' });
     }
   });
 });
