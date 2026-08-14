@@ -9,22 +9,37 @@ cloudinary.config({
 });
 
 const uploadToCloudinary = async (fileBuffer, folder = 'connect_uploads', filenameHint = 'image.jpg') => {
-  // 1. Try uploading to Cloudinary first
+  // 1. Try uploading to Cloudinary first if credentials exist
   if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
     try {
-      const cloudinaryUrl = await new Promise((resolve, reject) => {
+      const cloudinaryUrl = await new Promise((resolve) => {
+        let resolved = false;
         const uploadStream = cloudinary.uploader.upload_stream(
-          { folder },
+          { folder, timeout: 5000 },
           (error, result) => {
-            if (error) return reject(error);
+            if (resolved) return;
+            resolved = true;
+            if (error || !result || !result.secure_url) {
+              console.warn('⚠️ Cloudinary upload error, using local storage fallback:', error?.message || 'No URL returned');
+              return resolve(null);
+            }
             resolve(result.secure_url);
           }
         );
+
+        uploadStream.on('error', (err) => {
+          if (resolved) return;
+          resolved = true;
+          console.warn('⚠️ Cloudinary stream error, using local storage fallback:', err.message);
+          resolve(null);
+        });
+
         uploadStream.end(fileBuffer);
       });
+
       if (cloudinaryUrl) return cloudinaryUrl;
     } catch (err) {
-      console.warn('⚠️ Cloudinary upload failed, falling back to local file storage:', err.message || err);
+      console.warn('⚠️ Cloudinary upload exception, using local storage fallback:', err.message || err);
     }
   }
 
