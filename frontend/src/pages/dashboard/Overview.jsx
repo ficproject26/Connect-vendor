@@ -788,23 +788,26 @@ const Overview = () => {
                     {/* Mini Customers List */}
                     <div className="space-y-3">
                       <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">Recent Customers</h4>
-                      {customers.slice(0, 3).map((customer, idx) => (
-                        <div key={customer._id || idx} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                          <img 
-                            src={getCustomerAvatarUrl(customer)} 
-                            alt={customer.name} 
-                            className="w-10 h-10 rounded-full object-cover border border-slate-100 dark:border-slate-800" 
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{customer.name}</p>
-                            <p className="text-[10px] text-slate-400 truncate">{customer.phone || customer.email || 'No Contact'}</p>
+                      {customers.slice(0, 3).map((customer, idx) => {
+                        const metrics = getCustomerMetrics(customer, orders);
+                        return (
+                          <div key={customer._id || idx} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                            <img 
+                              src={getCustomerAvatarUrl(customer)} 
+                              alt={customer.name} 
+                              className="w-10 h-10 rounded-full object-cover border border-slate-100 dark:border-slate-800" 
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{customer.name}</p>
+                              <p className="text-[10px] text-slate-400 truncate">{customer.phone || customer.email || 'No Contact'}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{metrics.count} bookings</p>
+                              <p className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">₹{metrics.totalSpent}</p>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{customer.ordersCount} bookings</p>
-                            <p className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">₹{customer.totalSpent}</p>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {customers.length === 0 && (
                         <p className="text-xs text-slate-400 text-center py-2">No customers logged yet</p>
                       )}

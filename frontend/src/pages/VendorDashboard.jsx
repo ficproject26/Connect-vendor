@@ -151,6 +151,34 @@ const getCustomerAvatarUrl = (customer) => {
   return avatars[avatarIndex];
 };
 
+export const getCustomerMetrics = (customer, orders = []) => {
+  if (!customer) return { count: 0, totalSpent: 0 };
+  if (!orders || !Array.isArray(orders) || orders.length === 0) {
+    return { count: customer.ordersCount || 0, totalSpent: customer.totalSpent || 0 };
+  }
+
+  const custNameClean = (customer.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const custEmailClean = (customer.email || '').trim().toLowerCase();
+
+  const matchedOrders = orders.filter(o => {
+    if (!o) return false;
+    const oNameClean = (o.memberName || o.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const oEmailClean = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
+
+    if (custNameClean && oNameClean && custNameClean === oNameClean && custNameClean !== 'customer' && custNameClean !== 'connectmember') return true;
+    if (custEmailClean && oEmailClean && custEmailClean === oEmailClean && custEmailClean.includes('@')) return true;
+    return false;
+  });
+
+  if (matchedOrders.length > 0) {
+    const count = matchedOrders.length;
+    const totalSpent = matchedOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
+    return { count, totalSpent };
+  }
+
+  return { count: 0, totalSpent: 0 };
+};
+
 const getCategoryIcon = (category) => {
   const cat = (category || '').toLowerCase();
   
@@ -1591,6 +1619,12 @@ const VendorDashboard = () => {
         } else if (activeTab === 'customers') {
           const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig());
           if (res.data.success) setCustomers(res.data.data);
+          try {
+            const ordersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
+            if (ordersRes.data.success) setOrders(ordersRes.data.data);
+          } catch (err) {
+            console.error('Failed to load orders for customers tab:', err);
+          }
         } else if (activeTab === 'card') {
           try {
             const res = await axios.get(`${getVendorBackendUrl()}/api/member/card`, getAxiosConfig());
@@ -4803,10 +4837,10 @@ const VendorDashboard = () => {
                                   <p className="text-[10px] text-slate-400 mt-0.5">{c.phone || 'N/A'}</p>
                                 </td>
                                 <td className="px-6 py-4 text-center font-bold text-slate-800 dark:text-slate-200">
-                                  {c.ordersCount} times
+                                  {getCustomerMetrics(c, orders).count} times
                                 </td>
                                 <td className="px-6 py-4 text-right font-extrabold text-emerald-600 dark:text-emerald-400">
-                                  ₹{c.totalSpent}
+                                  ₹{getCustomerMetrics(c, orders).totalSpent}
                                 </td>
                                 <td className="px-6 py-4 text-center">
                                   <button
@@ -4832,44 +4866,46 @@ const VendorDashboard = () => {
 
                 return (
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredCustomers.map(c => (
-                      <div 
-                        key={c._id}
-                        onClick={() => {
-                          setSelectedCustomerForDetails(c);
-                          setIsCustomerDetailsModalOpen(true);
-                        }}
-                        className="glass-card rounded-3xl p-6 flex flex-col justify-between hover-card relative overflow-hidden border border-slate-200/60 dark:border-slate-800/80 shadow-sm transition-all duration-300 cursor-pointer"
-                      >
-                        <div>
-                          {/* Avatar & Header Info */}
-                          <div className="flex items-center gap-3.5 mb-5">
-                            <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 shrink-0 relative group">
-                              <img
-                                src={getCustomerAvatarUrl(c)}
-                                alt={c.name}
-                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                              />
+                    {filteredCustomers.map(c => {
+                      const metrics = getCustomerMetrics(c, orders);
+                      return (
+                        <div 
+                          key={c._id}
+                          onClick={() => {
+                            setSelectedCustomerForDetails(c);
+                            setIsCustomerDetailsModalOpen(true);
+                          }}
+                          className="glass-card rounded-3xl p-6 flex flex-col justify-between hover-card relative overflow-hidden border border-slate-200/60 dark:border-slate-800/80 shadow-sm transition-all duration-300 cursor-pointer"
+                        >
+                          <div>
+                            {/* Avatar & Header Info */}
+                            <div className="flex items-center gap-3.5 mb-5">
+                              <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 shrink-0 relative group">
+                                <img
+                                  src={getCustomerAvatarUrl(c)}
+                                  alt={c.name}
+                                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                />
+                              </div>
+                              <div>
+                                <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{c.name}</h3>
+                                <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[170px]" title={c.email}>{c.email}</p>
+                                <p className="text-[10px] text-slate-400 mt-0.5">ID: {formatCustomerId(c)}</p>
+                              </div>
                             </div>
-                            <div>
-                              <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{c.name}</h3>
-                              <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[170px]" title={c.email}>{c.email}</p>
-                              <p className="text-[10px] text-slate-400 mt-0.5">ID: {formatCustomerId(c)}</p>
-                            </div>
-                          </div>
 
-                          {/* Stats Metrics Sub-grid */}
-                          <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
-                            <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
-                              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Visits</span>
-                              <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">{c.ordersCount || 0} times</span>
-                            </div>
-                            <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
-                              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">{terms.customerSpentLabel.replace('Total ', '').replace(' (₹)', '')}</span>
-                              <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">₹{c.totalSpent || 0}</span>
+                            {/* Stats Metrics Sub-grid */}
+                            <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                              <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
+                                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Visits</span>
+                                <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">{metrics.count} times</span>
+                              </div>
+                              <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
+                                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">{terms.customerSpentLabel.replace('Total ', '').replace(' (₹)', '')}</span>
+                                <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">₹{metrics.totalSpent}</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
                         <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex justify-end">
                           <span className="text-[11px] font-bold text-[#0B3C7B] dark:text-[#faed26] flex items-center gap-1 group-hover:translate-x-1 transition-transform">
@@ -4877,7 +4913,8 @@ const VendorDashboard = () => {
                           </span>
                         </div>
                       </div>
-                    ))}
+                    );
+                  })}
                   </div>
                 );
               })()
