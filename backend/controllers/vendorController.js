@@ -60,12 +60,22 @@ const getVendorAnalytics = async (req, res) => {
     const pendingOrdersCount = orders.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'].includes(o.status)).length;
     
     const totalRevenue = completedOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
-    const uniqueCustomersCount = await Customer.countDocuments({
+    const dbCustomersCountList = await Customer.find({
       $or: [
         { vendorId: { $in: businessIds } },
         { vendor_id: { $in: businessIds } }
       ]
     });
+    const customerKeySet = new Set();
+    dbCustomersCountList.forEach(c => {
+      const k = (c.name || c.email || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (k) customerKeySet.add(k);
+    });
+    orders.forEach(o => {
+      const k = (o.memberName || o.customer_name || o.candidateEmail || o.customer_email || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (k && k !== 'customer' && k !== 'connectmember') customerKeySet.add(k);
+    });
+    const uniqueCustomersCount = customerKeySet.size;
     const totalItemsCount = await Product.countDocuments({
       $or: [
         { vendorId: { $in: businessIds } },
@@ -714,10 +724,14 @@ const getCustomers = async (req, res) => {
     const customerMap = {};
 
     const getCustomerKey = (name, email) => {
-      const cleanEmail = (email || '').trim().toLowerCase();
       const cleanName = (name || '').trim().toLowerCase();
-      if (cleanEmail && !cleanEmail.includes('customer') && cleanEmail.includes('@')) return cleanEmail;
-      if (cleanName && cleanName !== 'customer') return cleanName;
+      const cleanEmail = (email || '').trim().toLowerCase();
+      if (cleanName && cleanName !== 'customer' && cleanName !== 'connect member') {
+        return cleanName.replace(/[^a-z0-9]/g, '');
+      }
+      if (cleanEmail && !cleanEmail.includes('customer') && cleanEmail.includes('@')) {
+        return cleanEmail.replace(/[^a-z0-9]/g, '');
+      }
       return cleanEmail || cleanName || 'unknown_customer';
     };
 
@@ -727,14 +741,14 @@ const getCustomers = async (req, res) => {
       const name = (obj.name || 'Customer').trim();
       const email = (obj.email || obj.memberId || '').trim();
       const key = getCustomerKey(name, email);
-      const uniqueId = `cust_${key.replace(/[^a-z0-9]/g, '_')}`;
+      const uniqueId = `cust_${key}`;
 
       customerMap[key] = {
         _id: uniqueId,
         memberId: obj.memberId || email || uniqueId,
         name: name,
         email: email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-        phone: obj.phone || '',
+        phone: obj.phone || obj.mobileNumber || '',
         ordersCount: 0,
         totalSpent: 0,
         vendorId: obj.vendorId || obj.vendor_id
@@ -745,37 +759,45 @@ const getCustomers = async (req, res) => {
     rawOrders.forEach(o => {
       const name = (o.memberName || o.customer_name || 'Customer').trim();
       const email = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim();
+      const phone = o.customer_phone || o.phone || o.mobileNumber || o.contactNumber || o.candidatePhone || o.memberPhone || '';
       const key = getCustomerKey(name, email);
-      const uniqueId = `cust_${key.replace(/[^a-z0-9]/g, '_')}`;
+      const uniqueId = `cust_${key}`;
 
       if (!customerMap[key]) {
         customerMap[key] = {
           _id: uniqueId,
-          memberId: o.memberId || email || uniqueId,
+          memberId: (email && email.includes('@')) ? email : uniqueId,
           name: name,
-          email: email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-          phone: o.customer_phone || '+91 9876543210',
+          email: (email && email.includes('@')) ? email : (name !== 'Customer' ? `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com` : ''),
+          phone: phone,
           ordersCount: 0,
           totalSpent: 0,
           vendorId: o.vendorId || o.vendor_id
         };
+      } else {
+        if (!customerMap[key].phone && phone) {
+          customerMap[key].phone = phone;
+        }
+        if (email && email.includes('@') && (!customerMap[key].email || !customerMap[key].email.includes('@'))) {
+          customerMap[key].email = email;
+        }
       }
     });
 
     // 3. Calculate ordersCount and totalSpent independently for each customer
     Object.keys(customerMap).forEach(key => {
       const cust = customerMap[key];
-      const custNameLower = cust.name.toLowerCase();
-      const custEmailLower = cust.email.toLowerCase();
+      const custNameClean = cust.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const custEmailClean = cust.email.toLowerCase();
 
       const custOrders = rawOrders.filter(o => {
-        const oName = (o.memberName || o.customer_name || '').trim().toLowerCase();
-        const oEmail = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
-        const oMemberId = (o.memberId || o.customerId || '').toString().trim().toLowerCase();
+        const oNameClean = (o.memberName || o.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        const oEmailClean = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
+        const oMemberIdClean = (o.memberId || o.customerId || '').toString().trim().toLowerCase();
 
-        if (custEmailLower && oEmail && custEmailLower === oEmail) return true;
-        if (custNameLower && oName && custNameLower === oName && custNameLower !== 'customer') return true;
-        if (cust.memberId && oMemberId && cust.memberId.toLowerCase() === oMemberId) return true;
+        if (custNameClean && oNameClean && custNameClean === oNameClean && custNameClean !== 'customer' && custNameClean !== 'connectmember') return true;
+        if (custEmailClean && oEmailClean && custEmailClean === oEmailClean && custEmailClean.includes('@')) return true;
+        if (cust.memberId && oMemberIdClean && cust.memberId.toLowerCase() === oMemberIdClean && !oMemberIdClean.startsWith('cust_')) return true;
         return false;
       });
 
