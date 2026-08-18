@@ -10,6 +10,7 @@ import {
 import Modal from '../../components/common/Modal';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { getVendorBackendUrl } from '../../services/apiSetup';
+import { updateUser } from '../../store/authSlice';
 
 const Profile = () => {
   const {
@@ -185,6 +186,9 @@ const Profile = () => {
       }, getAxiosConfig());
       if (res.data.success) {
         setMessage('Business profile updated successfully!');
+        if (res.data.data) {
+          dispatch(updateUser(res.data.data));
+        }
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Profile update failed');
