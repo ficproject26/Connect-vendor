@@ -14,6 +14,7 @@ export const getBackendUrl = () => {
   }
   
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   
   // If running locally, connect to local backend on port 8002
   if (
@@ -26,6 +27,11 @@ export const getBackendUrl = () => {
     return `http://${hostname || 'localhost'}:8002`;
   }
   
+  // If deployed on HTTPS (e.g. Vercel connect-vendor.vercel.app), use relative path to route through Vercel proxy rewrites
+  if (isHttps) {
+    return '';
+  }
+
   // Deployed backend URL fallback
   return 'http://43.204.141.105:8002';
 };
@@ -39,12 +45,13 @@ axios.interceptors.request.use(
         config.url.includes(':8000') || 
         config.url.includes(':8001') || 
         config.url.includes(':8002') ||
-        config.url.includes('trycloudflare.com')
+        config.url.includes('trycloudflare.com') ||
+        config.url.includes('43.204.141.105')
       ) {
-        // Replaces localhost ports or stale cloud tunnels with active backendUrl
+        // Replaces localhost ports or stale cloud tunnels/IPs with active backendUrl
         config.url = config.url.replace(/^https?:\/\/[^/]+/, backendUrl);
       } else if (config.url.startsWith('/api')) {
-        config.url = `${backendUrl}${config.url}`;
+        config.url = backendUrl ? `${backendUrl}${config.url}` : config.url;
       }
       
       // If backend is HTTPS, enforce HTTPS on config.url
