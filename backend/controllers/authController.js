@@ -364,7 +364,7 @@ const loginVendor = async (req, res) => {
 
     // Check Vendor status
     const vendorStatus = (user.status || '').toLowerCase().trim();
-    const isNotActive = !['approved', 'active'].includes(vendorStatus) || user.isActive === false || user.isApproved === false || user.isLocked === true;
+    const isNotActive = !['approved', 'active', 'assigned'].includes(vendorStatus) || user.isActive === false || user.isApproved === false || user.isLocked === true;
 
     if (userRole === 'vendor' && isNotActive) {
       if (vendorStatus === 'suspended' || user.isActive === false || user.isLocked === true) {

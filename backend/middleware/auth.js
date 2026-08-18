@@ -24,7 +24,7 @@ const protect = async (req, res, next) => {
       const statusLower = (user.status || '').toLowerCase().trim();
       const userRoleLower = (user.role || user.userType || '').toLowerCase().trim();
       const isVendorRole = userRoleLower.includes('vendor') || userRoleLower.includes('merchant');
-      const isNotActive = !['approved', 'active'].includes(statusLower) || user.isActive === false || user.isApproved === false || user.isLocked === true;
+      const isNotActive = !['approved', 'active', 'assigned'].includes(statusLower) || user.isActive === false || user.isApproved === false || user.isLocked === true;
 
       if (isVendorRole && isNotActive) {
         return res.status(403).json({ 

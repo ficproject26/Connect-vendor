@@ -91,7 +91,12 @@ axios.interceptors.response.use(
   async (error) => {
     const config = error.config;
 
-    const isAuthOrSuspendedError = error.response && (
+    const isAuthRoute = config?.url && (
+      config.url.includes('/api/auth/login') ||
+      config.url.includes('/api/auth/register')
+    );
+
+    const isAuthOrSuspendedError = !isAuthRoute && error.response && (
       error.response.status === 401 ||
       error.response.status === 403 ||
       error.response.data?.isTerminated ||
