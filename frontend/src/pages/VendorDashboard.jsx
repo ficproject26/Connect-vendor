@@ -1096,7 +1096,25 @@ const VendorDashboard = () => {
     return diffDays;
   };
 
-  const getItemSalesData = (itemId) => {
+  const formatOrderDate = (order) => {
+    if (!order) return 'N/A';
+    const rawDate = order.createdAt || order.created_at || order.date || order.orderDate || order.updatedAt;
+    if (rawDate) {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString();
+    }
+    if (order._id && typeof order._id === 'string' && order._id.length === 24) {
+      try {
+        const timestamp = parseInt(order._id.substring(0, 8), 16) * 1000;
+        if (!isNaN(timestamp) && timestamp > 0) {
+          return new Date(timestamp).toLocaleDateString();
+        }
+      } catch (e) {}
+    }
+    return 'N/A';
+  };
+
+  const getItemSalesData = (itemId, targetItem = null) => {
     if (!orders || orders.length === 0) return { count: 0, customersCount: 0, orders: [], revenue: 0 };
     
     let count = 0;
@@ -1104,22 +1122,56 @@ const VendorDashboard = () => {
     const itemOrders = [];
     const uniqueCustomers = new Set();
     
+    const targetIdStr = String(itemId || '').trim();
+    const targetNameClean = targetItem && targetItem.name ? targetItem.name.trim().toLowerCase() : '';
+
     orders.forEach(order => {
-      if (order.status !== 'Cancelled') {
-        const orderItem = order.items && order.items.find(i => i.productId === itemId);
-        if (orderItem) {
-          const qty = orderItem.quantity || 1;
+      if (order.status !== 'Cancelled' && order.status !== 'Rejected') {
+        let isMatch = false;
+        let qty = 1;
+        let price = 0;
+
+        // 1. Check inside order.items array
+        if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+          for (const i of order.items) {
+            const itemProdId = String(i.productId || i._id || i.id || '').trim();
+            const itemNameClean = (i.name || '').trim().toLowerCase();
+            
+            if ((targetIdStr && itemProdId === targetIdStr) || (targetNameClean && itemNameClean && targetNameClean === itemNameClean)) {
+              isMatch = true;
+              qty = Number(i.quantity || i.qty || 1);
+              price = Number(i.price || 0);
+              break;
+            }
+          }
+        }
+
+        // 2. Check top-level order properties (for direct bookings/appointments/services)
+        if (!isMatch) {
+          const orderProdId = String(order.productId || order.product_details_id || '').trim();
+          const orderProdDetails = (order.product_details || order.doctorName || order.serviceName || order.packageName || '').trim().toLowerCase();
+
+          if ((targetIdStr && orderProdId === targetIdStr) || (targetNameClean && orderProdDetails && (targetNameClean === orderProdDetails || orderProdDetails.includes(targetNameClean)))) {
+            isMatch = true;
+            qty = Number(order.quantity || 1);
+            price = Number(order.finalAmount || order.totalAmount || order.amount || 0);
+          }
+        }
+
+        if (isMatch) {
           count += qty;
-          revenue += (orderItem.price || 0) * qty;
+          revenue += price > 0 ? (price * qty) : Number(order.finalAmount || order.totalAmount || 0);
+          
           const custKey = order.memberId || order.customerId || order.memberName || order.candidateEmail || order._id;
           if (custKey) uniqueCustomers.add(String(custKey));
+          
           itemOrders.push({
             orderId: order._id,
-            memberName: order.memberName,
+            memberName: order.memberName || order.customer_name || 'Customer',
             quantity: qty,
-            amount: (orderItem.price || 0) * qty,
-            date: order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A',
-            status: order.status
+            amount: price > 0 ? (price * qty) : Number(order.finalAmount || order.totalAmount || 0),
+            date: formatOrderDate(order),
+            status: order.status || 'Confirmed'
           });
         }
       }
@@ -3497,23 +3549,26 @@ const VendorDashboard = () => {
                     {/* Mini Customers List */}
                     <div className="space-y-3">
                       <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">Recent Customers</h4>
-                      {customers.slice(0, 3).map((customer, idx) => (
-                        <div key={customer._id || idx} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                          <img 
-                            src={getCustomerAvatarUrl(customer)} 
-                            alt={customer.name} 
-                            className="w-10 h-10 rounded-full object-cover border border-slate-100 dark:border-slate-800" 
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{customer.name}</p>
-                            <p className="text-[10px] text-slate-400 truncate">{customer.phone || customer.email || 'No Contact'}</p>
+                      {customers.slice(0, 3).map((customer, idx) => {
+                        const metrics = getCustomerMetrics(customer, orders);
+                        return (
+                          <div key={customer._id || idx} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                            <img 
+                              src={getCustomerAvatarUrl(customer)} 
+                              alt={customer.name} 
+                              className="w-10 h-10 rounded-full object-cover border border-slate-100 dark:border-slate-800" 
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{customer.name}</p>
+                              <p className="text-[10px] text-slate-400 truncate">{customer.phone || customer.email || 'No Contact'}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{metrics.count} bookings</p>
+                              <p className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">₹{metrics.totalSpent}</p>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{customer.ordersCount} bookings</p>
-                            <p className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">₹{customer.totalSpent}</p>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {customers.length === 0 && (
                         <p className="text-xs text-slate-400 text-center py-2">No customers logged yet</p>
                       )}
@@ -3926,7 +3981,7 @@ const VendorDashboard = () => {
                                     {(() => {
                                       const mainCat = getProductMainCategory(item.category, vendorType);
                                       const shouldShowStock = ['Products', 'Daily Needs', 'Food', 'Jobs', 'Education'].includes(mainCat);
-                                      const salesInfo = getItemSalesData(item._id);
+                                      const salesInfo = getItemSalesData(item._id, item);
                                       const salesCount = salesInfo.count;
                                       const customersCount = salesInfo.customersCount;
                                       const isItemOutOfStock = Number(item.stock) <= 0 || item.status === 'Unavailable' || item.status === 'Out of Stock';
@@ -3946,7 +4001,7 @@ const VendorDashboard = () => {
                                           )}
                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
                                             <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Customers'}</span>
-                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{customersCount}</span>
+                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{['Services', 'Stay', 'Travel'].includes(mainCat) ? salesCount : customersCount}</span>
                                           </div>
                                         </div>
                                       );
@@ -8677,19 +8732,32 @@ required
 
             {/* Live image preview area */}
             {(() => {
-              const displayUrls = itemForm.imageUrls && itemForm.imageUrls.length > 0
+              const formatPreviewImageUrl = (url) => {
+                if (!url || typeof url !== 'string') return '';
+                const clean = url.trim();
+                if (!clean || clean.toLowerCase().startsWith('preview')) return '';
+                if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('data:') || clean.startsWith('blob:')) {
+                  return clean;
+                }
+                const backend = getBackendUrl();
+                const path = clean.startsWith('/') ? clean : `/${clean}`;
+                return `${backend}${path}`;
+              };
+
+              const displayUrls = (itemForm.imageUrls && itemForm.imageUrls.length > 0
                 ? itemForm.imageUrls
-                : (itemForm.imageUrl ? [itemForm.imageUrl] : []);
+                : (itemForm.imageUrl ? [itemForm.imageUrl] : [])
+              ).filter(url => url && typeof url === 'string' && !url.toLowerCase().startsWith('preview'));
 
               return (
                 <div className="space-y-3">
                   {/* Primary image preview (uploaded or empty box) */}
                   <div className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 group">
-                    {displayUrls.length > 0 ? (
+                    {displayUrls.length > 0 && formatPreviewImageUrl(displayUrls[0]) ? (
                       <>
                         <img
-                          src={displayUrls[0].startsWith('http') ? displayUrls[0] : `${getBackendUrl()}${displayUrls[0]}`}
-                          alt="Item preview"
+                          src={formatPreviewImageUrl(displayUrls[0])}
+                          alt="Item photo"
                           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-102"
                         />
                         <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider shadow-sm bg-emerald-500/90 text-white">
@@ -8739,34 +8807,39 @@ required
                   {/* Additional uploaded images grid (if more than 1) */}
                   {displayUrls.length > 1 && (
                     <div className="grid grid-cols-4 gap-2">
-                      {displayUrls.map((url, idx) => (
-                        <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 group">
-                          <img
-                            src={url.startsWith('http') ? url : `${getBackendUrl()}${url}`}
-                            alt={`Preview ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setItemForm(prev => {
-                                const currentUrls = prev.imageUrls && prev.imageUrls.length > 0
-                                  ? prev.imageUrls
-                                  : (prev.imageUrl ? [prev.imageUrl] : []);
-                                const newUrls = currentUrls.filter((_, i) => i !== idx);
-                                return {
-                                  ...prev,
-                                  imageUrls: newUrls,
-                                  imageUrl: newUrls.length > 0 ? newUrls[0] : ''
-                                };
-                              });
-                            }}
-                            className="absolute top-0.5 right-0.5 bg-red-500 hover:bg-red-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-md cursor-pointer"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
+                      {displayUrls.map((url, idx) => {
+                        const formattedUrl = formatPreviewImageUrl(url);
+                        if (!formattedUrl) return null;
+                        return (
+                          <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 group">
+                            <img
+                              src={formattedUrl}
+                              alt="Photo thumbnail"
+                              className="w-full h-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setItemForm(prev => {
+                                  const currentUrls = (prev.imageUrls && prev.imageUrls.length > 0
+                                    ? prev.imageUrls
+                                    : (prev.imageUrl ? [prev.imageUrl] : [])
+                                  ).filter(u => u && typeof u === 'string' && !u.toLowerCase().startsWith('preview'));
+                                  const newUrls = currentUrls.filter((_, i) => i !== idx);
+                                  return {
+                                    ...prev,
+                                    imageUrls: newUrls,
+                                    imageUrl: newUrls.length > 0 ? newUrls[0] : ''
+                                  };
+                                });
+                              }}
+                              className="absolute top-0.5 right-0.5 bg-red-500 hover:bg-red-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-md cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
                       {/* Add another image */}
                       <div className="relative aspect-square rounded-xl border border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                         <input
@@ -10303,7 +10376,8 @@ required
         title={`${selectedSoldItem ? selectedSoldItem.name : ''} - Sales Insights`}
       >
         {selectedSoldItem && (() => {
-          const salesData = getItemSalesData(selectedSoldItem._id);
+          const salesData = getItemSalesData(selectedSoldItem._id, selectedSoldItem);
+          const isTravelItem = vendorType.startsWith('Travel') || (selectedSoldItem.category || '').toLowerCase().includes('travel') || selectedMainCat === 'Travel';
           return (
             <div className="space-y-6 animate-fadeIn">
               {/* Stats Summary Grid */}
@@ -10313,6 +10387,7 @@ required
                     {vendorType.startsWith('Hospital') ? 'Consultations' :
                      vendorType.startsWith('Education') ? 'Enrollments' :
                      vendorType.startsWith('Job') ? 'Applications' :
+                     isTravelItem ? 'Total Bookings' :
                      vendorType.startsWith('Service') ? 'Bookings' :
                      vendorType.startsWith('Hotel') ? 'Booked Nights' :
                      'Total Sold'}
