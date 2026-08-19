@@ -742,6 +742,7 @@ const getCustomers = async (req, res) => {
       const email = (obj.email || obj.memberId || '').trim();
       const key = getCustomerKey(name, email);
       const uniqueId = `cust_${key}`;
+      const addr = obj.address || obj.location || obj.city || obj.street || obj.fullAddress || '';
 
       customerMap[key] = {
         _id: uniqueId,
@@ -749,6 +750,7 @@ const getCustomers = async (req, res) => {
         name: name,
         email: email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
         phone: obj.phone || obj.mobileNumber || '',
+        address: addr,
         ordersCount: 0,
         totalSpent: 0,
         vendorId: obj.vendorId || obj.vendor_id
@@ -760,6 +762,7 @@ const getCustomers = async (req, res) => {
       const name = (o.memberName || o.customer_name || 'Customer').trim();
       const email = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim();
       const phone = o.customer_phone || o.phone || o.mobileNumber || o.contactNumber || o.candidatePhone || o.memberPhone || '';
+      const addr = o.customer_address || o.address || o.deliveryAddress || o.shippingAddress || o.location || o.candidateAddress || o.memberAddress || '';
       const key = getCustomerKey(name, email);
       const uniqueId = `cust_${key}`;
 
@@ -770,6 +773,7 @@ const getCustomers = async (req, res) => {
           name: name,
           email: (email && email.includes('@')) ? email : (name !== 'Customer' ? `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com` : ''),
           phone: phone,
+          address: addr,
           ordersCount: 0,
           totalSpent: 0,
           vendorId: o.vendorId || o.vendor_id
@@ -777,6 +781,9 @@ const getCustomers = async (req, res) => {
       } else {
         if (!customerMap[key].phone && phone) {
           customerMap[key].phone = phone;
+        }
+        if (!customerMap[key].address && addr) {
+          customerMap[key].address = addr;
         }
         if (email && email.includes('@') && (!customerMap[key].email || !customerMap[key].email.includes('@'))) {
           customerMap[key].email = email;

@@ -19,8 +19,20 @@ import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 
 const formatCustomerId = (c) => {
   if (!c) return 'FIC-CUST-100001';
-  if (typeof c === 'object' && c.customerDisplayId) return c.customerDisplayId;
-  const rawId = typeof c === 'object' ? (c._id || c.email || c.name || '') : String(c);
+  if (typeof c === 'object') {
+    if (c.customerDisplayId) return c.customerDisplayId;
+    const identifier = (c.memberName || c.customer_name || c.name || c.candidateEmail || c.email || c._id || '').trim();
+    if (identifier && identifier.startsWith('FIC-CUST-')) return identifier;
+    if (identifier) {
+      let hash = 0;
+      for (let i = 0; i < identifier.length; i++) {
+        hash = ((hash << 5) - hash) + identifier.charCodeAt(i);
+        hash |= 0;
+      }
+      return `FIC-CUST-${(Math.abs(hash) % 899999) + 100001}`;
+    }
+  }
+  const rawId = String(c).trim();
   if (!rawId || rawId === 'undefined' || rawId === 'null') return 'FIC-CUST-100001';
   if (rawId.startsWith('FIC-CUST-')) return rawId;
   
@@ -986,39 +998,71 @@ const VendorDashboard = () => {
 
   const getCustomerAddress = (order) => {
     if (!order) return 'Not Specified';
-    if (order.jobLocation && order.jobLocation !== 'N/A' && String(order.jobLocation).trim() !== '') return order.jobLocation;
-    
-    // Look up job location from catalogItem if order has items or product_details
+
+    // 1. Direct customer address / location fields on the order
+    const directFields = [
+      order.customer_address,
+      order.address,
+      order.deliveryAddress,
+      order.shippingAddress,
+      order.customerAddress,
+      order.location,
+      order.candidateAddress,
+      order.memberAddress,
+      order.customer_details?.address
+    ];
+
+    for (const addr of directFields) {
+      if (addr && typeof addr === 'string' && addr.trim() !== '' && addr !== 'N/A' && !/^\d{6}$/.test(addr.trim())) {
+        return addr.trim();
+      }
+    }
+
+    if (order.tableNumber) return `Table #${order.tableNumber}`;
+    if (order.roomNumber) return `Room #${order.roomNumber}`;
+
+    // 2. Look up customer profile in customers state array by clean name or email
+    const oNameClean = (order.memberName || order.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const oEmailClean = (order.candidateEmail || order.customer_email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
+
+    if (customers && Array.isArray(customers) && customers.length > 0) {
+      const cust = customers.find(c => {
+        if (!c) return false;
+        const cNameClean = (c.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cEmailClean = (c.email || '').trim().toLowerCase();
+        if (oNameClean && cNameClean && oNameClean === cNameClean && oNameClean !== 'customer') return true;
+        if (oEmailClean && cEmailClean && oEmailClean === cEmailClean && oEmailClean.includes('@')) return true;
+        return false;
+      });
+
+      if (cust) {
+        if (cust.address && cust.address !== 'N/A' && cust.address.trim() !== '' && !/^\d{6}$/.test(cust.address.trim())) {
+          return cust.address.trim();
+        }
+        const parts = [cust.street, cust.city, cust.state, cust.postalCode].filter(p => p && p !== 'N/A' && !/^\d{6}$/.test(p));
+        if (parts.length > 0) return parts.join(', ');
+        if (cust.city && cust.city !== 'N/A') return cust.city;
+      }
+    }
+
+    // 3. Check order city or job location if available
+    if (order.city && order.city !== 'N/A' && !/^\d{6}$/.test(order.city.trim())) return order.city;
+    if (order.jobLocation && order.jobLocation !== 'N/A' && !/^\d{6}$/.test(order.jobLocation.trim())) return order.jobLocation;
+
+    // 4. Fallback to product location/address (only full address or city, not plain pincode)
     if (catalogItems && Array.isArray(catalogItems) && catalogItems.length > 0) {
       const matchProd = catalogItems.find(p => 
         (order.items && order.items.length > 0 && String(p._id || p.id) === String(order.items[0]?.productId)) || 
         p.name === (order.items && order.items[0]?.name) || 
         p.name === order.product_details
       );
-      if (matchProd && (matchProd.jobLocation || matchProd.location || matchProd.city || matchProd.pinCode)) {
-        return matchProd.jobLocation || matchProd.location || [matchProd.city, matchProd.pinCode].filter(Boolean).join(', ') || matchProd.address;
+      if (matchProd) {
+        if (matchProd.jobLocation && matchProd.jobLocation !== 'N/A' && !/^\d{6}$/.test(matchProd.jobLocation.trim())) return matchProd.jobLocation;
+        if (matchProd.location && matchProd.location !== 'N/A' && !/^\d{6}$/.test(matchProd.location.trim())) return matchProd.location;
+        if (matchProd.address && matchProd.address !== 'N/A' && !/^\d{6}$/.test(matchProd.address.trim())) return matchProd.address;
+        if (matchProd.city && matchProd.city !== 'N/A' && !/^\d{6}$/.test(matchProd.city.trim())) return matchProd.city;
       }
     }
-
-    if (order.customer_address && order.customer_address !== 'N/A') return order.customer_address;
-    if (order.address && order.address !== 'N/A') return order.address;
-    if (order.deliveryAddress) return order.deliveryAddress;
-    if (order.shippingAddress) return order.shippingAddress;
-    if (order.location) return order.location;
-    if (order.customer_details?.address) return order.customer_details.address;
-    if (order.tableNumber) return `Table #${order.tableNumber}`;
-    if (order.roomNumber) return `Room #${order.roomNumber}`;
-    if (order.memberAddress) return order.memberAddress;
-    
-    const custIdStr = String(order.memberId || order.customerId || order.id || order._id || '');
-    const cust = customers.find(c => 
-      String(c._id || c.id) === custIdStr || 
-      c.name === (order.memberName || order.customer_name) ||
-      (c.email && order.candidateEmail && c.email.toLowerCase() === order.candidateEmail.toLowerCase()) ||
-      (c.email && order.customer_email && c.email.toLowerCase() === order.customer_email.toLowerCase())
-    );
-    if (cust && cust.address && cust.address !== 'N/A') return cust.address;
-    if (cust && (cust.street || cust.city || cust.state || cust.postalCode)) return [cust.street, cust.city, cust.state, cust.postalCode].filter(Boolean).join(', ');
 
     return 'Not Specified';
   };
@@ -4329,7 +4373,7 @@ const VendorDashboard = () => {
                                       {/* Customer Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                         <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {order.customerDisplayId || formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
+                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {formatCustomerId(order)}</div>
                                       </td>
                                       {/* Service Type */}
                                       <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
@@ -4367,7 +4411,7 @@ const VendorDashboard = () => {
                                       {/* Customer Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                         <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {order.customerDisplayId || formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
+                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {order.customerDisplayId || formatCustomerId(order)}</div>
                                       </td>
                                       {/* Address */}
                                       <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
