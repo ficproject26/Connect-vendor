@@ -3219,11 +3219,11 @@ const VendorDashboard = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 p-4 md:p-8 bg-transparent overflow-y-auto overflow-x-hidden min-w-0 relative">
+      <div className="flex-1 p-3 md:p-8 bg-transparent overflow-y-auto overflow-x-hidden min-w-0 relative">
         
         {/* Top Right Header Actions (Theme & Notifications) */}
         {activeTab === 'dashboard' && (
-          <div className="absolute top-6 right-6 md:top-8 md:right-8 flex items-center gap-3 z-40">
+          <div className="flex items-center gap-2 md:gap-3 justify-end mb-2 md:mb-0 md:absolute md:top-8 md:right-8 z-40">
             {/* Notifications Dropdown */}
             <div className="relative" ref={notificationDropdownRef}>
               <button
@@ -3528,38 +3528,38 @@ const VendorDashboard = () => {
             <div className="space-y-8 animate-fadeIn text-slate-800 dark:text-slate-100">
               {/* Header */}
               <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Business Overview</h2>
-                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Real-time business insights, analytics, products, and customer activity</p>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Business Overview</h2>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mt-0.5">Real-time business insights, analytics, products, and customer activity</p>
                 </div>
               </div>
 
               {/* Stats Cards Grid (8 Cards) */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
                 {/* 1. Total Revenue Card */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-3xl p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-4">
-                  <div className="p-3.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-355 rounded-2xl shadow-inner"><IndianRupee size={24} /></div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Total Revenue</p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-indigo-600 dark:text-indigo-400">₹{(analytics.totalRevenue || 0).toLocaleString('en-IN')}</p>
+                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
+                  <div className="p-2.5 md:p-3.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-355 rounded-xl md:rounded-2xl shadow-inner shrink-0"><IndianRupee size={20} className="md:w-6 md:h-6" /></div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Total Revenue</p>
+                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-indigo-600 dark:text-indigo-400">₹{(analytics.totalRevenue || 0).toLocaleString('en-IN')}</p>
                   </div>
                 </div>
 
                 {/* 2. Total Orders Card */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-3xl p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-4">
-                  <div className="p-3.5 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-355 rounded-2xl shadow-inner"><ClipboardList size={24} /></div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Total {terms.ordersName}</p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-orange-600 dark:text-orange-400">{analytics.ordersCount || 0}</p>
+                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
+                  <div className="p-2.5 md:p-3.5 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-355 rounded-xl md:rounded-2xl shadow-inner shrink-0"><ClipboardList size={20} className="md:w-6 md:h-6" /></div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Total {terms.ordersName}</p>
+                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-orange-600 dark:text-orange-400">{analytics.ordersCount || 0}</p>
                   </div>
                 </div>
 
                 {/* 3. Total Diners Card */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-3xl p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-4">
-                  <div className="p-3.5 bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400 rounded-2xl shadow-inner"><Users size={24} /></div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Total {terms.customersName}</p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-teal-600 dark:text-teal-455">
+                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
+                  <div className="p-2.5 md:p-3.5 bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400 rounded-xl md:rounded-2xl shadow-inner shrink-0"><Users size={20} className="md:w-6 md:h-6" /></div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Total {terms.customersName}</p>
+                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-teal-600 dark:text-teal-455">
                       {Math.max(
                         customers.length,
                         new Set(orders.map(o => o.memberId || o.customerId || o.customer_email || o.candidateEmail || o.memberName || o.customer_name).filter(Boolean)).size,
@@ -3570,11 +3570,11 @@ const VendorDashboard = () => {
                 </div>
 
                 {/* 4. Active Memberships Card */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-3xl p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-4">
-                  <div className="p-3.5 bg-pink-100 dark:bg-pink-900/40 text-pink-600 dark:text-pink-300 rounded-2xl shadow-inner"><CreditCard size={24} /></div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider font-semibold">Active Memberships</p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-pink-600 dark:text-pink-400">
+                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
+                  <div className="p-2.5 md:p-3.5 bg-pink-100 dark:bg-pink-900/40 text-pink-600 dark:text-pink-300 rounded-xl md:rounded-2xl shadow-inner shrink-0"><CreditCard size={20} className="md:w-6 md:h-6" /></div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Active Memberships</p>
+                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-pink-600 dark:text-pink-400">
                       {Math.max(
                         customers.filter(c => c.status === 'Active' || c.membershipStatus === 'Active' || c.cardTier || c.isMember).length,
                         orders.filter(o => o.memberId || o.cardType).length > 0
@@ -3587,56 +3587,56 @@ const VendorDashboard = () => {
                 </div>
 
                 {/* 5. Today's Revenue Card */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-3xl p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-4">
-                  <div className="p-3.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-2xl shadow-inner"><TrendingUp size={24} /></div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Today's Revenue</p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-emerald-600 dark:text-emerald-400">₹{(analytics.todayRevenue || 0).toLocaleString('en-IN')}</p>
+                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
+                  <div className="p-2.5 md:p-3.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl md:rounded-2xl shadow-inner shrink-0"><TrendingUp size={20} className="md:w-6 md:h-6" /></div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Today's Revenue</p>
+                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-emerald-600 dark:text-emerald-400">₹{(analytics.todayRevenue || 0).toLocaleString('en-IN')}</p>
                   </div>
                 </div>
 
                 {/* 6. Available Dishes Card */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-3xl p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-4">
-                  <div className="p-3.5 bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 rounded-2xl shadow-inner"><ShoppingBag size={24} /></div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">
+                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
+                  <div className="p-2.5 md:p-3.5 bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 rounded-xl md:rounded-2xl shadow-inner shrink-0"><ShoppingBag size={20} className="md:w-6 md:h-6" /></div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">
                       {vendorType.startsWith('Hospital') ? 'Doctors Available' :
                        vendorType.startsWith('Hotel') ? 'Rooms Available' :
                        vendorType.startsWith('Restaurant') ? 'Dishes Available' :
                        vendorType.startsWith('Service Provider') ? 'Services Available' :
                        `Available ${terms.catalogName}`}
                     </p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-sky-600 dark:text-sky-455">
+                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-sky-600 dark:text-sky-455">
                       {analytics.availableItemsCount !== undefined ? `${analytics.availableItemsCount} / ${analytics.itemsCount}` : analytics.itemsCount}
                     </p>
                   </div>
                 </div>
 
                 {/* 7. Pending Orders Card */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-3xl p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-4">
-                  <div className="p-3.5 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400 rounded-2xl shadow-inner"><Clock size={24} /></div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Pending {terms.ordersName}</p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-yellow-600 dark:text-yellow-400">{analytics.pendingOrdersCount || 0}</p>
+                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
+                  <div className="p-2.5 md:p-3.5 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400 rounded-xl md:rounded-2xl shadow-inner shrink-0"><Clock size={20} className="md:w-6 md:h-6" /></div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Pending {terms.ordersName}</p>
+                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-yellow-600 dark:text-yellow-400">{analytics.pendingOrdersCount || 0}</p>
                   </div>
                 </div>
 
                 {/* 8. Completed Orders Card */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-3xl p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-4">
-                  <div className="p-3.5 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded-2xl shadow-inner"><CheckCircle2 size={24} /></div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Completed {terms.ordersName}</p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-green-600 dark:text-green-455">{completedOrders.length}</p>
+                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
+                  <div className="p-2.5 md:p-3.5 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded-xl md:rounded-2xl shadow-inner shrink-0"><CheckCircle2 size={20} className="md:w-6 md:h-6" /></div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Completed {terms.ordersName}</p>
+                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-green-600 dark:text-green-455">{completedOrders.length}</p>
                   </div>
                 </div>
               </div>
 
               {/* Analytics Charts Grid */}
-              <div className="space-y-6">
+              <div className="space-y-4 md:space-y-6">
                 {/* Charts Row 1: Revenue & Orders trends */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                   {/* Revenue Trend Line Chart */}
-                  <div className="bg-white dark:bg-slate-900/80 p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
+                  <div className="bg-white dark:bg-slate-900/80 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 tracking-tight">Revenue Trend</h3>
                     {analytics.recentRevenue?.length === 0 ? (
                       <p className="text-slate-400 dark:text-slate-500 text-center py-12 font-medium">No completed transactions to graph</p>
