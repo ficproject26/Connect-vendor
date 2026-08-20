@@ -4639,9 +4639,13 @@ const VendorDashboard = () => {
                               ) : (terms.ordersName !== 'Orders' || hasBookingBusiness) ? (
                                 <>
                                   <th className="px-6 py-4">Customer Name</th>
-                                  <th className="px-6 py-4">Service Type</th>
+                                  <th className="px-6 py-4">
+                                    {(['Products', 'Daily Needs', 'Food'].includes(selectedMainCat) || ['Products', 'Daily Needs', 'Food', 'Store', 'Restaurant', 'Grocery', 'Pharmacy'].some(t => vendorType.startsWith(t)) || ['Products', 'Daily Needs', 'Food', 'Dishes', 'Items'].includes(terms.catalogName)) ? 'Order Type' : 'Service Type'}
+                                  </th>
                                   <th className="px-6 py-4">Address</th>
-                                  <th className="px-6 py-4">Booking Schedule</th>
+                                  <th className="px-6 py-4">
+                                    {(['Products', 'Daily Needs', 'Food'].includes(selectedMainCat) || ['Products', 'Daily Needs', 'Food', 'Store', 'Restaurant', 'Grocery', 'Pharmacy'].some(t => vendorType.startsWith(t)) || ['Products', 'Daily Needs', 'Food', 'Dishes', 'Items'].includes(terms.catalogName)) ? 'Order Timing' : 'Booking Schedule'}
+                                  </th>
                                   <th className="px-6 py-4">Payment & Status</th>
                                   <th className="px-6 py-4 text-right">Actions / View</th>
                                 </>
@@ -10978,7 +10982,9 @@ required
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{getCustomerAddress(selectedBillOrder)}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Booking Schedule</span>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">
+                        {(['Products', 'Daily Needs', 'Food'].includes(selectedMainCat) || ['Products', 'Daily Needs', 'Food', 'Store', 'Restaurant', 'Grocery', 'Pharmacy'].some(t => vendorType.startsWith(t)) || ['Products', 'Daily Needs', 'Food', 'Dishes', 'Items'].includes(terms.catalogName)) ? 'Order Timing' : 'Booking Schedule'}
+                      </span>
                       <span className="font-bold text-slate-800 dark:text-slate-200">
                         {selectedBillOrder.appointmentDate || 'N/A'} ({selectedBillOrder.appointmentTimeSlot || 'Standard Slot'})
                       </span>

@@ -789,6 +789,8 @@ const getCustomers = async (req, res) => {
           customerMap[key].email = email;
         }
       }
+    });
+
     // 2.5 Fill missing customer address/phone from User profiles
     const allUsers = await User.find({}).lean();
     Object.keys(customerMap).forEach(key => {
