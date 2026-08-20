@@ -3,6 +3,7 @@
   "outputDirectory": "dist",
   "routes": [
     { "src": "/api/(.*)", "dest": "http://43.204.141.105:8002/api/$1" },
+    { "src": "/uploads/(.*)", "dest": "http://43.204.141.105:8002/uploads/$1" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]

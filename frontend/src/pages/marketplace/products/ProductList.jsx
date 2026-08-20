@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDashboard } from '../../context/DashboardContext';
-import { getBackendUrl } from '../../../../services/apiSetup';
+import { getBackendUrl, formatImageUrl } from '../../../../services/apiSetup';
 import { 
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
@@ -446,7 +446,7 @@ const ProductList = () => {
                                       )}
                                       {item.imageUrl ? (
                                         <img
-                                          src={item.imageUrl.startsWith('http') ? item.imageUrl : `${getBackendUrl()}${item.imageUrl}`}
+                                          src={formatImageUrl(item.imageUrl)}
                                           alt={item.name}
                                           className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
                                             isOutOfStock ? 'grayscale opacity-50' : ''

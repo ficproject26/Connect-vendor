@@ -195,3 +195,26 @@ export const getVendorBackendUrl = () => {
   return getBackendUrl();
 };
 
+export const formatImageUrl = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  const clean = url.trim();
+  if (!clean || clean.toLowerCase().startsWith('preview')) return '';
+  if (
+    clean.startsWith('http://') || 
+    clean.startsWith('https://') || 
+    clean.startsWith('data:') || 
+    clean.startsWith('blob:')
+  ) {
+    return clean;
+  }
+  const cleanPath = clean.startsWith('/') ? clean : `/${clean}`;
+  let backend = getBackendUrl();
+  if (!backend) {
+    backend = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || 'http://43.204.141.105:8002';
+    if (backend.endsWith('/api')) {
+      backend = backend.substring(0, backend.length - 4);
+    }
+  }
+  return `${backend}${cleanPath}`;
+};
+
