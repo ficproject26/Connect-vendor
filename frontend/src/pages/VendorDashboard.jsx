@@ -8,7 +8,7 @@ import {
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
   Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink, Activity, Search,
-  LayoutGrid, List, Camera, Image as ImageIcon
+  LayoutGrid, List, Camera, Image as ImageIcon, Menu, X
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
@@ -948,6 +948,7 @@ const VendorDashboard = () => {
   const [isUserInfoOpen, setIsUserInfoOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [language, setLanguage] = useState("English");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const notificationDropdownRef = useRef(null);
   const prevOrdersRef = useRef([]);
@@ -996,15 +997,69 @@ const VendorDashboard = () => {
   const [selectedCustomerForDetails, setSelectedCustomerForDetails] = useState(null);
   const [isCustomerDetailsModalOpen, setIsCustomerDetailsModalOpen] = useState(false);
 
+  const getCustomerDisplayId = (order) => {
+    if (!order) return 'FIC-CUST-100001';
+    if (order.customerDisplayId) return order.customerDisplayId;
+
+    const oNameClean = (order.memberName || order.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const oEmailClean = (order.candidateEmail || order.customer_email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
+    const oPhoneClean = (order.customer_phone || order.phone || '').toString().trim().replace(/[^0-9]/g, '');
+
+    if (customers && Array.isArray(customers) && customers.length > 0) {
+      const cust = customers.find(c => {
+        if (!c) return false;
+        const cPhone = (c.phone || c.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
+        const cNameClean = (c.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cEmailClean = (c.email || '').trim().toLowerCase();
+        if (oPhoneClean && cPhone && oPhoneClean === cPhone) return true;
+        if (oNameClean && cNameClean && oNameClean === cNameClean && oNameClean !== 'customer') return true;
+        if (oEmailClean && cEmailClean && oEmailClean === cEmailClean && oEmailClean.includes('@')) return true;
+        return false;
+      });
+
+      if (cust) {
+        return formatCustomerId(cust);
+      }
+    }
+
+    return formatCustomerId(order);
+  };
+
   const getCustomerAddress = (order) => {
     if (!order) return 'Not Specified';
 
-    // 1. Direct customer address / location fields on the order
+    const oNameClean = (order.memberName || order.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const oEmailClean = (order.candidateEmail || order.customer_email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
+    const oPhoneClean = (order.customer_phone || order.phone || '').toString().trim().replace(/[^0-9]/g, '');
+
+    // 1. Look up real customer address from customer profile array FIRST
+    if (customers && Array.isArray(customers) && customers.length > 0) {
+      const cust = customers.find(c => {
+        if (!c) return false;
+        const cPhone = (c.phone || c.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
+        const cNameClean = (c.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cEmailClean = (c.email || '').trim().toLowerCase();
+        if (oPhoneClean && cPhone && oPhoneClean === cPhone) return true;
+        if (oNameClean && cNameClean && oNameClean === cNameClean && oNameClean !== 'customer') return true;
+        if (oEmailClean && cEmailClean && oEmailClean === cEmailClean && oEmailClean.includes('@')) return true;
+        return false;
+      });
+
+      if (cust) {
+        const addrParts = [cust.address, cust.street, cust.city, cust.district, cust.state, cust.pincode || cust.postalCode]
+          .filter(p => p && typeof p === 'string' && p.trim() !== '' && p !== 'N/A' && !/^\d{6}$/.test(p.trim()));
+        if (addrParts.length > 0) {
+          return addrParts.join(', ');
+        }
+      }
+    }
+
+    // 2. Direct customer delivery address on order
     const directFields = [
-      order.customer_address,
-      order.address,
       order.deliveryAddress,
       order.shippingAddress,
+      order.customer_address,
+      order.address,
       order.customerAddress,
       order.location,
       order.candidateAddress,
@@ -1021,48 +1076,8 @@ const VendorDashboard = () => {
     if (order.tableNumber) return `Table #${order.tableNumber}`;
     if (order.roomNumber) return `Room #${order.roomNumber}`;
 
-    // 2. Look up customer profile in customers state array by clean name or email
-    const oNameClean = (order.memberName || order.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const oEmailClean = (order.candidateEmail || order.customer_email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
-
-    if (customers && Array.isArray(customers) && customers.length > 0) {
-      const cust = customers.find(c => {
-        if (!c) return false;
-        const cNameClean = (c.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-        const cEmailClean = (c.email || '').trim().toLowerCase();
-        if (oNameClean && cNameClean && oNameClean === cNameClean && oNameClean !== 'customer') return true;
-        if (oEmailClean && cEmailClean && oEmailClean === cEmailClean && oEmailClean.includes('@')) return true;
-        return false;
-      });
-
-      if (cust) {
-        if (cust.address && cust.address !== 'N/A' && cust.address.trim() !== '' && !/^\d{6}$/.test(cust.address.trim())) {
-          return cust.address.trim();
-        }
-        const parts = [cust.street, cust.city, cust.state, cust.postalCode].filter(p => p && p !== 'N/A' && !/^\d{6}$/.test(p));
-        if (parts.length > 0) return parts.join(', ');
-        if (cust.city && cust.city !== 'N/A') return cust.city;
-      }
-    }
-
-    // 3. Check order city or job location if available
     if (order.city && order.city !== 'N/A' && !/^\d{6}$/.test(order.city.trim())) return order.city;
     if (order.jobLocation && order.jobLocation !== 'N/A' && !/^\d{6}$/.test(order.jobLocation.trim())) return order.jobLocation;
-
-    // 4. Fallback to product location/address (only full address or city, not plain pincode)
-    if (catalogItems && Array.isArray(catalogItems) && catalogItems.length > 0) {
-      const matchProd = catalogItems.find(p => 
-        (order.items && order.items.length > 0 && String(p._id || p.id) === String(order.items[0]?.productId)) || 
-        p.name === (order.items && order.items[0]?.name) || 
-        p.name === order.product_details
-      );
-      if (matchProd) {
-        if (matchProd.jobLocation && matchProd.jobLocation !== 'N/A' && !/^\d{6}$/.test(matchProd.jobLocation.trim())) return matchProd.jobLocation;
-        if (matchProd.location && matchProd.location !== 'N/A' && !/^\d{6}$/.test(matchProd.location.trim())) return matchProd.location;
-        if (matchProd.address && matchProd.address !== 'N/A' && !/^\d{6}$/.test(matchProd.address.trim())) return matchProd.address;
-        if (matchProd.city && matchProd.city !== 'N/A' && !/^\d{6}$/.test(matchProd.city.trim())) return matchProd.city;
-      }
-    }
 
     return 'Not Specified';
   };
@@ -2662,9 +2677,255 @@ const VendorDashboard = () => {
 
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-300">
-      {/* Side Menu */}
-      <div className={`w-full ${sidebarCollapsed ? 'md:w-20 p-3 items-center justify-between' : 'md:w-64 p-5'} bg-[#00122e] text-white shrink-0 transition-all duration-300 shadow-xl border-r border-[#0B3C7B]/20 flex flex-col md:h-screen md:sticky md:top-0`}>
+    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-300 overflow-x-hidden">
+      
+      {/* ── MOBILE HEADER BAR (Visible only on mobile < md) ── */}
+      <div className="flex md:hidden items-center justify-between px-4 py-3 bg-[#00122e] text-white sticky top-0 z-40 shadow-md border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl shadow-md overflow-hidden flex items-center justify-center shrink-0 w-8 h-8 border border-white/10 bg-white/5">
+            <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
+          </div>
+          <span className="text-base font-bold tracking-tight">
+            <span className="text-white">Connect</span>{' '}
+            <span className="text-[#faed26]">App</span>
+          </span>
+        </div>
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+          title="Open Menu"
+        >
+          <Menu size={20} />
+        </button>
+      </div>
+
+      {/* ── MOBILE DRAWER OVERLAY (Visible only when mobile menu is open) ── */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity" 
+            onClick={() => setIsMobileMenuOpen(false)} 
+          />
+
+          {/* Drawer Content */}
+          <div className="relative w-[85vw] max-w-[300px] bg-[#00122e] text-white h-full p-5 flex flex-col justify-between shadow-2xl z-50 overflow-y-auto">
+            {/* Drawer Header */}
+            <div className="pb-4 border-b border-white/10 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl shadow-md overflow-hidden flex items-center justify-center shrink-0 w-8 h-8 border border-white/10 bg-white/5">
+                  <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
+                </div>
+                <span className="text-base font-bold tracking-tight">
+                  <span className="text-white">Connect</span>{' '}
+                  <span className="text-[#faed26]">App</span>
+                </span>
+              </div>
+              <button
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-1.5 rounded-lg bg-white/10 text-white/70 hover:text-white"
+                title="Close Menu"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Drawer Navigation */}
+            <div className="flex-1 py-4 space-y-4 overflow-y-auto">
+              {(() => {
+                const getFirstItem = () => {
+                  if (user?.role === 'Member') return { id: 'dashboard', name: 'Home', icon: Home };
+                  return { id: 'dashboard', name: 'Overview', icon: LayoutDashboard };
+                };
+
+                const getPartnerLabel = () => {
+                  const rawType = user?.vendorType || '';
+                  const isService = rawType.startsWith('Services') || ['Hospital Vendor', 'Service Provider Vendor'].includes(vendorType);
+                  const isStay = rawType.startsWith('Stay') || ['Hotel Vendor'].includes(vendorType);
+                  const isTravel = rawType.startsWith('Travel') || ['Travel Agency Vendor'].includes(vendorType);
+                  const isProduct = rawType.startsWith('Products') || ['Store Vendor', 'Electronics Vendor', 'Home & Furniture Vendor'].includes(vendorType);
+                  const isDailyNeed = rawType.startsWith('Daily Needs') || ['Grocery Vendor', 'Pharmacy Vendor'].includes(vendorType);
+                  const isFood = rawType.startsWith('Food') || ['Restaurant Vendor'].includes(vendorType);
+
+                  if (isService) return 'Add Technician';
+                  if (isStay || isTravel) return 'Add Executive';
+                  if (isProduct || isDailyNeed || isFood) return 'Delivery Partners';
+                  return 'Delivery Partners';
+                };
+
+                const getSidebarItems = () => {
+                  if (user?.role === 'Admin') {
+                    return [
+                      { id: 'requests', name: 'Vendor Requests', icon: ShieldAlert },
+                      { id: 'vendors', name: 'Manage Vendors', icon: Store },
+                      { id: 'members', name: 'Registered Members', icon: Users },
+                      { id: 'payments', name: 'Payments', icon: IndianRupee },
+                      { id: 'settings', name: 'Plans & Settings', icon: Settings }
+                    ];
+                  }
+                  if (user?.role === 'Member') {
+                    return [
+                      { id: 'Services', name: 'Services', icon: HeartHandshake },
+                      { id: 'Products', name: 'Products', icon: ShoppingBag },
+                      { id: 'Daily Needs', name: 'Daily Needs', icon: Store },
+                      { id: 'Food', name: 'Food', icon: Utensils },
+                      { id: 'Stay', name: 'Stay', icon: Hotel },
+                      { id: 'Travel', name: 'Travel', icon: Truck },
+                      { id: 'Jobs', name: 'Jobs', icon: Briefcase }
+                    ];
+                  }
+                  const items = [
+                    { id: 'orders', name: terms.ordersName, icon: ClipboardList },
+                    { id: 'customers', name: terms.customersName, icon: Users }
+                  ];
+                  const partnerLabel = getPartnerLabel();
+                  if (!['Education Vendor', 'Job Vendor'].includes(vendorType)) {
+                    items.push({ id: 'delivery', name: partnerLabel, icon: Truck });
+                  }
+                  items.push({ id: 'payments', name: 'Payments', icon: IndianRupee });
+                  items.push({ id: 'business', name: 'Business', icon: Store });
+                  items.push({ id: 'queries', name: 'Queries', icon: HelpCircle });
+                  items.push({ id: 'profile', name: 'Business Settings', icon: User });
+                  return items;
+                };
+
+                const getBusinessSidebarItems = () => {
+                  if (user?.role !== 'Vendor' || !user?.businesses) return [];
+                  return user.businesses
+                    .filter(biz => !((biz.vendorType || biz.category || biz.name || '').toLowerCase().includes('membership')))
+                    .map(biz => {
+                      const type = biz.vendorType || '';
+                      let Icon = Store;
+                      if (type.startsWith('Products')) Icon = ShoppingBag;
+                      else if (type.startsWith('Daily Needs')) Icon = Store;
+                      else if (type.startsWith('Food')) Icon = Utensils;
+                      else if (type.startsWith('Stay')) Icon = Hotel;
+                      else if (type.startsWith('Travel')) Icon = Truck;
+                      else if (type.startsWith('Jobs')) Icon = Briefcase;
+                      else if (type.startsWith('Services')) Icon = HeartHandshake;
+
+                      return {
+                        id: biz._id,
+                        name: type,
+                        icon: Icon,
+                        isActive: biz._id === activeBusinessId,
+                        isSuspended: ['suspended', 'inactive', 'rejected'].includes((biz.status || '').toLowerCase().trim()) || biz.isActive === false
+                      };
+                    });
+                };
+
+                const firstItem = getFirstItem();
+                const FirstIcon = firstItem.icon;
+                const bizItems = getBusinessSidebarItems();
+                const menuItems = getSidebarItems();
+
+                return (
+                  <div className="space-y-4 w-full">
+                    {/* 1. Overview / Home */}
+                    <button
+                      onClick={() => { setActiveTab(firstItem.id); setIsMobileMenuOpen(false); }}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all border border-transparent ${
+                        activeTab === firstItem.id 
+                          ? 'bg-white/15 text-[#faed26] font-bold border border-white/10 shadow-md' 
+                          : 'text-white/70 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      <FirstIcon size={18} className="shrink-0" />
+                      <span>{firstItem.name}</span>
+                    </button>
+
+                    {/* 2. My Categories */}
+                    {bizItems.length > 0 && (
+                      <div className="space-y-1.5 w-full">
+                        <p className="text-[10px] font-bold text-white/45 uppercase tracking-wider px-4 mb-1">My Categories</p>
+                        <ul className="space-y-1 w-full">
+                          {bizItems.map(biz => {
+                            const Icon = biz.icon;
+                            return (
+                              <li key={biz.id}>
+                                <button
+                                  onClick={() => {
+                                    if (!biz.isActive) {
+                                      dispatch(switchBusinessSuccess(biz.id));
+                                      setMessage(`Switched business profile to ${biz.name}!`);
+                                    }
+                                    setActiveTab('catalog');
+                                    setIsMobileMenuOpen(false);
+                                  }}
+                                  className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-semibold transition-all border border-transparent ${
+                                    biz.isActive
+                                      ? 'bg-[#faed26] text-[#0B3C7B] shadow-lg font-bold' 
+                                      : 'text-white/70 hover:bg-white/10 hover:text-white'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <Icon size={18} className="shrink-0" />
+                                    <span className="truncate">{biz.name}</span>
+                                  </div>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* 3. Dashboard Menu */}
+                    <div className="space-y-1.5 w-full">
+                      <p className="text-[10px] font-bold text-white/45 uppercase tracking-wider px-4 mb-1">Dashboard Menu</p>
+                      <ul className="space-y-1.5 w-full">
+                        {menuItems.map(item => {
+                          const Icon = item.icon;
+                          return (
+                            <li key={item.id}>
+                              <button
+                                onClick={() => { setActiveTab(item.id); setIsMobileMenuOpen(false); }}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all border border-transparent ${
+                                  activeTab === item.id 
+                                    ? 'bg-white/15 text-[#faed26] font-bold border border-white/10 shadow-md' 
+                                    : 'text-white/70 hover:bg-white/10 hover:text-white'
+                                }`}
+                              >
+                                <Icon size={18} className="shrink-0" />
+                                <span>{item.name}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Drawer Footer / User Profile */}
+            <div className="pt-3 border-t border-white/10 shrink-0">
+              <div className="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 border border-white/5">
+                <div onClick={() => { setIsUserInfoOpen(true); setIsMobileMenuOpen(false); }} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-extrabold text-sm shadow-md shrink-0">
+                    {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold text-white truncate">{user?.name}</p>
+                    <p className="text-[11px] text-white/50 truncate font-semibold">{user?.role === 'Vendor' ? user.businessName : user?.role}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => dispatch(logout())}
+                  className="w-8 h-8 shrink-0 flex items-center justify-center rounded-xl text-white/40 hover:text-white hover:bg-white/10"
+                  title="Sign Out"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DESKTOP SIDEBAR (Hidden on mobile < md, visible on md+) ── */}
+      <div className={`hidden md:flex flex-col ${sidebarCollapsed ? 'md:w-20 p-3 items-center justify-between' : 'md:w-64 p-5'} bg-[#00122e] text-white shrink-0 transition-all duration-300 shadow-xl border-r border-[#0B3C7B]/20 h-screen sticky top-0`}>
         
         {/* ── FIXED TOP: Logo Section ── */}
         <div className="shrink-0 pb-4 border-b border-white/10 w-full">
@@ -2958,9 +3219,7 @@ const VendorDashboard = () => {
       </div>
 
       {/* Main Content Area */}
-
-      {/* Main Content Area */}
-      <div className="flex-1 p-6 md:p-8 bg-transparent overflow-y-auto relative">
+      <div className="flex-1 p-4 md:p-8 bg-transparent overflow-y-auto overflow-x-hidden min-w-0 relative">
         
         {/* Top Right Header Actions (Theme & Notifications) */}
         {activeTab === 'dashboard' && (
@@ -3657,15 +3916,15 @@ const VendorDashboard = () => {
                   </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div>
-                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Manage {terms.catalogName}</h2>
-                    <p className="text-slate-800 dark:text-slate-200 text-sm mt-1">Add or edit catalog items details</p>
+                <div className="flex flex-row justify-between items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight truncate">Manage {terms.catalogName}</h2>
+                    <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mt-0.5 truncate">Add or edit catalog items details</p>
                   </div>
                   {!isCurBizSuspended && (
                     <button
                       onClick={handleOpenAddItem}
-                      className="bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-sm px-5 py-3 rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-yellow-500/10 active:scale-[0.98]"
+                      className="bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-xs sm:text-sm px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-yellow-500/10 active:scale-[0.98] shrink-0"
                     >
                       <Plus size={16} /> Add {terms.catalogItem}
                     </button>
