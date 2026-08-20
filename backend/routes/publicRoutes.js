@@ -285,8 +285,10 @@ router.get('/products', async (req, res) => {
         mobileNumber: '',
         operatingHours: ''
       };
-      const subNavbarCategory = p.subNavbarCategory || p.mainCategory || getSubNavbarCategory(vendor.baseVendorType, p.category);
-      const rawImg = p.imageUrl || p.image || p.img || (p.imageUrls && p.imageUrls.length > 0 ? p.imageUrls[0] : '');
+      let rawImg = p.imageUrl || p.image || p.img || (p.imageUrls && p.imageUrls.length > 0 ? p.imageUrls[0] : '');
+      if (rawImg && rawImg.includes('trycloudflare.com')) {
+        rawImg = rawImg.replace(/^https?:\/\/[^/]+/, baseUrl);
+      }
       const finalImg = rawImg 
         ? (rawImg.startsWith('/uploads') ? `${baseUrl}${rawImg}` : rawImg)
         : (subNavbarCategory === 'Services' 
@@ -338,7 +340,10 @@ router.get('/products', async (req, res) => {
         stoppings: p.stoppings || [],
         image: finalImg,
         images: p.imageUrls && p.imageUrls.length > 0
-          ? p.imageUrls.map(img => img.startsWith('/uploads') ? `${baseUrl}${img}` : img)
+          ? p.imageUrls.map(img => {
+              const cleanImg = img.includes('trycloudflare.com') ? img.replace(/^https?:\/\/[^/]+/, baseUrl) : img;
+              return cleanImg.startsWith('/uploads') ? `${baseUrl}${cleanImg}` : cleanImg;
+            })
           : [finalImg],
         rating: p.rating || 4.5,
         reviews: p.reviews !== undefined ? p.reviews : 12,

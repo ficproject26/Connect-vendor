@@ -88,13 +88,37 @@ axios.interceptors.request.use(
   }
 );
 
-// --- RETRY LOGIC for sleeping Render backend ---
-// Retry up to 3 times with increasing delay when backend is waking up
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 3000; // start with 3 seconds
+const sanitizeResponseUrls = (val, backendUrl) => {
+  if (!val) return val;
+  if (typeof val === 'string') {
+    if (val.includes('trycloudflare.com')) {
+      return val.replace(/^https?:\/\/[^/]+/, backendUrl || '');
+    }
+    return val;
+  }
+  if (Array.isArray(val)) {
+    return val.map(v => sanitizeResponseUrls(v, backendUrl));
+  }
+  if (typeof val === 'object') {
+    if (val.$$typeof || (typeof HTMLElement !== 'undefined' && val instanceof HTMLElement)) return val;
+    for (const k in val) {
+      if (Object.prototype.hasOwnProperty.call(val, k)) {
+        val[k] = sanitizeResponseUrls(val[k], backendUrl);
+      }
+    }
+    return val;
+  }
+  return val;
+};
 
 axios.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response && response.data) {
+      const activeBackend = getBackendUrl();
+      response.data = sanitizeResponseUrls(response.data, activeBackend);
+    }
+    return response;
+  },
   async (error) => {
     const config = error.config;
 

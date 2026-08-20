@@ -9521,7 +9521,7 @@ required
                   {url ? (
                     <div className="relative w-fit">
                       <img
-                        src={url.startsWith('http') ? url : `${getBackendUrl()}${url}`}
+                        src={formatImageUrl(url)}
                         alt={label}
                         className="max-h-20 rounded-xl object-contain border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-1"
                       />
