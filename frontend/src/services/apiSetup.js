@@ -197,24 +197,38 @@ export const getVendorBackendUrl = () => {
 
 export const formatImageUrl = (url) => {
   if (!url || typeof url !== 'string') return '';
-  const clean = url.trim();
+  let clean = url.trim();
   if (!clean || clean.toLowerCase().startsWith('preview')) return '';
-  if (
-    clean.startsWith('http://') || 
-    clean.startsWith('https://') || 
-    clean.startsWith('data:') || 
-    clean.startsWith('blob:')
-  ) {
+
+  if (clean.startsWith('data:') || clean.startsWith('blob:')) {
     return clean;
   }
-  const cleanPath = clean.startsWith('/') ? clean : `/${clean}`;
+
   let backend = getBackendUrl();
-  if (!backend) {
-    backend = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || 'http://43.204.141.105:8002';
-    if (backend.endsWith('/api')) {
-      backend = backend.substring(0, backend.length - 4);
-    }
+  if (!backend && typeof window !== 'undefined') {
+    const hostname = window.location.hostname || 'localhost';
+    backend = `http://${hostname}:8002`;
   }
+  if (backend && backend.endsWith('/api')) {
+    backend = backend.substring(0, backend.length - 4);
+  }
+
+  // Rewrite stale Cloudflare tunnel hostnames or outdated ports/IPs to active backend URL
+  if (
+    clean.includes('trycloudflare.com') ||
+    clean.includes(':8000') ||
+    clean.includes(':8001') ||
+    clean.includes('43.204.141.105')
+  ) {
+    clean = clean.replace(/^https?:\/\/[^/]+/, backend || '');
+    return clean;
+  }
+
+  if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    return clean;
+  }
+
+  const cleanPath = clean.startsWith('/') ? clean : `/${clean}`;
   return `${backend}${cleanPath}`;
 };
 
