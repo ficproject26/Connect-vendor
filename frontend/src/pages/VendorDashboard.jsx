@@ -4291,7 +4291,7 @@ const VendorDashboard = () => {
                         }
 
                         return (
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-2 sm:gap-4">
                             {sortedCatalog.map(item => {
                               const isOutOfStock = (item.status && (
                                 item.status.toLowerCase().includes('out') ||
@@ -4306,14 +4306,14 @@ const VendorDashboard = () => {
                                     if (e.target.closest('button')) return;
                                     handleOpenSalesDetails(item);
                                   }}
-                                  className={`glass-card rounded-2xl p-4 flex flex-col justify-between h-full hover-card cursor-pointer transition-all border border-slate-200/60 dark:border-slate-800/80 shadow-sm ${
+                                  className={`glass-card rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between h-full hover-card cursor-pointer transition-all border border-slate-200/60 dark:border-slate-800/80 shadow-sm ${
                                     isOutOfStock ? 'bg-slate-50/80 dark:bg-slate-900/40 border-slate-200/80 opacity-90' : ''
                                   }`}
                                 >
                                   <div>
-                                    <div className="mb-3 rounded-xl overflow-hidden aspect-video bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
+                                    <div className="mb-2 rounded-lg sm:rounded-xl overflow-hidden aspect-[16/9] bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
                                       {isOutOfStock && (
-                                        <div className="absolute top-4 -left-9 -rotate-45 bg-[#4a5568]/90 text-white text-[9px] font-extrabold uppercase tracking-widest py-1 px-8 shadow-md z-10 pointer-events-none text-center min-w-[140px]">
+                                        <div className="absolute top-3 -left-9 -rotate-45 bg-[#4a5568]/90 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-widest py-0.5 sm:py-1 px-8 shadow-md z-10 pointer-events-none text-center min-w-[130px]">
                                           {item.status && item.status.toLowerCase().includes('service') ? 'OUT OF SERVICE' : 'OUT OF STOCK'}
                                         </div>
                                       )}
@@ -4327,18 +4327,18 @@ const VendorDashboard = () => {
                                         />
                                       ) : (
                                         <div className="w-full h-full bg-slate-100 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-300 dark:text-slate-700">
-                                          <ImageIcon size={32} strokeWidth={1.5} />
+                                          <ImageIcon size={24} strokeWidth={1.5} className="sm:w-8 sm:h-8" />
                                         </div>
                                       )}
                                     </div>
-                                    <div className="flex justify-between items-start mb-2 gap-2">
-                                      <div className="flex items-center gap-1.5 text-left">
-                                        <span className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase flex items-center gap-1.5">
+                                    <div className="flex justify-between items-start mb-1.5 gap-1.5">
+                                      <div className="flex items-center gap-1 text-left">
+                                        <span className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-[8px] sm:text-[9px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full uppercase flex items-center gap-1">
                                           <span>{item.category}</span>
                                         </span>
                                         {vendorType.startsWith('Restaurant') && item.foodType && (
                                           <div 
-                                            className={`w-3.5 h-3.5 border flex items-center justify-center p-0.5 rounded shrink-0 ${
+                                            className={`w-3 h-3 sm:w-3.5 sm:h-3.5 border flex items-center justify-center p-0.5 rounded shrink-0 ${
                                               item.foodType === 'Veg' ? 'border-emerald-600' : 'border-red-600'
                                             }`}
                                             title={item.foodType}
@@ -4352,7 +4352,7 @@ const VendorDashboard = () => {
                                         if (mainCat === 'Jobs') {
                                           return (
                                             <div className="flex flex-col items-end text-right">
-                                              <span className="text-sm font-bold text-[#0B3C7B] dark:text-[#faed26] leading-none">Salary: ₹{item.price}</span>
+                                              <span className="text-xs sm:text-sm font-bold text-[#0B3C7B] dark:text-[#faed26] leading-none">Salary: ₹{item.price}</span>
                                             </div>
                                           );
                                         }
@@ -4360,42 +4360,42 @@ const VendorDashboard = () => {
                                           <div className="flex flex-col items-end text-right">
                                             {item.originalPrice && Number(item.originalPrice) > Number(item.price) ? (
                                               <>
-                                                <span className="text-[10px] line-through text-slate-400 dark:text-slate-500">₹{item.originalPrice}</span>
-                                                <span className={`text-sm font-black leading-none ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-emerald-600 dark:text-emerald-450'}`}>
+                                                <span className="text-[9px] sm:text-[10px] line-through text-slate-400 dark:text-slate-500">₹{item.originalPrice}</span>
+                                                <span className={`text-xs sm:text-sm font-black leading-none ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-emerald-600 dark:text-emerald-450'}`}>
                                                   ₹{item.price}
-                                                  <span className="text-[8px] font-extrabold ml-1 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-450 px-1 py-0.5 rounded align-middle">
+                                                  <span className="text-[7px] sm:text-[8px] font-extrabold ml-0.5 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-450 px-1 py-0.5 rounded align-middle">
                                                     {Math.round(((Number(item.originalPrice) - Number(item.price)) / Number(item.originalPrice)) * 100)}% OFF
                                                   </span>
                                                 </span>
                                               </>
                                             ) : (
-                                              <span className={`text-sm font-bold leading-none ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>₹{item.price}</span>
+                                              <span className={`text-xs sm:text-sm font-bold leading-none ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>₹{item.price}</span>
                                             )}
                                           </div>
                                         );
                                       })()}
                                     </div>
-                                    <h3 className={`text-sm font-bold text-left leading-snug break-words mt-1 ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>{item.name}</h3>
+                                    <h3 className={`text-xs sm:text-sm font-bold text-left leading-tight sm:leading-snug break-words mt-0.5 ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>{item.name}</h3>
                                     
                                     {/* Item Rating */}
                                     {(() => {
                                       const { rating, reviews } = getItemRating(item, orders);
                                       return (
-                                        <div className="flex items-center gap-1 mt-1 mb-1.5 text-left">
+                                        <div className="flex items-center gap-0.5 sm:gap-1 mt-0.5 mb-1 text-left">
                                           <div className={`flex ${isOutOfStock ? 'text-slate-300 dark:text-slate-600' : 'text-amber-500'}`}>
                                             {[...Array(5)].map((_, i) => (
-                                              <span key={i} className="text-[10px]">
+                                              <span key={i} className="text-[9px] sm:text-[10px]">
                                                 {i < Math.floor(rating) ? '★' : '☆'}
                                               </span>
                                             ))}
                                           </div>
-                                          <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-350">{rating}</span>
-                                          <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500">({reviews})</span>
+                                          <span className="text-[9px] sm:text-[10px] font-extrabold text-slate-700 dark:text-slate-350">{rating}</span>
+                                          <span className="text-[8px] sm:text-[9px] font-medium text-slate-400 dark:text-slate-500">({reviews})</span>
                                         </div>
                                       );
                                     })()}
                                     {item.description && (
-                                      <p className="text-slate-600 dark:text-slate-400 text-xs mt-1 text-left leading-relaxed break-words">{item.description}</p>
+                                      <p className="text-slate-600 dark:text-slate-400 text-[10px] sm:text-xs mt-0.5 text-left leading-tight line-clamp-2 break-words">{item.description}</p>
                                     )}
                                     
                                     {/* Compact metadata fields grid */}
@@ -4409,19 +4409,19 @@ const VendorDashboard = () => {
                                       const currentStatus = isItemOutOfStock ? 'Out of Stock' : (item.status || 'Available');
 
                                       return (
-                                        <div className={`mt-3 grid gap-2 text-xs bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                        <div className={`mt-2 grid gap-1 text-[9px] sm:text-xs bg-slate-50 dark:bg-slate-900/60 p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                           <div className="text-center">
-                                            <span className="block text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
+                                            <span className="block text-[7px] sm:text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
                                             <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{currentStatus}</span>
                                           </div>
                                           {shouldShowStock && item.stock !== undefined && (
                                             <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                              <span className="block text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
+                                              <span className="block text-[7px] sm:text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
                                               <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
                                             </div>
                                           )}
                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Customers'}</span>
+                                            <span className="block text-[7px] sm:text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Customers'}</span>
                                             <span className="font-bold text-emerald-600 dark:text-emerald-400">{['Services', 'Stay', 'Travel'].includes(mainCat) ? salesCount : customersCount}</span>
                                           </div>
                                         </div>
@@ -4429,21 +4429,21 @@ const VendorDashboard = () => {
                                     })()}
                                   </div>
 
-                                  <div className="flex justify-end items-center gap-2 mt-4 pt-2.5 border-t border-slate-100 dark:border-slate-800/60">
+                                  <div className="flex justify-end items-center gap-1.5 sm:gap-2 mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/60">
                                     <button
                                       onClick={() => handleOpenEditItem(item)}
-                                      className={`p-2 rounded-lg border transition-colors ${
+                                      className={`p-1.5 sm:p-2 rounded-md sm:rounded-lg border transition-colors ${
                                         isOutOfStock 
                                           ? 'bg-slate-100/50 dark:bg-slate-800/30 text-slate-300 dark:text-slate-600 border-slate-200/50 dark:border-slate-800/30' 
                                           : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700/50'
                                       }`}
                                       title="Edit Item"
                                     >
-                                      <Edit2 size={14} />
+                                      <Edit2 size={12} className="sm:w-3.5 sm:h-3.5" />
                                     </button>
                                     <button
                                       onClick={() => handleDeleteItem(item._id)}
-                                      className={`p-2 rounded-lg border transition-colors ${
+                                      className={`p-1.5 sm:p-2 rounded-md sm:rounded-lg border transition-colors ${
                                         isOutOfStock 
                                           ? 'bg-red-50/40 dark:bg-red-950/10 text-red-300 dark:text-red-800/50 border-red-100 dark:border-red-950/20' 
                                           : 'bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/30'
