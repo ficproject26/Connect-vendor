@@ -216,16 +216,6 @@ const Orders = () => {
               >
                 List Queue
               </button>
-              <button
-                onClick={() => setAppointmentsSubView('calendar')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                  appointmentsSubView === 'calendar'
-                    ? 'bg-white dark:bg-slate-950 text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                }`}
-              >
-                Calendar View
-              </button>
               {vendorType.startsWith('Hospital') && (
                 <button
                   onClick={() => setAppointmentsSubView('slots')}

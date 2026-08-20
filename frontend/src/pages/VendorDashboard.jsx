@@ -165,8 +165,16 @@ const getCustomerAvatarUrl = (customer) => {
 
 export const getCustomerMetrics = (customer, orders = []) => {
   if (!customer) return { count: 0, totalSpent: 0 };
+
+  const baseCount = Number(
+    customer.ordersCount ?? customer.visitsCount ?? customer.visits ?? customer.totalVisits ?? 0
+  );
+  const baseSpent = Number(
+    customer.totalSpent ?? customer.spent ?? 0
+  );
+
   if (!orders || !Array.isArray(orders) || orders.length === 0) {
-    return { count: customer.ordersCount || 0, totalSpent: customer.totalSpent || 0 };
+    return { count: baseCount, totalSpent: baseSpent };
   }
 
   const custNameClean = (customer.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -182,13 +190,13 @@ export const getCustomerMetrics = (customer, orders = []) => {
     return false;
   });
 
-  if (matchedOrders.length > 0) {
-    const count = matchedOrders.length;
-    const totalSpent = matchedOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
-    return { count, totalSpent };
-  }
+  const matchedCount = matchedOrders.length;
+  const matchedTotalSpent = matchedOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
 
-  return { count: 0, totalSpent: 0 };
+  return {
+    count: Math.max(baseCount, matchedCount),
+    totalSpent: Math.max(baseSpent, matchedTotalSpent)
+  };
 };
 
 const getCategoryIcon = (category) => {
@@ -4076,12 +4084,12 @@ const VendorDashboard = () => {
                       {/* Total Items */}
                       <div className="p-4 rounded-2xl bg-blue-50/70 dark:bg-blue-950/25 border border-blue-100 dark:border-blue-900/30 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className="p-2.5 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-xl">
+                          <div className="p-2.5 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-xl shrink-0">
                             <Package size={20} />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[10px] text-blue-600/80 dark:text-blue-300/80 uppercase font-bold tracking-wider truncate">Total {terms.catalogName}</p>
-                            <p className="text-xl font-extrabold text-blue-900 dark:text-blue-100 tracking-tight">{totalItems}</p>
+                            <p className="text-[10px] text-blue-600/80 dark:text-blue-300/80 uppercase font-bold tracking-wider leading-snug whitespace-normal break-words">Total {terms.catalogName}</p>
+                            <p className="text-xl font-extrabold text-blue-900 dark:text-blue-100 tracking-tight mt-0.5">{totalItems}</p>
                           </div>
                         </div>
                       </div>
@@ -4089,12 +4097,12 @@ const VendorDashboard = () => {
                       {/* Total Orders */}
                       <div className="p-4 rounded-2xl bg-purple-50/70 dark:bg-purple-950/25 border border-purple-100 dark:border-purple-900/30 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className="p-2.5 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-xl">
+                          <div className="p-2.5 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-xl shrink-0">
                             <ClipboardList size={20} />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[10px] text-purple-600/80 dark:text-purple-300/80 uppercase font-bold tracking-wider truncate">Total {terms.ordersName}</p>
-                            <p className="text-xl font-extrabold text-purple-900 dark:text-purple-100 tracking-tight">{totalOrders}</p>
+                            <p className="text-[10px] text-purple-600/80 dark:text-purple-300/80 uppercase font-bold tracking-wider leading-snug whitespace-normal break-words">Total {terms.ordersName}</p>
+                            <p className="text-xl font-extrabold text-purple-900 dark:text-purple-100 tracking-tight mt-0.5">{totalOrders}</p>
                           </div>
                         </div>
                       </div>
@@ -4102,12 +4110,12 @@ const VendorDashboard = () => {
                       {/* Top Selling */}
                       <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/25 border border-amber-100 dark:border-amber-900/30 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className="p-2.5 bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-xl">
+                          <div className="p-2.5 bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-xl shrink-0">
                             <Star size={20} />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[10px] text-amber-600/80 dark:text-amber-300/80 uppercase font-bold tracking-wider truncate">Top {terms.catalogItem}</p>
-                            <p className="text-sm font-extrabold text-amber-900 dark:text-amber-100 tracking-tight truncate" title={topSelling ? topSelling[0] : 'N/A'}>
+                            <p className="text-[10px] text-amber-600/80 dark:text-amber-300/80 uppercase font-bold tracking-wider leading-snug whitespace-normal break-words">Top {terms.catalogItem}</p>
+                            <p className="text-sm font-extrabold text-amber-900 dark:text-amber-100 tracking-tight whitespace-normal break-words mt-0.5" title={topSelling ? topSelling[0] : 'N/A'}>
                               {topSelling ? topSelling[0] : 'N/A'}
                             </p>
                             {topSelling && <p className="text-[10px] text-amber-500 dark:text-amber-400/70 font-semibold">{topSelling[1]} {soldLabel}</p>}
@@ -4118,12 +4126,12 @@ const VendorDashboard = () => {
                       {/* Revenue */}
                       <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/25 border border-emerald-100 dark:border-emerald-900/30 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                          <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl shrink-0">
                             <IndianRupee size={20} />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[10px] text-emerald-600/80 dark:text-emerald-300/80 uppercase font-bold tracking-wider truncate">{terms.catalogItem} Revenue</p>
-                            <p className="text-xl font-extrabold text-emerald-900 dark:text-emerald-100 tracking-tight">₹{revenue.toLocaleString('en-IN')}</p>
+                            <p className="text-[10px] text-emerald-600/80 dark:text-emerald-300/80 uppercase font-bold tracking-wider leading-snug whitespace-normal break-words">{terms.catalogItem} Revenue</p>
+                            <p className="text-xl font-extrabold text-emerald-900 dark:text-emerald-100 tracking-tight mt-0.5">₹{revenue.toLocaleString('en-IN')}</p>
                           </div>
                         </div>
                       </div>
@@ -4131,12 +4139,12 @@ const VendorDashboard = () => {
                       {/* Pending */}
                       <div className="p-4 rounded-2xl bg-orange-50/70 dark:bg-orange-950/25 border border-orange-100 dark:border-orange-900/30 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className="p-2.5 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 rounded-xl">
+                          <div className="p-2.5 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 rounded-xl shrink-0">
                             <Clock size={20} />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[10px] text-orange-600/80 dark:text-orange-300/80 uppercase font-bold tracking-wider truncate">{pendingLabel}</p>
-                            <p className="text-xl font-extrabold text-orange-900 dark:text-orange-100 tracking-tight">{pendingCount}</p>
+                            <p className="text-[10px] text-orange-600/80 dark:text-orange-300/80 uppercase font-bold tracking-wider leading-snug whitespace-normal break-words">{pendingLabel}</p>
+                            <p className="text-xl font-extrabold text-orange-900 dark:text-orange-100 tracking-tight mt-0.5">{pendingCount}</p>
                           </div>
                         </div>
                       </div>
@@ -4261,7 +4269,7 @@ const VendorDashboard = () => {
                         }
 
                         return (
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
+                          <div className="grid grid-cols-2 gap-4">
                             {sortedCatalog.map(item => {
                               const isOutOfStock = (item.status && (
                                 item.status.toLowerCase().includes('out') ||
@@ -4276,7 +4284,7 @@ const VendorDashboard = () => {
                                     if (e.target.closest('button')) return;
                                     handleOpenSalesDetails(item);
                                   }}
-                                  className={`glass-card rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between hover-card cursor-pointer transition-all ${
+                                  className={`glass-card rounded-2xl p-4 flex flex-col justify-between h-full hover-card cursor-pointer transition-all border border-slate-200/60 dark:border-slate-800/80 shadow-sm ${
                                     isOutOfStock ? 'bg-slate-50/80 dark:bg-slate-900/40 border-slate-200/80 opacity-90' : ''
                                   }`}
                                 >
@@ -4301,8 +4309,8 @@ const VendorDashboard = () => {
                                         </div>
                                       )}
                                     </div>
-                                    <div className="flex justify-between items-start mb-1.5">
-                                      <div className="flex items-center gap-1.5">
+                                    <div className="flex justify-between items-start mb-2 gap-2">
+                                      <div className="flex items-center gap-1.5 text-left">
                                         <span className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase flex items-center gap-1.5">
                                           <span>{item.category}</span>
                                         </span>
@@ -4321,13 +4329,13 @@ const VendorDashboard = () => {
                                         const mainCat = getProductMainCategory(item.category, vendorType);
                                         if (mainCat === 'Jobs') {
                                           return (
-                                            <div className="flex flex-col items-end">
+                                            <div className="flex flex-col items-end text-right">
                                               <span className="text-sm font-bold text-[#0B3C7B] dark:text-[#faed26] leading-none">Salary: ₹{item.price}</span>
                                             </div>
                                           );
                                         }
                                         return (
-                                          <div className="flex flex-col items-end">
+                                          <div className="flex flex-col items-end text-right">
                                             {item.originalPrice && Number(item.originalPrice) > Number(item.price) ? (
                                               <>
                                                 <span className="text-[10px] line-through text-slate-400 dark:text-slate-500">₹{item.originalPrice}</span>
@@ -4345,13 +4353,13 @@ const VendorDashboard = () => {
                                         );
                                       })()}
                                     </div>
-                                    <h3 className={`text-sm font-bold mt-0.5 leading-snug ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>{item.name}</h3>
+                                    <h3 className={`text-sm font-bold text-left leading-snug break-words mt-1 ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>{item.name}</h3>
                                     
                                     {/* Item Rating */}
                                     {(() => {
                                       const { rating, reviews } = getItemRating(item, orders);
                                       return (
-                                        <div className="flex items-center gap-1 mt-1 mb-1.5">
+                                        <div className="flex items-center gap-1 mt-1 mb-1.5 text-left">
                                           <div className={`flex ${isOutOfStock ? 'text-slate-300 dark:text-slate-600' : 'text-amber-500'}`}>
                                             {[...Array(5)].map((_, i) => (
                                               <span key={i} className="text-[10px]">
@@ -4364,7 +4372,9 @@ const VendorDashboard = () => {
                                         </div>
                                       );
                                     })()}
-                                    <p className="text-slate-600 dark:text-slate-400 text-[11px] mt-1 line-clamp-1 leading-normal">{item.description}</p>
+                                    {item.description && (
+                                      <p className="text-slate-600 dark:text-slate-400 text-xs mt-1 text-left leading-relaxed break-words">{item.description}</p>
+                                    )}
                                     
                                     {/* Compact metadata fields grid */}
                                     {(() => {
@@ -4377,19 +4387,19 @@ const VendorDashboard = () => {
                                       const currentStatus = isItemOutOfStock ? 'Out of Stock' : (item.status || 'Available');
 
                                       return (
-                                        <div className={`mt-2.5 grid gap-1 text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                        <div className={`mt-3 grid gap-2 text-xs bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                           <div className="text-center">
-                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
+                                            <span className="block text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
                                             <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{currentStatus}</span>
                                           </div>
                                           {shouldShowStock && item.stock !== undefined && (
                                             <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                              <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
+                                              <span className="block text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
                                               <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
                                             </div>
                                           )}
                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Customers'}</span>
+                                            <span className="block text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Customers'}</span>
                                             <span className="font-bold text-emerald-600 dark:text-emerald-400">{['Services', 'Stay', 'Travel'].includes(mainCat) ? salesCount : customersCount}</span>
                                           </div>
                                         </div>
@@ -4397,7 +4407,7 @@ const VendorDashboard = () => {
                                     })()}
                                   </div>
 
-                                  <div className="flex justify-end gap-1.5 mt-3 pt-2">
+                                  <div className="flex justify-end items-center gap-2 mt-4 pt-2.5 border-t border-slate-100 dark:border-slate-800/60">
                                     <button
                                       onClick={() => handleOpenEditItem(item)}
                                       className={`p-2 rounded-lg border transition-colors ${
@@ -4407,7 +4417,7 @@ const VendorDashboard = () => {
                                       }`}
                                       title="Edit Item"
                                     >
-                                      <Edit2 size={12} />
+                                      <Edit2 size={14} />
                                     </button>
                                     <button
                                       onClick={() => handleDeleteItem(item._id)}
@@ -4461,16 +4471,6 @@ const VendorDashboard = () => {
                       }`}
                     >
                       List Queue
-                    </button>
-                    <button
-                      onClick={() => setAppointmentsSubView('calendar')}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                        appointmentsSubView === 'calendar'
-                          ? 'bg-white dark:bg-slate-950 text-slate-900 dark:text-white shadow-sm'
-                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      Calendar View
                     </button>
                     {vendorType.startsWith('Hospital') && (
                       <button
@@ -5155,11 +5155,6 @@ const VendorDashboard = () => {
                     <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                       {selectedMainCat ? `${selectedMainCat} Customers` : `Ecosystem ${terms.customersName}`}
                     </h2>
-                    {selectedMainCat && (
-                      <span className="px-3 py-1 bg-yellow-400/20 text-yellow-800 dark:text-yellow-300 border border-yellow-400/30 text-xs font-bold rounded-full">
-                        Active Category: {selectedMainCat}
-                      </span>
-                    )}
                   </div>
                   <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">
                     Customers who interacted with your {selectedMainCat ? `${selectedMainCat} business` : 'business'} (purchased products, booked services, or applied for jobs)
