@@ -2677,7 +2677,7 @@ const VendorDashboard = () => {
 
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-300 overflow-x-hidden">
+    <div className="flex flex-col md:flex-row h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-300">
       
       {/* ── MOBILE HEADER BAR (Visible only on mobile < md) ── */}
       <div className="flex md:hidden items-center justify-between px-4 py-3 bg-[#00122e] text-white sticky top-0 z-40 shadow-md border-b border-white/10">
