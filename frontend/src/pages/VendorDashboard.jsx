@@ -2690,13 +2690,62 @@ const VendorDashboard = () => {
             <span className="text-[#faed26]">App</span>
           </span>
         </div>
-        <button
-          onClick={() => setIsMobileMenuOpen(true)}
-          className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
-          title="Open Menu"
-        >
-          <Menu size={20} />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Notification Bell in Header */}
+          <div className="relative" ref={notificationDropdownRef}>
+            <button
+              onClick={() => setShowHeaderNotifications(!showHeaderNotifications)}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors relative"
+              title="Notifications"
+            >
+              <Bell size={18} />
+              {notifications.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full leading-none border border-[#00122e] shadow-md">
+                  {notifications.length}
+                </span>
+              )}
+            </button>
+            {showHeaderNotifications && (
+              <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-50 text-slate-800 dark:text-slate-100 animate-fadeIn">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800/80 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Notifications</span>
+                  {notifications.length > 0 && (
+                    <button type="button" onClick={() => setNotifications([])} className="text-[10px] text-[#0B3C7B] dark:text-[#faed26] hover:underline font-semibold">Clear All</button>
+                  )}
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="text-[11px] text-slate-400 dark:text-slate-500 text-center py-4 font-medium">No new notifications</div>
+                  ) : (
+                    notifications.map((n) => (
+                      <div key={n.id} className="flex items-start justify-between gap-3 text-[11px] leading-relaxed border-b border-slate-100 dark:border-slate-800/40 pb-2 last:border-b-0 last:pb-0">
+                        <span className="flex-1 text-left">{n.text}</span>
+                        <button type="button" onClick={() => handleRemoveNotification(n.id)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold px-1 transition-colors">✕</button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          {/* Theme Toggle in Header */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+            title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          {/* Hamburger Menu */}
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+            title="Open Menu"
+          >
+            <Menu size={20} />
+          </button>
+        </div>
       </div>
 
       {/* ── MOBILE DRAWER OVERLAY (Visible only when mobile menu is open) ── */}
@@ -3221,9 +3270,9 @@ const VendorDashboard = () => {
       {/* Main Content Area */}
       <div className="flex-1 p-3 md:p-8 bg-transparent overflow-y-auto overflow-x-hidden min-w-0 relative">
         
-        {/* Top Right Header Actions (Theme & Notifications) */}
+        {/* Top Right Header Actions (Theme & Notifications) - Desktop only */}
         {activeTab === 'dashboard' && (
-          <div className="flex items-center gap-2 md:gap-3 justify-end mb-2 md:mb-0 md:absolute md:top-8 md:right-8 z-40">
+          <div className="hidden md:flex items-center gap-3 absolute top-8 right-8 z-40">
             {/* Notifications Dropdown */}
             <div className="relative" ref={notificationDropdownRef}>
               <button
