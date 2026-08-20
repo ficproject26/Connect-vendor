@@ -2664,17 +2664,17 @@ const VendorDashboard = () => {
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-300">
       {/* Side Menu */}
-      <div className={`w-full ${sidebarCollapsed ? 'md:w-20 p-3 md:p-4' : 'md:w-64 p-5'} bg-[#00122e] text-white shrink-0 transition-all duration-300 shadow-xl border-r border-[#0B3C7B]/20 flex flex-col md:h-screen md:sticky md:top-0`}>
+      <div className={`w-full ${sidebarCollapsed ? 'md:w-20 p-3 items-center justify-between' : 'md:w-64 p-5'} bg-[#00122e] text-white shrink-0 transition-all duration-300 shadow-xl border-r border-[#0B3C7B]/20 flex flex-col md:h-screen md:sticky md:top-0`}>
         
         {/* ── FIXED TOP: Logo Section ── */}
-        <div className="shrink-0 pb-4 border-b border-white/10">
-          <div className="flex items-center justify-between">
+        <div className="shrink-0 pb-4 border-b border-white/10 w-full">
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
             <div 
               onClick={() => dispatch(toggleSidebar())}
-              className="flex items-center gap-2 cursor-pointer select-none"
+              className="flex items-center gap-3 cursor-pointer select-none"
               title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             >
-              <div className="rounded-xl shadow-md overflow-hidden flex items-center justify-center shrink-0 w-8 h-8">
+              <div className="rounded-xl shadow-md overflow-hidden flex items-center justify-center shrink-0 w-9 h-9 border border-white/10 bg-white/5">
                 <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
               </div>
               {!sidebarCollapsed && (
@@ -2689,7 +2689,7 @@ const VendorDashboard = () => {
             {!sidebarCollapsed && (
               <button 
                 onClick={() => dispatch(toggleSidebar())}
-                className="p-1 rounded-lg hover:bg-white/15 text-white/70 hover:text-white transition-colors"
+                className="p-1.5 rounded-lg hover:bg-white/15 text-white/70 hover:text-white transition-colors"
                 title="Collapse Sidebar"
               >
                 <ChevronLeft size={18} />
@@ -2698,7 +2698,7 @@ const VendorDashboard = () => {
             {sidebarCollapsed && (
               <button 
                 onClick={() => dispatch(toggleSidebar())}
-                className="hidden md:block p-1 rounded-lg hover:bg-white/15 text-white/70 hover:text-white transition-colors"
+                className="hidden md:flex p-1.5 rounded-lg hover:bg-white/15 text-white/70 hover:text-white transition-colors"
                 title="Expand Sidebar"
               >
                 <ChevronRight size={18} />
@@ -2708,7 +2708,7 @@ const VendorDashboard = () => {
         </div>
 
         {/* ── SCROLLABLE MIDDLE: Nav Items ── */}
-        <div className="flex-1 sidebar-scroll py-4 pr-1 space-y-4">
+        <div className="flex-1 sidebar-scroll py-4 w-full space-y-4 overflow-y-auto">
           {(() => {
             const getFirstItem = () => {
               if (user?.role === 'Member') {
@@ -2809,7 +2809,6 @@ const VendorDashboard = () => {
                   };
                 });
 
-              // Preferred sorting order of categories switcher in sidebar: Products -> Services -> Food, then others
               const typeOrder = ['Products', 'Services', 'Food', 'Daily Needs', 'Stay', 'Travel', 'Jobs'];
               return mapped.sort((a, b) => {
                 const idxA = typeOrder.findIndex(t => a.name.startsWith(t));
@@ -2826,20 +2825,20 @@ const VendorDashboard = () => {
             const menuItems = getSidebarItems();
 
             return (
-              <div className="space-y-4">
+              <div className="space-y-4 w-full">
                 {/* 1. Overview / Home is first */}
-                <ul className="space-y-1">
+                <ul className="space-y-1 w-full">
                   <li>
                     <button
                       onClick={() => setActiveTab(firstItem.id)}
                       title={firstItem.name}
-                      className={`w-full flex items-center gap-3 text-left ${sidebarCollapsed ? 'md:justify-center px-4' : 'px-4'} py-3 rounded-2xl text-sm font-semibold transition-all border border-transparent ${
+                      className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3 gap-3 text-left'} rounded-2xl text-sm font-semibold transition-all border border-transparent ${
                         activeTab === firstItem.id 
                           ? 'bg-white/15 text-[#faed26] font-bold border border-white/10 shadow-md animate-fadeIn' 
                           : 'text-white/70 hover:bg-white/10 hover:text-white'
                       }`}
                     >
-                      <FirstIcon size={18} className="shrink-0" />
+                      <FirstIcon size={20} className="shrink-0" />
                       {!sidebarCollapsed && <span className="text-left leading-snug">{firstItem.name}</span>}
                     </button>
                   </li>
@@ -2847,13 +2846,13 @@ const VendorDashboard = () => {
 
                 {/* 2. My Categories (Products, Services, Food) */}
                 {bizItems.length > 0 && (
-                  <div className="space-y-1.5 animate-fadeIn">
+                  <div className="space-y-1.5 w-full animate-fadeIn">
                     {!sidebarCollapsed && (
                       <p className="text-[10px] font-bold text-white/45 uppercase tracking-wider px-4 mb-1">
                         My Categories
                       </p>
                     )}
-                    <ul className="space-y-1">
+                    <ul className="space-y-1 w-full">
                       {bizItems.map(biz => {
                         const Icon = biz.icon;
                         return (
@@ -2867,14 +2866,14 @@ const VendorDashboard = () => {
                                 setActiveTab('catalog');
                               }}
                               title={biz.name}
-                              className={`w-full flex items-center justify-between text-left ${sidebarCollapsed ? 'md:justify-center px-4' : 'px-4'} py-3 rounded-2xl text-sm font-semibold transition-all border border-transparent ${
+                              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-4 py-3'} text-left rounded-2xl text-sm font-semibold transition-all border border-transparent ${
                                 biz.isActive
                                   ? 'bg-[#faed26] text-[#0B3C7B] shadow-lg shadow-yellow-500/10 font-bold animate-fadeIn' 
                                   : 'text-white/70 hover:bg-white/10 hover:text-white'
                               }`}
                             >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <Icon size={18} className="shrink-0" />
+                              <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 min-w-0'}`}>
+                                <Icon size={20} className="shrink-0" />
                                 {!sidebarCollapsed && <span className="text-left leading-snug truncate">{biz.name}</span>}
                               </div>
                               {!sidebarCollapsed && biz.isSuspended && (
@@ -2892,13 +2891,13 @@ const VendorDashboard = () => {
                 )}
 
                 {/* 3. Dashboard Menu / Rest of the menu items */}
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 w-full">
                   {!sidebarCollapsed && bizItems.length > 0 && (
                     <p className="text-[10px] font-bold text-white/45 uppercase tracking-wider px-4 mb-1">
                       Dashboard Menu
                     </p>
                   )}
-                  <ul className="space-y-1.5">
+                  <ul className="space-y-1.5 w-full">
                     {menuItems.map(item => {
                       const Icon = item.icon;
                       return (
@@ -2906,13 +2905,13 @@ const VendorDashboard = () => {
                           <button
                             onClick={() => setActiveTab(item.id)}
                             title={item.name}
-                            className={`w-full flex items-center gap-3 text-left ${sidebarCollapsed ? 'md:justify-center px-4' : 'px-4'} py-3 rounded-2xl text-sm font-semibold transition-all border border-transparent ${
+                            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3 gap-3 text-left'} rounded-2xl text-sm font-semibold transition-all border border-transparent ${
                               activeTab === item.id 
                                 ? 'bg-white/15 text-[#faed26] font-bold border border-white/10 shadow-md animate-fadeIn' 
                                 : 'text-white/70 hover:bg-white/10 hover:text-white'
                             }`}
                           >
-                            <Icon size={18} className="shrink-0" />
+                            <Icon size={20} className="shrink-0" />
                             {!sidebarCollapsed && <span className="text-left leading-snug">{item.name}</span>}
                           </button>
                         </li>
@@ -2926,15 +2925,15 @@ const VendorDashboard = () => {
         </div>
 
         {/* ── FIXED BOTTOM: User Profile & Sign Out ── */}
-        <div className="shrink-0 pt-4 border-t border-white/10">
-          <div className={`flex ${sidebarCollapsed ? 'flex-col items-center gap-2' : 'items-center'} p-2.5 rounded-2xl bg-white/5 border border-white/5`}>
+        <div className="shrink-0 pt-3 border-t border-white/10 w-full">
+          <div className={`flex ${sidebarCollapsed ? 'flex-col items-center justify-center gap-2 p-2' : 'items-center gap-3 p-2.5'} rounded-2xl bg-white/5 border border-white/5`}>
             {/* Profile Info (clickable) */}
             <div 
               onClick={() => setIsUserInfoOpen(true)}
-              className={`flex ${sidebarCollapsed ? 'flex-col items-center gap-2' : 'items-center gap-3'} flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity`}
+              className={`flex ${sidebarCollapsed ? 'flex-col items-center justify-center' : 'items-center gap-3'} flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity`}
               title="View User Details"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-extrabold text-sm shadow-md shrink-0">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-extrabold text-sm shadow-md shrink-0">
                 {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
               </div>
               {!sidebarCollapsed && (
@@ -2948,7 +2947,7 @@ const VendorDashboard = () => {
             <button
               type="button"
               onClick={() => dispatch(logout())}
-              className={`${sidebarCollapsed ? 'w-9 h-9' : 'w-9 h-9 ml-1'} shrink-0 flex items-center justify-center rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all active:scale-90`}
+              className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all active:scale-90"
               title="Sign Out"
             >
               <LogOut size={18} />
@@ -3916,7 +3915,7 @@ const VendorDashboard = () => {
                         }
 
                         return (
-                          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
                             {sortedCatalog.map(item => {
                               const isOutOfStock = (item.status && (
                                 item.status.toLowerCase().includes('out') ||
@@ -3931,7 +3930,7 @@ const VendorDashboard = () => {
                                     if (e.target.closest('button')) return;
                                     handleOpenSalesDetails(item);
                                   }}
-                                  className={`glass-card rounded-2xl p-4 flex flex-col justify-between hover-card cursor-pointer transition-all ${
+                                  className={`glass-card rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between hover-card cursor-pointer transition-all ${
                                     isOutOfStock ? 'bg-slate-50/80 dark:bg-slate-900/40 border-slate-200/80 opacity-90' : ''
                                   }`}
                                 >
@@ -10532,9 +10531,9 @@ required
             : (selectedBillOrder?.appointmentDate ? "Booking & Service Details" : "Order & Transaction Details")
         }
       >
-        {selectedBillOrder && (() => {
-          const isJobOrder = selectedBillOrder.candidateEmail || selectedBillOrder.candidateResume || selectedBillOrder.vendorId === '3w8hhon38mqg7ni0u';
-          const isServiceOrder = selectedBillOrder.appointmentDate || (selectedBillOrder.items && selectedBillOrder.items[0]?.productId?.startsWith('service-')) || ['Hospital Vendor', 'Service Provider Vendor', 'Education Vendor'].includes(vendorType);
+        {Boolean(selectedBillOrder) && (() => {
+          const isJobOrder = Boolean(selectedBillOrder?.candidateEmail || selectedBillOrder?.candidateResume || selectedBillOrder?.vendorId === '3w8hhon38mqg7ni0u');
+          const isServiceOrder = Boolean(selectedBillOrder?.appointmentDate || (selectedBillOrder?.items && selectedBillOrder?.items[0]?.productId?.startsWith('service-')) || ['Hospital Vendor', 'Service Provider Vendor', 'Education Vendor'].includes(vendorType));
           
           if (isJobOrder) {
             return (
