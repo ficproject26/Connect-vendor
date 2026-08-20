@@ -789,6 +789,40 @@ const getCustomers = async (req, res) => {
           customerMap[key].email = email;
         }
       }
+    // 2.5 Fill missing customer address/phone from User profiles
+    const allUsers = await User.find({}).lean();
+    Object.keys(customerMap).forEach(key => {
+      const cust = customerMap[key];
+      const custNameClean = (cust.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const custEmailClean = (cust.email || '').trim().toLowerCase();
+      const custPhoneClean = (cust.phone || '').toString().trim().replace(/[^0-9]/g, '');
+
+      const matchedUser = allUsers.find(u => {
+        if (!u) return false;
+        const uPhone = (u.phone || u.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
+        const uNameClean = (u.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        const uEmailClean = (u.email || '').trim().toLowerCase();
+
+        if (custPhoneClean && uPhone && (custPhoneClean === uPhone || custPhoneClean.endsWith(uPhone) || uPhone.endsWith(custPhoneClean))) return true;
+        if (custNameClean && uNameClean && custNameClean === uNameClean && custNameClean !== 'customer' && custNameClean.length > 2) return true;
+        if (custEmailClean && uEmailClean && custEmailClean === uEmailClean && custEmailClean.includes('@')) return true;
+        return false;
+      });
+
+      if (matchedUser) {
+        if (!cust.phone && (matchedUser.phone || matchedUser.mobileNumber)) {
+          cust.phone = matchedUser.phone || matchedUser.mobileNumber;
+        }
+        const uAddrParts = [matchedUser.address, matchedUser.street, matchedUser.city, matchedUser.district, matchedUser.state, matchedUser.pincode || matchedUser.postalCode]
+          .filter(p => p && typeof p === 'string' && p.trim() !== '' && p !== 'N/A' && !/^\d{6}$/.test(p.trim()));
+
+        if (uAddrParts.length > 0) {
+          const uFullAddr = uAddrParts.join(', ');
+          if (!cust.address || cust.address === 'N/A' || cust.address === 'Bangalore Center' || cust.address.trim() === '') {
+            cust.address = uFullAddr;
+          }
+        }
+      }
     });
 
     // 3. Calculate ordersCount and totalSpent independently for each customer

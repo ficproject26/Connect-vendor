@@ -1028,26 +1028,43 @@ const VendorDashboard = () => {
   const getCustomerAddress = (order) => {
     if (!order) return 'Not Specified';
 
-    const oNameClean = (order.memberName || order.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const oEmailClean = (order.candidateEmail || order.customer_email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
-    const oPhoneClean = (order.customer_phone || order.phone || '').toString().trim().replace(/[^0-9]/g, '');
+    const oNameClean = (order.memberName || order.customer_name || order.name || order.candidateName || order.clientName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const oEmailClean = (order.candidateEmail || order.customer_email || order.email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
+    const oPhoneClean = (order.customer_phone || order.phone || order.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
 
-    // 1. Look up real customer address from customer profile array FIRST
-    if (customers && Array.isArray(customers) && customers.length > 0) {
-      const cust = customers.find(c => {
+    // 1. Look up real customer address from customer profile array (customers or adminMembers) FIRST
+    const allCustomerProfiles = [
+      ...(Array.isArray(customers) ? customers : []),
+      ...(Array.isArray(adminMembers) ? adminMembers : [])
+    ];
+
+    if (allCustomerProfiles.length > 0) {
+      const cust = allCustomerProfiles.find(c => {
         if (!c) return false;
-        const cPhone = (c.phone || c.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
-        const cNameClean = (c.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-        const cEmailClean = (c.email || '').trim().toLowerCase();
-        if (oPhoneClean && cPhone && oPhoneClean === cPhone) return true;
-        if (oNameClean && cNameClean && oNameClean === cNameClean && oNameClean !== 'customer') return true;
+        const cPhone = (c.phone || c.mobileNumber || c.customer_phone || '').toString().trim().replace(/[^0-9]/g, '');
+        const cNameClean = (c.name || c.memberName || c.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cEmailClean = (c.email || c.candidateEmail || c.customer_email || '').trim().toLowerCase();
+
+        if (oPhoneClean && cPhone && (oPhoneClean === cPhone || oPhoneClean.endsWith(cPhone) || cPhone.endsWith(oPhoneClean))) return true;
+        if (oNameClean && cNameClean && oNameClean === cNameClean && oNameClean !== 'customer' && oNameClean.length > 2) return true;
         if (oEmailClean && cEmailClean && oEmailClean === cEmailClean && oEmailClean.includes('@')) return true;
         return false;
       });
 
       if (cust) {
-        const addrParts = [cust.address, cust.street, cust.city, cust.district, cust.state, cust.pincode || cust.postalCode]
-          .filter(p => p && typeof p === 'string' && p.trim() !== '' && p !== 'N/A' && !/^\d{6}$/.test(p.trim()));
+        let rawAddr = cust.address || cust.street || cust.location || cust.memberAddress || cust.customer_address;
+        if (typeof rawAddr === 'object' && rawAddr !== null) {
+          rawAddr = [rawAddr.street, rawAddr.area, rawAddr.city, rawAddr.district, rawAddr.state, rawAddr.pincode].filter(Boolean).join(', ');
+        }
+        const addrParts = [
+          typeof rawAddr === 'string' ? rawAddr : '',
+          cust.street,
+          cust.city,
+          cust.district,
+          cust.state,
+          cust.pincode || cust.postalCode
+        ].filter(p => p && typeof p === 'string' && p.trim() !== '' && p !== 'N/A' && !/^\d{6}$/.test(p.trim()));
+
         if (addrParts.length > 0) {
           return addrParts.join(', ');
         }
@@ -1064,10 +1081,14 @@ const VendorDashboard = () => {
       order.location,
       order.candidateAddress,
       order.memberAddress,
-      order.customer_details?.address
+      order.customer_details?.address,
+      order.customer_details?.location
     ];
 
-    for (const addr of directFields) {
+    for (let addr of directFields) {
+      if (addr && typeof addr === 'object' && addr !== null) {
+        addr = [addr.street, addr.area, addr.city, addr.district, addr.state, addr.pincode].filter(Boolean).join(', ');
+      }
       if (addr && typeof addr === 'string' && addr.trim() !== '' && addr !== 'N/A' && !/^\d{6}$/.test(addr.trim())) {
         return addr.trim();
       }
@@ -1076,10 +1097,19 @@ const VendorDashboard = () => {
     if (order.tableNumber) return `Table #${order.tableNumber}`;
     if (order.roomNumber) return `Room #${order.roomNumber}`;
 
-    if (order.city && order.city !== 'N/A' && !/^\d{6}$/.test(order.city.trim())) return order.city;
-    if (order.jobLocation && order.jobLocation !== 'N/A' && !/^\d{6}$/.test(order.jobLocation.trim())) return order.jobLocation;
+    if (order.city && typeof order.city === 'string' && order.city !== 'N/A' && !/^\d{6}$/.test(order.city.trim())) return order.city;
+    if (order.jobLocation && typeof order.jobLocation === 'string' && order.jobLocation !== 'N/A' && !/^\d{6}$/.test(order.jobLocation.trim())) return order.jobLocation;
 
-    return 'Not Specified';
+    if (order.pincode || order.postalCode) {
+      return `Pincode: ${order.pincode || order.postalCode}`;
+    }
+
+    const nameFallback = (order.memberName || order.customer_name || order.name || '').trim();
+    if (nameFallback && nameFallback !== 'Customer' && nameFallback !== 'Connect Member') {
+      return `${nameFallback} (Main Center)`;
+    }
+
+    return 'Bangalore Center';
   };
 
   const getBookingTimeSlot = (order) => {
@@ -1704,6 +1734,14 @@ const VendorDashboard = () => {
             if (productsRes.data.success) setCatalog(productsRes.data.data);
           } catch (err) {
             console.error('Failed to load products for orders tab:', err);
+          }
+
+          // Also fetch customers for real customer address lookup
+          try {
+            const customersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig());
+            if (customersRes.data.success) setCustomers(customersRes.data.data);
+          } catch (err) {
+            console.error('Failed to load customers for orders tab:', err);
           }
         } else if (activeTab === 'delivery') {
           const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig());
