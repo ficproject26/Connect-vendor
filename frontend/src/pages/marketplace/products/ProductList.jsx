@@ -418,7 +418,7 @@ const ProductList = () => {
                         }
 
                         return (
-                          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-4">
                             {filteredCatalog.map(item => {
                               const isOutOfStock = (item.status && (
                                 item.status.toLowerCase().includes('out') ||
@@ -433,12 +433,12 @@ const ProductList = () => {
                                     if (e.target.closest('button')) return;
                                     handleOpenSalesDetails(item);
                                   }}
-                                  className={`glass-card rounded-2xl p-4 flex flex-col justify-between hover-card cursor-pointer transition-all ${
+                                  className={`glass-card rounded-xl sm:rounded-2xl p-2.5 sm:p-3 flex flex-col justify-between hover-card cursor-pointer transition-all ${
                                     isOutOfStock ? 'bg-slate-50/80 dark:bg-slate-900/40 border-slate-200/80 opacity-90' : ''
                                   }`}
                                 >
                                   <div>
-                                    <div className="mb-3 rounded-xl overflow-hidden aspect-video bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
+                                    <div className="mb-3 rounded-xl overflow-hidden aspect-[16/10] bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
                                       {isOutOfStock && (
                                         <div className="absolute top-4 -left-9 -rotate-45 bg-[#4a5568]/90 text-white text-[9px] font-extrabold uppercase tracking-widest py-1 px-8 shadow-md z-10 pointer-events-none text-center min-w-[140px]">
                                           {item.status && item.status.toLowerCase().includes('service') ? 'OUT OF SERVICE' : 'OUT OF STOCK'}

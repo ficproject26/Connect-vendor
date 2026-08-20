@@ -4291,7 +4291,7 @@ const VendorDashboard = () => {
                         }
 
                         return (
-                          <div className="grid grid-cols-2 gap-2 sm:gap-4">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-4">
                             {sortedCatalog.map(item => {
                               const isOutOfStock = (item.status && (
                                 item.status.toLowerCase().includes('out') ||
@@ -4306,12 +4306,12 @@ const VendorDashboard = () => {
                                     if (e.target.closest('button')) return;
                                     handleOpenSalesDetails(item);
                                   }}
-                                  className={`glass-card rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between h-full hover-card cursor-pointer transition-all border border-slate-200/60 dark:border-slate-800/80 shadow-sm ${
+                                  className={`glass-card rounded-xl sm:rounded-2xl p-2.5 sm:p-3 flex flex-col justify-between h-full hover-card cursor-pointer transition-all border border-slate-200/60 dark:border-slate-800/80 shadow-sm ${
                                     isOutOfStock ? 'bg-slate-50/80 dark:bg-slate-900/40 border-slate-200/80 opacity-90' : ''
                                   }`}
                                 >
                                   <div>
-                                    <div className="mb-2 rounded-lg sm:rounded-xl overflow-hidden aspect-[16/9] bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
+                                    <div className="mb-2 rounded-lg sm:rounded-xl overflow-hidden aspect-[16/10] bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
                                       {isOutOfStock && (
                                         <div className="absolute top-3 -left-9 -rotate-45 bg-[#4a5568]/90 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-widest py-0.5 sm:py-1 px-8 shadow-md z-10 pointer-events-none text-center min-w-[130px]">
                                           {item.status && item.status.toLowerCase().includes('service') ? 'OUT OF SERVICE' : 'OUT OF STOCK'}
@@ -4375,7 +4375,7 @@ const VendorDashboard = () => {
                                         );
                                       })()}
                                     </div>
-                                    <h3 className={`text-xs sm:text-sm font-bold text-left leading-tight sm:leading-snug break-words mt-0.5 ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>{item.name}</h3>
+                                    <h3 className={`text-xs sm:text-sm font-bold text-left leading-tight sm:leading-snug break-words mt-0.5 line-clamp-1 ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`} title={item.name}>{item.name}</h3>
                                     
                                     {/* Item Rating */}
                                     {(() => {
@@ -4409,19 +4409,19 @@ const VendorDashboard = () => {
                                       const currentStatus = isItemOutOfStock ? 'Out of Stock' : (item.status || 'Available');
 
                                       return (
-                                        <div className={`mt-2 grid gap-1 text-[9px] sm:text-xs bg-slate-50 dark:bg-slate-900/60 p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                        <div className={`mt-2 grid gap-1 text-[9px] sm:text-[10px] bg-slate-50 dark:bg-slate-900/60 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                           <div className="text-center">
-                                            <span className="block text-[7px] sm:text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
+                                            <span className="block text-[7px] sm:text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
                                             <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{currentStatus}</span>
                                           </div>
                                           {shouldShowStock && item.stock !== undefined && (
                                             <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                              <span className="block text-[7px] sm:text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
+                                              <span className="block text-[7px] sm:text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
                                               <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
                                             </div>
                                           )}
                                           <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[7px] sm:text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Customers'}</span>
+                                            <span className="block text-[7px] sm:text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Customers'}</span>
                                             <span className="font-bold text-emerald-600 dark:text-emerald-400">{['Services', 'Stay', 'Travel'].includes(mainCat) ? salesCount : customersCount}</span>
                                           </div>
                                         </div>
