@@ -356,7 +356,8 @@ const loginVendor = async (req, res) => {
 
     // Find user by email (case-insensitive)
     const cleanEmail = email.trim().toLowerCase();
-    const user = await User.findOne({ email: { $regex: new RegExp('^' + cleanEmail + '$', 'i') } });
+    const escapedEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const user = await User.findOne({ email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') } });
     const userRole = (user?.role || '').toLowerCase();
     if (!user || (userRole !== 'vendor' && userRole !== 'admin')) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -364,7 +365,8 @@ const loginVendor = async (req, res) => {
 
     // Check Vendor status
     const vendorStatus = (user.status || '').toLowerCase().trim();
-    const isNotActive = !['approved', 'active', 'assigned'].includes(vendorStatus) || user.isActive === false || user.isApproved === false || user.isLocked === true;
+    const isApprovedStatus = ['approved', 'active', 'assigned'].includes(vendorStatus) || user.isApproved === true || user.isActive === true;
+    const isNotActive = !isApprovedStatus || user.isActive === false || user.isLocked === true;
 
     if (userRole === 'vendor' && isNotActive) {
       if (vendorStatus === 'suspended' || user.isActive === false || user.isLocked === true) {
