@@ -33,7 +33,7 @@ export const getBackendUrl = () => {
   }
 
   // Deployed backend URL fallback
-  return 'http://43.204.141.105:8002';
+  return 'http://13.203.197.69:8002';
 };
 
 // Set up Axios request interceptor to dynamically rewrite backend URLs and inject headers
@@ -46,7 +46,8 @@ axios.interceptors.request.use(
         config.url.includes(':8001') || 
         config.url.includes(':8002') ||
         config.url.includes('trycloudflare.com') ||
-        config.url.includes('43.204.141.105')
+        config.url.includes('43.204.141.105') ||
+        config.url.includes('13.203.197.69')
       ) {
         // Replaces localhost ports or stale cloud tunnels/IPs with active backendUrl
         config.url = config.url.replace(/^https?:\/\/[^/]+/, backendUrl);
@@ -242,7 +243,8 @@ export const formatImageUrl = (url) => {
     clean.includes('trycloudflare.com') ||
     clean.includes(':8000') ||
     clean.includes(':8001') ||
-    clean.includes('43.204.141.105')
+    clean.includes('43.204.141.105') ||
+    clean.includes('13.203.197.69')
   ) {
     clean = clean.replace(/^https?:\/\/[^/]+/, backend || '');
     return clean;

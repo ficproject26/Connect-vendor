@@ -1,8 +1,21 @@
 {
-  "buildCommand": "npm run build --prefix frontend",
-  "outputDirectory": "frontend/dist",
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
   "routes": [
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    {
+      "src": "/api/(.*)",
+      "dest": "http://13.203.197.69:8002/api/$1"
+    },
+    {
+      "src": "/uploads/(.*)",
+      "dest": "http://13.203.197.69:8002/uploads/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
   ]
 }
