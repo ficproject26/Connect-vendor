@@ -89,6 +89,11 @@ axios.interceptors.request.use(
   }
 );
 
+// --- RETRY LOGIC for sleeping Render backend ---
+// Retry up to 3 times with increasing delay when backend is waking up
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 3000; // start with 3 seconds
+
 const sanitizeResponseUrls = (val, backendUrl) => {
   if (!val) return val;
   if (typeof val === 'string') {
