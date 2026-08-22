@@ -359,7 +359,10 @@ const loginVendor = async (req, res) => {
     const escapedEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const user = await User.findOne({ email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') } });
     const userRole = (user?.role || '').toLowerCase();
-    if (!user || (userRole !== 'vendor' && userRole !== 'admin')) {
+    const isVendorOrAdmin = userRole.includes('vendor') || userRole.includes('admin') || Boolean(user.vendorType) || Boolean(user.isVendor);
+    
+    if (!user || !isVendorOrAdmin) {
+      console.warn(`[Login Failed] No vendor user found for email: ${cleanEmail}`);
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
@@ -368,7 +371,7 @@ const loginVendor = async (req, res) => {
     const isApprovedStatus = ['approved', 'active', 'assigned'].includes(vendorStatus) || user.isApproved === true || user.isActive === true;
     const isNotActive = !isApprovedStatus || user.isActive === false || user.isLocked === true;
 
-    if (userRole === 'vendor' && isNotActive) {
+    if (isNotActive && userRole !== 'admin') {
       if (vendorStatus === 'suspended' || user.isActive === false || user.isLocked === true) {
         return res.status(403).json({ 
           success: false, 
