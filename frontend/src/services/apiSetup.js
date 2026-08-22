@@ -235,27 +235,23 @@ export const formatImageUrl = (url) => {
   }
 
   let backend = getBackendUrl();
-  if (!backend && typeof window !== 'undefined') {
-    const hostname = window.location.hostname || 'localhost';
-    backend = `http://${hostname}:8002`;
+  if (!backend || !backend.startsWith('http')) {
+    backend = 'http://13.203.197.69:8002';
   }
-  if (backend && backend.endsWith('/api')) {
+  if (backend.endsWith('/api')) {
     backend = backend.substring(0, backend.length - 4);
   }
 
-  // Rewrite stale Cloudflare tunnel hostnames or outdated ports/IPs to active backend URL
-  if (
-    clean.includes('trycloudflare.com') ||
-    clean.includes(':8000') ||
-    clean.includes(':8001') ||
-    clean.includes('43.204.141.105') ||
-    clean.includes('13.203.197.69')
-  ) {
-    clean = clean.replace(/^https?:\/\/[^/]+/, backend || '');
-    return clean;
-  }
-
+  // If already an absolute HTTP/HTTPS URL
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    if (
+      clean.includes('trycloudflare.com') ||
+      clean.includes(':8000') ||
+      clean.includes(':8001') ||
+      clean.includes('43.204.141.105')
+    ) {
+      return clean.replace(/^https?:\/\/[^/]+/, backend);
+    }
     return clean;
   }
 
