@@ -33,7 +33,7 @@ export const getBackendUrl = () => {
   }
 
   // Deployed backend URL fallback
-  return 'http://13.203.197.69:8002';
+  return 'https://connect-vendor.onrender.com';
 };
 
 // Set up Axios request interceptor to dynamically rewrite backend URLs and inject headers
@@ -236,7 +236,7 @@ export const formatImageUrl = (url) => {
 
   let backend = getBackendUrl();
   if (!backend || !backend.startsWith('http')) {
-    backend = 'http://13.203.197.69:8002';
+    backend = 'https://connect-vendor.onrender.com';
   }
   if (backend.endsWith('/api')) {
     backend = backend.substring(0, backend.length - 4);

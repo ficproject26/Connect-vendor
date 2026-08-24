@@ -286,8 +286,10 @@ router.get('/products', async (req, res) => {
         operatingHours: ''
       };
       let rawImg = p.imageUrl || p.image || p.img || (p.imageUrls && p.imageUrls.length > 0 ? p.imageUrls[0] : '');
-      if (rawImg && rawImg.includes('trycloudflare.com')) {
-        rawImg = rawImg.replace(/^https?:\/\/[^/]+/, baseUrl);
+      if (rawImg) {
+        if (rawImg.includes('vercel.app') || rawImg.includes('trycloudflare.com') || rawImg.includes(':8000') || rawImg.includes(':8001') || rawImg.includes('43.204.141.105')) {
+          rawImg = rawImg.replace(/^https?:\/\/[^/]+/, baseUrl);
+        }
       }
       const finalImg = rawImg 
         ? (rawImg.startsWith('/uploads') ? `${baseUrl}${rawImg}` : rawImg)
@@ -341,7 +343,10 @@ router.get('/products', async (req, res) => {
         image: finalImg,
         images: p.imageUrls && p.imageUrls.length > 0
           ? p.imageUrls.map(img => {
-              const cleanImg = img.includes('trycloudflare.com') ? img.replace(/^https?:\/\/[^/]+/, baseUrl) : img;
+              let cleanImg = img;
+              if (cleanImg.includes('vercel.app') || cleanImg.includes('trycloudflare.com') || cleanImg.includes(':8000') || cleanImg.includes(':8001') || cleanImg.includes('43.204.141.105')) {
+                cleanImg = cleanImg.replace(/^https?:\/\/[^/]+/, baseUrl);
+              }
               return cleanImg.startsWith('/uploads') ? `${baseUrl}${cleanImg}` : cleanImg;
             })
           : [finalImg],

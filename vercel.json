@@ -4,11 +4,11 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "http://13.203.197.69:8002/api/$1"
+      "dest": "https://connect-vendor.onrender.com/api/$1"
     },
     {
       "src": "/uploads/(.*)",
-      "dest": "http://13.203.197.69:8002/uploads/$1"
+      "dest": "https://connect-vendor.onrender.com/uploads/$1"
     },
     {
       "handle": "filesystem"

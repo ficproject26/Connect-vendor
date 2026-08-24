@@ -2,8 +2,8 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist",
   "routes": [
-    { "src": "/api/(.*)", "dest": "http://13.203.197.69:8002/api/$1" },
-    { "src": "/uploads/(.*)", "dest": "http://13.203.197.69:8002/uploads/$1" },
+    { "src": "/api/(.*)", "dest": "https://connect-vendor.onrender.com/api/$1" },
+    { "src": "/uploads/(.*)", "dest": "https://connect-vendor.onrender.com/uploads/$1" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
