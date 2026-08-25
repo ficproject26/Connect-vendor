@@ -75,6 +75,9 @@ const UserSchema = new mongoose.Schema({
   primaryBusinessId: { type: String }
 }, { timestamps: true });
 
+UserSchema.index({ role: 1, status: 1 });
+UserSchema.index({ createdAt: -1 });
+
 // --- MEMBERSHIP PLAN SCHEMA ---
 const MembershipPlanSchema = new mongoose.Schema({
   _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },

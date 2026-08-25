@@ -354,15 +354,24 @@ const loginVendor = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please enter email and password' });
     }
 
-    // Find user by email (case-insensitive)
+    // Find user by email (fast indexed lookup first)
     const cleanEmail = email.trim().toLowerCase();
-    const escapedEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const user = await User.findOne({ email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') } });
-    const userRole = (user?.role || '').toLowerCase();
+    let user = await User.findOne({ email: cleanEmail });
+    if (!user) {
+      const escapedEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      user = await User.findOne({ email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') } });
+    }
+
+    if (!user) {
+      console.warn(`[Login Failed] No vendor user found for email: ${cleanEmail}`);
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    const userRole = (user.role || '').toLowerCase();
     const isVendorOrAdmin = userRole.includes('vendor') || userRole.includes('admin') || Boolean(user.vendorType) || Boolean(user.isVendor);
     
-    if (!user || !isVendorOrAdmin) {
-      console.warn(`[Login Failed] No vendor user found for email: ${cleanEmail}`);
+    if (!isVendorOrAdmin) {
+      console.warn(`[Login Failed] User role is not vendor or admin for email: ${cleanEmail}`);
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
@@ -401,6 +410,9 @@ const loginVendor = async (req, res) => {
     }
 
     // Verify password
+    if (!user || !user.password) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -424,7 +436,7 @@ const loginVendor = async (req, res) => {
     });
   } catch (error) {
     console.error('Login Vendor Error:', error);
-    res.status(500).json({ success: false, message: 'Server error during vendor login' });
+    res.status(500).json({ success: false, message: error.message || 'Server error during vendor login' });
   }
 };
 
