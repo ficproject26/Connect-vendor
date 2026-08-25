@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 async function testPublicProducts() {
-  const uri = process.env.MONGODB_URI || 'mongodb+srv://Connect_App:Connect123@cluster0.k1s5dbl.mongodb.net/connect_db?appName=Cluster0';
+  const uri = process.env.MONGODB_URI || 'mongodb+srv://Connect-app:Connect123@cluster0.fzj1k5l.mongodb.net/?appName=Cluster0';
   await mongoose.connect(uri);
   console.log('Connected to MongoDB');
 
