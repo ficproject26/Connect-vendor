@@ -350,7 +350,7 @@ const loginVendor = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
       return res.status(400).json({ success: false, message: 'Please enter email and password' });
     }
 
@@ -422,11 +422,16 @@ const loginVendor = async (req, res) => {
     delete userResponse.password;
     userResponse.id = user._id;
     if (!userResponse.vendorId || !/^ven-fic-/i.test(userResponse.vendorId)) {
-      const currentYear = new Date().getFullYear();
-      const count = await User.countDocuments({ role: 'Vendor' });
-      const formatted = `ven-fic-${currentYear}-v${String(count || 1).padStart(3, '0')}`;
-      userResponse.vendorId = user.vendorId && /^ven-fic-/i.test(user.vendorId) ? user.vendorId : formatted;
-      userResponse.registrationId = user.registrationId && /^ven-fic-/i.test(user.registrationId) ? user.registrationId : formatted;
+      try {
+        const currentYear = new Date().getFullYear();
+        const count = await User.countDocuments({ role: 'Vendor' }).catch(() => 1);
+        const formatted = `ven-fic-${currentYear}-v${String(count || 1).padStart(3, '0')}`;
+        userResponse.vendorId = (user.vendorId && /^ven-fic-/i.test(user.vendorId)) ? user.vendorId : formatted;
+        userResponse.registrationId = (user.registrationId && /^ven-fic-/i.test(user.registrationId)) ? user.registrationId : formatted;
+      } catch (e) {
+        userResponse.vendorId = userResponse.vendorId || `ven-fic-2026-v001`;
+        userResponse.registrationId = userResponse.registrationId || `ven-fic-2026-v001`;
+      }
     }
 
     res.status(200).json({

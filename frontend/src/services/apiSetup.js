@@ -135,6 +135,10 @@ axios.interceptors.response.use(
       config.url.includes('/api/auth/register')
     );
 
+    if (isAuthRoute) {
+      return Promise.reject(error);
+    }
+
     const isAuthOrSuspendedError = !isAuthRoute && error.response && (
       error.response.status === 401 ||
       error.response.status === 403 ||
