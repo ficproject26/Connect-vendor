@@ -644,14 +644,20 @@ const VendorDashboard = () => {
 
   useEffect(() => {
     if (!isItemModalOpen) return;
-    const catToFetch = itemForm.subcategory || itemForm.category;
+    const childCat = (itemForm.subcategory || '').trim();
+    const subCat = (itemForm.category || '').trim();
+    const catToFetch = childCat || subCat;
     if (!catToFetch) {
       setDynamicCategoryFields([]);
       return;
     }
     let active = true;
     axios.get(`${getBackendUrl()}/api/public/categories/subcategories/fields`, {
-      params: { subcategory: catToFetch, name: itemForm.category }
+      params: { 
+        subSubcategory: childCat,
+        subcategory: subCat, 
+        name: selectedMainCat 
+      }
     }).then(res => {
       if (active && res.data && res.data.success && Array.isArray(res.data.requiredVendorFields)) {
         setDynamicCategoryFields(res.data.requiredVendorFields);
@@ -660,7 +666,7 @@ const VendorDashboard = () => {
       if (active) setDynamicCategoryFields([]);
     });
     return () => { active = false; };
-  }, [isItemModalOpen, itemForm.category, itemForm.subcategory]);
+  }, [isItemModalOpen, itemForm.category, itemForm.subcategory, selectedMainCat]);
 
   useEffect(() => {
     const fetchDynamicCategories = async () => {
