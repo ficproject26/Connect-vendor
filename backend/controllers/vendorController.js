@@ -287,7 +287,7 @@ const getProducts = async (req, res) => {
         { vendorId: parentId },
         { vendor_id: parentId }
       ]
-    });
+    }).lean();
 
     const filtered = products.filter(p => {
       const pVendorId = (p.vendorId || p.vendor_id || '').toString();
@@ -467,7 +467,7 @@ const getOrders = async (req, res) => {
         { vendorId: { $in: businessIds } },
         { vendor_id: { $in: businessIds } }
       ]
-    });
+    }).lean();
 
     const productMap = {};
     const productToBusinessMap = {};
@@ -507,11 +507,11 @@ const getOrders = async (req, res) => {
         { vendorId: { $in: businessIds } },
         { vendor_id: { $in: businessIds } }
       ]
-    }).sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 }).lean();
 
     // Fetch membership cards for memberIds in orders
     const memberIds = [...new Set(orders.map(o => o.memberId || o.customer_id).filter(Boolean))];
-    const membershipCards = await MembershipCard.find({ userId: { $in: memberIds } });
+    const membershipCards = await MembershipCard.find({ userId: { $in: memberIds } }).select('userId planName').lean();
     const membershipMap = {};
     membershipCards.forEach(c => {
       if (c.userId && c.planName) {

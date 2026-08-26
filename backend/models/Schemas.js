@@ -190,6 +190,12 @@ const ProductSchema = new mongoose.Schema({
   customFields: { type: mongoose.Schema.Types.Mixed, default: {} }
 }, { timestamps: true, strict: false });
 
+ProductSchema.index({ vendorId: 1, category: 1 });
+ProductSchema.index({ vendor_id: 1 });
+ProductSchema.index({ category: 1, subcategory: 1 });
+ProductSchema.index({ status: 1, createdAt: -1 });
+ProductSchema.index({ createdAt: -1 });
+
 // --- ORDER / BOOKING SCHEMA ---
 const OrderSchema = new mongoose.Schema({
   _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
@@ -225,6 +231,10 @@ const OrderSchema = new mongoose.Schema({
   tableNumber: { type: String },             // Restaurant
   prescriptionUrl: { type: String }          // Pharmacy
 }, { timestamps: true });
+
+OrderSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
+OrderSchema.index({ memberId: 1, createdAt: -1 });
+OrderSchema.index({ status: 1, createdAt: -1 });
 
 OrderSchema.pre('save', function(next) {
   if (!this.id) {
