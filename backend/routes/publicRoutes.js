@@ -312,7 +312,7 @@ router.get('/products', async (req, res) => {
         category: p.category || vendor.category || 'General',
         subcategory: p.subcategory || '',
         subSubcategory: p.subSubcategory || '',
-        subNavbarCategory: subNavbarCategory,
+        subNavbarCategory: p.subNavbarCategory || p.category || '',
         warranty: p.warranty,
         specialization: p.specialization,
         pinCode: p.pinCode,
