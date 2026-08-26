@@ -567,6 +567,38 @@ router.post('/orders', async (req, res) => {
   }
 });
 
+// @route   GET /api/public/categories/subcategories/fields
+// @desc    Get required vendor fields for subcategory or child category
+router.get('/categories/subcategories/fields', async (req, res) => {
+  try {
+    const { name, subcategory, subcategoryId } = req.query;
+    let query = { isDeleted: { $ne: true } };
+    if (subcategoryId) {
+      query._id = subcategoryId;
+    } else if (subcategory || name) {
+      const catName = (subcategory || name).trim();
+      const escName = catName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.$or = [
+        { subSubcategory: new RegExp(`^${escName}$`, 'i') },
+        { subcategory: new RegExp(`^${escName}$`, 'i') },
+        { name: new RegExp(`^${escName}$`, 'i') }
+      ];
+    } else {
+      return res.json({ success: true, requiredVendorFields: [] });
+    }
+
+    const catDoc = await Category.findOne(query).sort({ level: -1 }).select('name subcategory subSubcategory requiredVendorFields').lean();
+    return res.json({
+      success: true,
+      category: catDoc?.subSubcategory || catDoc?.subcategory || catDoc?.name || subcategory || name || '',
+      requiredVendorFields: catDoc?.requiredVendorFields || []
+    });
+  } catch (err) {
+    console.error('Error fetching category required vendor fields:', err);
+    return res.json({ success: true, requiredVendorFields: [] });
+  }
+});
+
 // @route   GET /api/public/categories
 // @desc    Get dynamic admin categories and base taxonomy
 router.get('/categories', async (req, res) => {

@@ -650,7 +650,7 @@ const VendorDashboard = () => {
       return;
     }
     let active = true;
-    axios.get(`${getBackendUrl()}/api/admin/categories/subcategories/fields`, {
+    axios.get(`${getBackendUrl()}/api/public/categories/subcategories/fields`, {
       params: { subcategory: catToFetch, name: itemForm.category }
     }).then(res => {
       if (active && res.data && res.data.success && Array.isArray(res.data.requiredVendorFields)) {

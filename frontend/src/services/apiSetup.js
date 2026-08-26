@@ -139,11 +139,17 @@ axios.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    const isAuthOrSuspendedError = !isAuthRoute && error.response && (
+    const isPublicOrCategoryRoute = config?.url && (
+      config.url.includes('/api/public') ||
+      config.url.includes('/categories')
+    );
+
+    const isAuthOrSuspendedError = !isAuthRoute && !isPublicOrCategoryRoute && error.response && (
       error.response.status === 401 ||
-      error.response.status === 403 ||
-      error.response.data?.isTerminated ||
-      (error.response.data?.message && /suspended|inactive|rejected|not authorized|denied|terminated/i.test(error.response.data.message))
+      (error.response.status === 403 && (
+        error.response.data?.isTerminated ||
+        (error.response.data?.message && /suspended|inactive|rejected|account terminated/i.test(error.response.data.message))
+      ))
     );
 
     // Don't retry if no config, or already retried max times, or it's a client error (4xx)
