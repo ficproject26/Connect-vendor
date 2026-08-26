@@ -634,11 +634,33 @@ const VendorDashboard = () => {
     name: '', description: '', price: '', category: '', stock: '0', unit: 'count',
     warranty: '', specialization: '', pinCode: '', duration: '', roomType: '', guests: '2', amenities: [], imageUrl: '', imageUrls: [], status: 'Available',
     cardTypes: ['Silver', 'Gold', 'Diamond'],
-    boardingPoint: '', boardingTime: '', dropPoint: '', arrivalTime: '', distance: '', busTiming: '', stoppings: []
+    boardingPoint: '', boardingTime: '', dropPoint: '', arrivalTime: '', distance: '', busTiming: '', stoppings: [],
+    specifications: {}
   });
   const [selectedMainCat, setSelectedMainCat] = useState('');
   const [selectedSubcat, setSelectedSubcat] = useState('');
   const [dbCategories, setDbCategories] = useState([]);
+  const [dynamicCategoryFields, setDynamicCategoryFields] = useState([]);
+
+  useEffect(() => {
+    if (!isItemModalOpen) return;
+    const catToFetch = itemForm.subcategory || itemForm.category;
+    if (!catToFetch) {
+      setDynamicCategoryFields([]);
+      return;
+    }
+    let active = true;
+    axios.get(`${getBackendUrl()}/api/admin/categories/subcategories/fields`, {
+      params: { subcategory: catToFetch, name: itemForm.category }
+    }).then(res => {
+      if (active && res.data && res.data.success && Array.isArray(res.data.requiredVendorFields)) {
+        setDynamicCategoryFields(res.data.requiredVendorFields);
+      }
+    }).catch(err => {
+      if (active) setDynamicCategoryFields([]);
+    });
+    return () => { active = false; };
+  }, [isItemModalOpen, itemForm.category, itemForm.subcategory]);
 
   useEffect(() => {
     const fetchDynamicCategories = async () => {
@@ -2223,20 +2245,9 @@ const VendorDashboard = () => {
 
     setSelectedMainCat(defaultMain);
 
-    let catVal = vendorCategory;
-    if (defaultMain && COMPLETE_CAT_TAXONOMY[defaultMain]) {
-      const keys = Object.keys(COMPLETE_CAT_TAXONOMY[defaultMain]);
-      const foundKey = keys.find(k => k === vendorCategory || (COMPLETE_CAT_TAXONOMY[defaultMain][k] && COMPLETE_CAT_TAXONOMY[defaultMain][k].includes(vendorCategory)));
-      if (foundKey) {
-        catVal = foundKey;
-      } else if (keys.length > 0) {
-        catVal = keys[0];
-      }
-    }
-    if (!catVal) catVal = (terms.categories && terms.categories[0]) || 'General';
-
-    const subOpts = (defaultMain && COMPLETE_CAT_TAXONOMY[defaultMain] && COMPLETE_CAT_TAXONOMY[defaultMain][catVal]) || [];
-    const childVal = subOpts.length > 0 ? (subOpts.includes(vendorCategory) ? vendorCategory : subOpts[0]) : '';
+    // Default category & subcategory to empty so vendor selects from real Admin DB categories
+    const catVal = '';
+    const childVal = '';
 
     setItemForm({
       name: '', description: '', price: '', originalPrice: '', category: catVal, subcategory: childVal, stock: '10', unit: 'count',
@@ -2246,7 +2257,8 @@ const VendorDashboard = () => {
       availableSizes: [], availableColors: [],
       jobType: 'Full-time', jobLocation: '', experience: '', skills: '', qualification: '', linkedProfile: '', contactNumber: '', mailId: '', department: '',
       deadline: '', applicationTips: '',
-      boardingPoint: '', boardingTime: '', dropPoint: '', arrivalTime: '', distance: '', busTiming: '', stoppings: []
+      boardingPoint: '', boardingTime: '', dropPoint: '', arrivalTime: '', distance: '', busTiming: '', stoppings: [],
+      specifications: {}
     });
     setIsEditItem(false);
     setIsItemModalOpen(true);
@@ -2309,7 +2321,8 @@ const VendorDashboard = () => {
       arrivalTime: item.arrivalTime || '',
       distance: item.distance || '',
       busTiming: item.busTiming || '',
-      stoppings: item.stoppings || []
+      stoppings: item.stoppings || [],
+      specifications: item.specifications || item.customFields || {}
     });
     setSelectedItemId(item._id);
     setIsEditItem(true);
@@ -8299,10 +8312,7 @@ const VendorDashboard = () => {
                       value={itemForm.category}
                       onChange={e => {
                         const newCat = e.target.value;
-                        const currentTax = getCategoryTaxonomy();
-                        const subOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][newCat]) || [];
-                        const firstChild = subOpts.length > 0 ? subOpts[0] : '';
-                        setItemForm(prev => ({ ...prev, category: newCat, subcategory: firstChild }));
+                        setItemForm(prev => ({ ...prev, category: newCat, subcategory: '' }));
                       }}
                       className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                     >
@@ -8312,8 +8322,7 @@ const VendorDashboard = () => {
                         const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
                         const invalidCategories = ['membership', 'count', 'general', 'standard', 'all_subcategories_deleted_marker', 'all_child_deleted_marker', 'na', 'n/a', 'undefined', 'null', 'orders'];
                         
-                        const rawKeys = taxParentKeys.length > 0 ? taxParentKeys : (itemForm.category ? [itemForm.category] : []);
-                        const parentKeys = [...new Set(rawKeys.map(k => (k || '').trim()))].filter(cat => {
+                        const parentKeys = [...new Set(taxParentKeys.map(k => (k || '').trim()))].filter(cat => {
                           if (!cat) return false;
                           const lower = cat.toLowerCase();
                           if (mainCatNames.some(m => m.toLowerCase() === lower)) return false;
@@ -8323,7 +8332,7 @@ const VendorDashboard = () => {
 
                         return (
                           <>
-                            <option value="" disabled={Boolean(itemForm.category)} className="bg-white dark:bg-slate-900 text-slate-400">
+                            <option value="" className="bg-white dark:bg-slate-900 text-slate-400">
                               -- Select Category --
                             </option>
                             {parentKeys.map(cat => (
@@ -8341,27 +8350,36 @@ const VendorDashboard = () => {
                     <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Child Category</label>
                     <select
                       value={itemForm.subcategory}
+                      disabled={!itemForm.category}
                       onChange={e => setItemForm(prev => ({ ...prev, subcategory: e.target.value }))}
-                      className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
+                      className={`w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white ${!itemForm.category ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                       {(() => {
+                        if (!itemForm.category) {
+                          return <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">-- Select Category First --</option>;
+                        }
+
                         const currentTax = getCategoryTaxonomy();
                         const taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
 
-                        const allSubOpts = (taxonomySubOpts && taxonomySubOpts.length > 0)
-                          ? (taxonomySubOpts.includes(itemForm.subcategory) ? taxonomySubOpts : [...taxonomySubOpts, itemForm.subcategory].filter(Boolean))
-                          : (itemForm.subcategory ? [itemForm.subcategory] : []);
-                        const uniqueOpts = [...new Set(allSubOpts)];
+                        const cleanChildOpts = [...new Set((taxonomySubOpts || []).filter(c => c && c !== 'ALL_CHILD_DELETED_MARKER' && c.toLowerCase() !== 'general' && c.toLowerCase() !== 'standard'))];
 
-                        if (uniqueOpts.length === 0) {
-                          return <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">General / Standard</option>;
+                        if (cleanChildOpts.length === 0) {
+                          return <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">-- No Child Category Available --</option>;
                         }
 
-                        return uniqueOpts.map(type => (
-                          <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {type}
-                          </option>
-                        ));
+                        return (
+                          <>
+                            <option value="" className="bg-white dark:bg-slate-900 text-slate-400">
+                              -- Select Child Category --
+                            </option>
+                            {cleanChildOpts.map(type => (
+                              <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                                {type}
+                              </option>
+                            ))}
+                          </>
+                        );
                       })()}
                     </select>
                   </div>
@@ -8604,10 +8622,7 @@ const VendorDashboard = () => {
                   value={itemForm.category}
                   onChange={e => {
                     const newCat = e.target.value;
-                    const currentTax = getCategoryTaxonomy();
-                    const subOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][newCat]) || [];
-                    const firstChild = subOpts.length > 0 ? subOpts[0] : '';
-                    setItemForm(prev => ({ ...prev, category: newCat, subcategory: firstChild }));
+                    setItemForm(prev => ({ ...prev, category: newCat, subcategory: '' }));
                   }}
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
                 >
@@ -8617,8 +8632,7 @@ const VendorDashboard = () => {
                     const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
                     const invalidCategories = ['membership', 'count', 'general', 'standard', 'all_subcategories_deleted_marker', 'all_child_deleted_marker', 'na', 'n/a', 'undefined', 'null', 'orders'];
                     
-                    const rawKeys = taxParentKeys.length > 0 ? taxParentKeys : (itemForm.category ? [itemForm.category] : []);
-                    const parentKeys = [...new Set(rawKeys.map(k => (k || '').trim()))].filter(cat => {
+                    const parentKeys = [...new Set(taxParentKeys.map(k => (k || '').trim()))].filter(cat => {
                       if (!cat) return false;
                       const lower = cat.toLowerCase();
                       if (mainCatNames.some(m => m.toLowerCase() === lower)) return false;
@@ -8628,7 +8642,7 @@ const VendorDashboard = () => {
 
                     return (
                       <>
-                        <option value="" disabled={Boolean(itemForm.category)} className="bg-white dark:bg-slate-900 text-slate-400">
+                        <option value="" className="bg-white dark:bg-slate-900 text-slate-400">
                           -- Select Category --
                         </option>
                         {parentKeys.map(cat => (
@@ -8646,31 +8660,75 @@ const VendorDashboard = () => {
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Child Category</label>
                 <select
                   value={itemForm.subcategory}
+                  disabled={!itemForm.category}
                   onChange={e => setItemForm(prev => ({ ...prev, subcategory: e.target.value }))}
-                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
+                  className={`w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white ${!itemForm.category ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   {(() => {
+                    if (!itemForm.category) {
+                      return <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">-- Select Category First --</option>;
+                    }
+
                     const currentTax = getCategoryTaxonomy();
                     const taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
 
-                    const allSubOpts = (taxonomySubOpts && taxonomySubOpts.length > 0)
-                      ? (taxonomySubOpts.includes(itemForm.subcategory) ? taxonomySubOpts : [...taxonomySubOpts, itemForm.subcategory].filter(Boolean))
-                      : (itemForm.subcategory ? [itemForm.subcategory] : []);
-                    const uniqueOpts = [...new Set(allSubOpts)];
+                    const cleanChildOpts = [...new Set((taxonomySubOpts || []).filter(c => c && c !== 'ALL_CHILD_DELETED_MARKER' && c.toLowerCase() !== 'general' && c.toLowerCase() !== 'standard'))];
 
-                    if (uniqueOpts.length === 0) {
-                      return <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">General / Standard</option>;
+                    if (cleanChildOpts.length === 0) {
+                      return <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">-- No Child Category Available --</option>;
                     }
 
-                    return uniqueOpts.map(type => (
-                      <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                        {type}
-                      </option>
-                    ));
+                    return (
+                      <>
+                        <option value="" className="bg-white dark:bg-slate-900 text-slate-400">
+                          -- Select Child Category --
+                        </option>
+                        {cleanChildOpts.map(type => (
+                          <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {type}
+                          </option>
+                        ))}
+                      </>
+                    );
                   })()}
                 </select>
               </div>
             </>
+          )}
+
+          {/* Dynamic Admin-Configured Required Vendor Fields */}
+          {dynamicCategoryFields && dynamicCategoryFields.length > 0 && (
+            <div className="space-y-3 p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 animate-fadeIn">
+              <div className="flex items-center gap-2 border-b border-amber-500/20 pb-2">
+                <span className="text-amber-600 dark:text-amber-400 font-extrabold text-xs uppercase tracking-wider">⚡ Required Product Fields ({itemForm.subcategory || itemForm.category})</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {dynamicCategoryFields.map(fieldName => (
+                  <div key={fieldName} className="space-y-1">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                      {fieldName} <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={(itemForm.specifications && itemForm.specifications[fieldName]) || ''}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setItemForm(prev => ({
+                          ...prev,
+                          specifications: {
+                            ...(prev.specifications || {}),
+                            [fieldName]: val
+                          }
+                        }));
+                      }}
+                      className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-medium"
+                      placeholder={`Enter ${fieldName} (e.g. ${fieldName === 'RAM' ? '16 GB' : fieldName === 'Display Size' ? '15.6 inch' : fieldName === 'Processor' ? 'Intel Core i7' : fieldName === 'Storage' ? '512 GB SSD' : 'value'})`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
 

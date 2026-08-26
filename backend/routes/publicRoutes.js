@@ -340,6 +340,8 @@ router.get('/products', async (req, res) => {
         distance: p.distance,
         busTiming: p.busTiming,
         stoppings: p.stoppings || [],
+        specifications: p.specifications || p.customFields || {},
+        customFields: p.customFields || p.specifications || {},
         image: finalImg,
         images: p.imageUrls && p.imageUrls.length > 0
           ? p.imageUrls.map(img => {

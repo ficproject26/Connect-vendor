@@ -203,8 +203,8 @@ const createProduct = async (req, res) => {
       imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
       availableSizes, availableColors,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
-      qualification, linkedProfile, contactNumber, mailId, department,
-      boardingPoint, boardingTime, dropPoint, arrivalTime, distance, busTiming, stoppings
+      boardingPoint, boardingTime, dropPoint, arrivalTime, distance, busTiming, stoppings,
+      specifications, customFields
     } = req.body;
 
     if (!name || price === undefined) {
@@ -261,7 +261,9 @@ const createProduct = async (req, res) => {
       arrivalTime,
       distance,
       busTiming,
-      stoppings: stoppings || []
+      stoppings: stoppings || [],
+      specifications: specifications || customFields || {},
+      customFields: customFields || specifications || {}
     });
 
     res.status(201).json({ success: true, message: 'Item created successfully', data: product });
@@ -403,7 +405,9 @@ const updateProduct = async (req, res) => {
         arrivalTime: arrivalTime !== undefined ? arrivalTime : product.arrivalTime,
         distance: distance !== undefined ? distance : product.distance,
         busTiming: busTiming !== undefined ? busTiming : product.busTiming,
-        stoppings: stoppings !== undefined ? stoppings : product.stoppings
+        stoppings: stoppings !== undefined ? stoppings : product.stoppings,
+        specifications: req.body.specifications !== undefined ? req.body.specifications : (req.body.customFields !== undefined ? req.body.customFields : product.specifications),
+        customFields: req.body.customFields !== undefined ? req.body.customFields : (req.body.specifications !== undefined ? req.body.specifications : product.customFields)
       }
     }, { new: true });
 

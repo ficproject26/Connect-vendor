@@ -185,8 +185,10 @@ const ProductSchema = new mongoose.Schema({
     stopName: { type: String },
     time: { type: String },
     distance: { type: String }
-  }]
-}, { timestamps: true });
+  }],
+  specifications: { type: mongoose.Schema.Types.Mixed, default: {} },
+  customFields: { type: mongoose.Schema.Types.Mixed, default: {} }
+}, { timestamps: true, strict: false });
 
 // --- ORDER / BOOKING SCHEMA ---
 const OrderSchema = new mongoose.Schema({
