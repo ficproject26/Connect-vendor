@@ -203,6 +203,7 @@ const createProduct = async (req, res) => {
       imageUrls, foodType, cardTypes, availableTimeSlots, bookingType,
       availableSizes, availableColors,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
+      qualification, linkedProfile, contactNumber, mailId, department,
       boardingPoint, boardingTime, dropPoint, arrivalTime, distance, busTiming, stoppings,
       specifications, customFields
     } = req.body;
@@ -269,7 +270,7 @@ const createProduct = async (req, res) => {
     res.status(201).json({ success: true, message: 'Item created successfully', data: product });
   } catch (error) {
     console.error('Create Product Error:', error);
-    res.status(500).json({ success: false, message: 'Server error creating catalog item' });
+    res.status(500).json({ success: false, message: error.message || 'Server error creating catalog item' });
   }
 };
 
