@@ -253,18 +253,24 @@ const BusinessList = () => {
       }, getAxiosConfig());
 
       if (res.data && res.data.success) {
-        setMessage('Business added successfully!');
-        dispatch(updateUser(res.data.user));
-        if (res.data.newBusinessId) {
-          dispatch(switchBusinessSuccess(res.data.newBusinessId));
+        if (res.data.isPendingApproval) {
+          setMessage(res.data.message || 'New business outlet request submitted successfully! It is currently pending Admin approval.');
+        } else {
+          setMessage('Business added successfully!');
+          if (res.data.newBusinessId) {
+            dispatch(switchBusinessSuccess(res.data.newBusinessId));
+          }
         }
+        dispatch(updateUser(res.data.user));
         setIsAddBusinessModalOpen(false);
         setAddBizForm({ businessName: '', vendorType: '', category: '', subcategory: '', address: '', pincode: '', phone: '' });
 
         if (typeof setNotifications === 'function') {
           const newNotification = {
             id: Date.now() + Math.random(),
-            text: `Successfully added and switched to new business: ${addBizForm.vendorType}!`
+            text: res.data.isPendingApproval
+              ? `New business request for ${addBizForm.vendorType} submitted! Pending Admin approval.`
+              : `Successfully added and switched to new business: ${addBizForm.vendorType}!`
           };
           setNotifications(prev => [newNotification, ...(prev || [])]);
         }

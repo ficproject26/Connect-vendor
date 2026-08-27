@@ -211,12 +211,21 @@ const Navbar = () => {
                             const isActive = biz._id === activeBusinessId;
                             const emoji = vendorTaxonomy[biz.vendorType]?.emoji || "🏢";
                             const bStatus = (biz.status || '').toLowerCase().trim();
+                            const isPending = ['pending', 'pending approval', 'pending_approval', 'under_verification'].includes(bStatus);
                             const isSuspended = ['suspended', 'inactive', 'rejected'].includes(bStatus) || biz.isActive === false;
 
                             return (
                               <button
                                 key={biz._id}
                                 onClick={() => {
+                                  if (isPending) {
+                                    alert('This business outlet request is currently pending Admin approval.');
+                                    return;
+                                  }
+                                  if (isSuspended) {
+                                    alert('This business profile is currently suspended.');
+                                    return;
+                                  }
                                   if (!isActive) {
                                     dispatch(switchBusinessSuccess(biz._id));
                                     setIsDropdownOpen(false);
@@ -225,14 +234,18 @@ const Navbar = () => {
                                 className={`w-full px-2 py-1.5 rounded-lg text-left flex items-center justify-between transition-all ${
                                   isActive
                                     ? 'bg-[#faed26]/10 border border-[#faed26]/30 text-slate-900 dark:text-white font-bold'
-                                    : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-400 border border-transparent'
+                                    : (isPending || isSuspended) ? 'opacity-70 cursor-not-allowed text-slate-400' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-400 border border-transparent'
                                 }`}
                               >
                                 <span className="flex items-center gap-2 truncate">
                                   <span className="text-base shrink-0">{emoji}</span>
                                   <span className="text-xs truncate font-medium text-slate-800 dark:text-slate-200">{biz.subcategory || biz.vendorType}</span>
                                 </span>
-                                {isSuspended ? (
+                                {isPending ? (
+                                  <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 uppercase shrink-0">
+                                    Pending
+                                  </span>
+                                ) : isSuspended ? (
                                   <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-rose-500 text-white uppercase shrink-0">
                                     Suspended
                                   </span>

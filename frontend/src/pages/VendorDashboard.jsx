@@ -1653,11 +1653,15 @@ const VendorDashboard = () => {
       }, getAxiosConfig());
 
       if (res.data && res.data.success) {
-        setMessage('Business added successfully!');
-        dispatch(updateUser(res.data.user));
-        if (res.data.newBusinessId) {
-          dispatch(switchBusinessSuccess(res.data.newBusinessId));
+        if (res.data.isPendingApproval) {
+          setMessage(res.data.message || 'New business outlet request submitted successfully! It is currently pending Admin approval.');
+        } else {
+          setMessage('Business added successfully!');
+          if (res.data.newBusinessId) {
+            dispatch(switchBusinessSuccess(res.data.newBusinessId));
+          }
         }
+        dispatch(updateUser(res.data.user));
         setIsAddBusinessModalOpen(false);
         setAddBizForm({ businessName: '', vendorType: '', category: '', subcategory: '', address: '', pincode: '', phone: '' });
 
@@ -1665,7 +1669,9 @@ const VendorDashboard = () => {
         if (typeof setNotifications === 'function') {
           const newNotification = {
             id: Date.now() + Math.random(),
-            text: `Successfully added and switched to new business: ${addBizForm.vendorType}!`
+            text: res.data.isPendingApproval
+              ? `New business request for ${addBizForm.vendorType} submitted! Pending Admin approval.`
+              : `Successfully added and switched to new business: ${addBizForm.vendorType}!`
           };
           setNotifications(prev => [newNotification, ...(prev || [])]);
         }
@@ -5617,23 +5623,49 @@ const VendorDashboard = () => {
                             <Trash2 size={12} />
                           </button>
                         )}
-                        {isActive ? (
-                          <span className="bg-[#faed26] text-slate-950 text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-wider">
-                            Active
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              dispatch(switchBusinessSuccess(biz._id));
-                              setMessage(`Switched business profile to ${biz.vendorType}!`);
-                            }}
-                            className="text-[#faed26] hover:underline font-bold transition-all"
-                          >
-                            Switch Profile &rarr;
-                          </button>
-                        )}
+                        {(() => {
+                          const bStatus = (biz.status || '').toLowerCase().trim();
+                          const isPending = ['pending', 'pending approval', 'pending_approval', 'under_verification'].includes(bStatus);
+                          const isSuspended = ['suspended', 'inactive', 'rejected'].includes(bStatus) || biz.isActive === false;
+
+                          if (isActive) {
+                            return (
+                              <span className="bg-[#faed26] text-slate-950 text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-wider">
+                                Active
+                              </span>
+                            );
+                          }
+
+                          if (isPending) {
+                            return (
+                              <span className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider">
+                                🟡 Pending Approval
+                              </span>
+                            );
+                          }
+
+                          if (isSuspended) {
+                            return (
+                              <span className="bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider">
+                                ⚫ Suspended
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                dispatch(switchBusinessSuccess(biz._id));
+                                setMessage(`Switched business profile to ${biz.vendorType}!`);
+                              }}
+                              className="text-[#faed26] hover:underline font-bold transition-all"
+                            >
+                              Switch Profile &rarr;
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

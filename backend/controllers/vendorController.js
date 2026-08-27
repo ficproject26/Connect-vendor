@@ -1411,13 +1411,17 @@ const addBusiness = async (req, res) => {
       phone: phone || user.mobileNumber || user.telephone || '',
       logo: user.logo || '',
       businessLicense: user.businessLicense || '',
-      businessImages: user.businessImages || []
+      businessImages: user.businessImages || [],
+      status: 'Pending Approval',
+      isActive: false,
+      createdAt: new Date()
     };
 
     if (!user.businesses) {
       user.businesses = [];
     }
     user.businesses.push(newBusiness);
+    user.markModified('businesses');
 
     await user.save();
 
@@ -1427,7 +1431,8 @@ const addBusiness = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Business added successfully',
+      message: 'New business outlet request submitted successfully! It is currently pending Admin approval.',
+      isPendingApproval: true,
       user: userResponse,
       newBusinessId: newBusiness._id
     });

@@ -61,12 +61,28 @@ const protect = async (req, res, next) => {
 
         if (activeBusinessId) {
           activeBusiness = user.businesses.find(b => b._id.toString() === activeBusinessId.toString());
+          if (activeBusiness) {
+            const bStatus = (activeBusiness.status || '').toLowerCase().trim();
+            if (['pending', 'pending approval', 'pending_approval', 'under_verification', 'suspended', 'rejected'].includes(bStatus) || activeBusiness.isActive === false) {
+              return res.status(403).json({
+                success: false,
+                isPendingApproval: true,
+                message: 'Access denied: Selected business outlet request is pending Admin approval or suspended.'
+              });
+            }
+          }
         }
 
         if (!activeBusiness) {
-          // fallback to primaryBusinessId or the first business
+          // fallback to primaryBusinessId or the first active business
           const primaryIdStr = user.primaryBusinessId ? user.primaryBusinessId.toString() : '';
-          activeBusiness = user.businesses.find(b => b._id.toString() === primaryIdStr) || user.businesses[0];
+          activeBusiness = user.businesses.find(b => {
+            const bStatus = (b.status || '').toLowerCase().trim();
+            return b._id.toString() === primaryIdStr && (bStatus === 'active' || bStatus === 'approved') && b.isActive !== false;
+          }) || user.businesses.find(b => {
+            const bStatus = (b.status || '').toLowerCase().trim();
+            return (bStatus === 'active' || bStatus === 'approved') && b.isActive !== false;
+          }) || user.businesses[0];
         }
 
         if (activeBusiness) {
