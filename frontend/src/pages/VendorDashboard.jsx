@@ -644,7 +644,7 @@ const VendorDashboard = () => {
 
   useEffect(() => {
     if (!isItemModalOpen) return;
-    const childCat = (itemForm.subcategory || '').trim();
+    const childCat = (itemForm.subSubcategory || itemForm.childCategory || itemForm.subcategory || '').trim();
     const subCat = (itemForm.category || '').trim();
     const catToFetch = childCat || subCat;
     if (!catToFetch) {
@@ -656,7 +656,7 @@ const VendorDashboard = () => {
       params: { 
         subSubcategory: childCat,
         subcategory: subCat, 
-        name: selectedMainCat 
+        name: selectedMainCat || itemForm.mainCategory || itemForm.name || 'Products'
       }
     }).then(res => {
       if (active && res.data && res.data.success && Array.isArray(res.data.requiredVendorFields)) {
@@ -666,7 +666,7 @@ const VendorDashboard = () => {
       if (active) setDynamicCategoryFields([]);
     });
     return () => { active = false; };
-  }, [isItemModalOpen, itemForm.category, itemForm.subcategory, selectedMainCat]);
+  }, [isItemModalOpen, itemForm.category, itemForm.subcategory, itemForm.subSubcategory, itemForm.childCategory, itemForm.mainCategory, selectedMainCat]);
 
   useEffect(() => {
     const fetchDynamicCategories = async () => {
