@@ -150,6 +150,7 @@ const Sidebar = () => {
               <ul className="space-y-1">
                 {bizItems.map(biz => {
                   const Icon = biz.icon;
+                  const isCategorySelected = biz.isActive && activeTab === 'catalog';
                   return (
                     <li key={biz.id}>
                       <button
@@ -161,7 +162,7 @@ const Sidebar = () => {
                           setActiveTab('catalog');
                         }}
                         className={`w-full flex items-center gap-3 text-left ${sidebarCollapsed ? 'md:justify-center px-4' : 'px-4'} py-3 rounded-2xl text-sm font-semibold transition-all border border-transparent ${
-                          biz.isActive 
+                          isCategorySelected 
                             ? 'bg-[#faed26] text-[#0B3C7B] shadow-lg font-bold animate-fadeIn' 
                             : 'text-white/70 hover:bg-white/10 hover:text-white'
                         }`}

@@ -3005,6 +3005,7 @@ const VendorDashboard = () => {
                         <ul className="space-y-0.5 w-full">
                           {bizItems.map(biz => {
                             const Icon = biz.icon;
+                            const isCategorySelected = biz.isActive && activeTab === 'catalog';
                             return (
                               <li key={biz.id}>
                                 <button
@@ -3017,7 +3018,7 @@ const VendorDashboard = () => {
                                     setIsMobileMenuOpen(false);
                                   }}
                                   className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                                    biz.isActive
+                                    isCategorySelected
                                       ? 'bg-[#faed26] text-[#0B3C7B] shadow-lg font-bold' 
                                       : 'text-white/70 hover:bg-white/10 hover:text-white'
                                   }`}
@@ -3280,6 +3281,7 @@ const VendorDashboard = () => {
                     <ul className="space-y-1 w-full">
                       {bizItems.map(biz => {
                         const Icon = biz.icon;
+                        const isCategorySelected = biz.isActive && activeTab === 'catalog';
                         return (
                           <li key={biz.id}>
                             <button
@@ -3292,7 +3294,7 @@ const VendorDashboard = () => {
                               }}
                               title={biz.name}
                               className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-4 py-3'} text-left rounded-2xl text-sm font-semibold transition-all border border-transparent ${
-                                biz.isActive
+                                isCategorySelected
                                   ? 'bg-[#faed26] text-[#0B3C7B] shadow-lg shadow-yellow-500/10 font-bold animate-fadeIn' 
                                   : 'text-white/70 hover:bg-white/10 hover:text-white'
                               }`}
