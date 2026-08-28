@@ -5,19 +5,7 @@ export const getBackendUrl = () => {
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   
-  // 1. If running locally, connect directly to local fast backend on port 8002 (0ms latency)
-  if (
-    !hostname || 
-    hostname === 'localhost' || 
-    hostname === '127.0.0.1' || 
-    hostname.startsWith('192.168.') || 
-    hostname.startsWith('10.') ||
-    hostname.startsWith('172.')
-  ) {
-    return `http://${hostname || 'localhost'}:8002`;
-  }
-
-  // 2. Otherwise check configured environment variables
+  // 1. Check environment variables first if specified
   let envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL;
   if (envUrl && typeof envUrl === 'string') {
     envUrl = envUrl.trim().replace(/\/+$/, '');
@@ -28,8 +16,20 @@ export const getBackendUrl = () => {
       return envUrl;
     }
   }
+
+  // 2. If running locally, connect directly to local backend on port 8002
+  if (
+    !hostname || 
+    hostname === 'localhost' || 
+    hostname === '127.0.0.1' || 
+    hostname.startsWith('192.168.') || 
+    hostname.startsWith('10.') ||
+    hostname.startsWith('172.')
+  ) {
+    return `http://${hostname || 'localhost'}:8002`;
+  }
   
-  // 3. If deployed on HTTPS (e.g. Vercel connect-vendor.vercel.app), use relative path to route through Vercel proxy rewrites
+  // 3. If deployed on HTTPS without envUrl, use relative path or fallback
   if (isHttps) {
     return '';
   }
@@ -41,6 +41,10 @@ export const getBackendUrl = () => {
 // Set up Axios request interceptor to dynamically rewrite backend URLs and inject headers
 axios.interceptors.request.use(
   (config) => {
+    if (!config.timeout) {
+      config.timeout = 15000; // 15-second default timeout to prevent hanging requests
+    }
+
     const backendUrl = getBackendUrl();
     if (config.url) {
       if (
@@ -52,7 +56,7 @@ axios.interceptors.request.use(
         config.url.includes('13.203.197.69')
       ) {
         // Replaces localhost ports or stale cloud tunnels/IPs with active backendUrl
-        config.url = config.url.replace(/^https?:\/\/[^/]+/, backendUrl);
+        config.url = config.url.replace(/^https?:\/\/[^/]+/, backendUrl || 'https://connect-vendor.onrender.com');
       } else if (config.url.startsWith('/api')) {
         config.url = backendUrl ? `${backendUrl}${config.url}` : config.url;
       }
@@ -191,6 +195,11 @@ axios.interceptors.response.use(
     config.__retryCount = (config.__retryCount || 0) + 1;
     const delay = RETRY_DELAY_MS * config.__retryCount; // 3s, 6s, 9s
 
+    // On network error retry, fallback relative URL to explicit remote backend
+    if (isNetworkError && config.url && config.url.startsWith('/api')) {
+      config.url = `https://connect-vendor.onrender.com${config.url}`;
+    }
+
     console.warn(
       `⏳ Backend not responding (attempt ${config.__retryCount}/${MAX_RETRIES}). Retrying in ${delay / 1000}s...`
     );
@@ -242,8 +251,16 @@ export const formatImageUrl = (url) => {
   let clean = url.trim();
   if (!clean || clean.toLowerCase().startsWith('preview')) return '';
 
-  if (clean.startsWith('data:') || clean.startsWith('blob:')) {
+  if (clean.startsWith('data:')) {
     return clean;
+  }
+  if (clean.startsWith('blob:')) {
+    try {
+      if (typeof window !== 'undefined' && clean.includes(window.location.host)) {
+        return clean;
+      }
+    } catch (e) {}
+    return '';
   }
 
   let backend = getBackendUrl();

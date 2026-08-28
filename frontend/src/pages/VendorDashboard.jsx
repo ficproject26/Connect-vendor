@@ -446,9 +446,11 @@ const VendorDashboard = () => {
     fetchDynamicCategories();
   }, []);
 
+  const isCheckingStatusRef = useRef(false);
   useEffect(() => {
     const checkStatus = async () => {
-      if (!user || user.role !== 'Vendor') return;
+      if (!user || user.role !== 'Vendor' || isCheckingStatusRef.current) return;
+      isCheckingStatusRef.current = true;
       try {
         const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`, getAxiosConfig());
         const status = (res.data?.data?.status || res.data?.user?.status || user.status || '').toLowerCase().trim();
@@ -463,11 +465,13 @@ const VendorDashboard = () => {
           dispatch(logout());
           window.location.href = '/';
         }
+      } finally {
+        isCheckingStatusRef.current = false;
       }
     };
 
     checkStatus();
-    const intervalId = setInterval(checkStatus, 8000);
+    const intervalId = setInterval(checkStatus, 12000);
     return () => clearInterval(intervalId);
   }, [user, dispatch]);
 
@@ -2341,12 +2345,27 @@ const VendorDashboard = () => {
     setIsItemModalOpen(true);
   };
 
+  const readFileAsDataUrl = (file) => {
+    return new Promise((resolve) => {
+      if (!file) {
+        resolve('');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result || '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files && e.target.files[0];
     if (!file) return;
 
-    // Instant local preview
-    const tempPreviewUrl = URL.createObjectURL(file);
+    // Instant local preview using Base64 data URL (prevents "Not allowed to load local resource: blob:...")
+    const tempPreviewUrl = await readFileAsDataUrl(file);
+    if (!tempPreviewUrl) return;
+
     setItemForm(prev => {
       const currentUrls = prev.imageUrls && prev.imageUrls.length > 0
         ? prev.imageUrls
@@ -2396,7 +2415,10 @@ const VendorDashboard = () => {
   const handleFieldUpload = async (fieldName, file) => {
     if (!file) return;
 
-    const tempPreviewUrl = URL.createObjectURL(file);
+    // Instant local preview using Base64 data URL (prevents "Not allowed to load local resource: blob:...")
+    const tempPreviewUrl = await readFileAsDataUrl(file);
+    if (!tempPreviewUrl) return;
+
     setPartnerForm(prev => {
       const updated = { ...prev, [fieldName]: tempPreviewUrl };
       if (fieldName === 'imageUrl') updated.docProfilePhoto = tempPreviewUrl;

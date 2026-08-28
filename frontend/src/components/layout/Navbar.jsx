@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { logout, toggleSidebar, switchBusinessSuccess } from '../../store/authSlice';
@@ -16,6 +17,7 @@ const Navbar = () => {
   const dropdownRef = useRef(null);
   const notificationDropdownRef = useRef(null);
   const prevOrdersRef = useRef([]);
+  const isFetchingOrdersRef = useRef(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showHeaderNotifications, setShowHeaderNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -38,14 +40,12 @@ const Navbar = () => {
   useEffect(() => {
     if (!isAuthenticated || !token || user?.role !== 'Vendor') return;
     const fetchOrders = async () => {
+      if (isFetchingOrdersRef.current) return;
+      isFetchingOrdersRef.current = true;
       try {
-        const headers = { 'Authorization': `Bearer ${token}` };
-        if (activeBusinessId) {
-          headers['x-business-id'] = activeBusinessId;
-        }
-        const res = await fetch(`${getVendorBackendUrl()}/api/vendor/orders`, { headers });
-        const data = await res.json();
-        if (data.success && Array.isArray(data.data)) {
+        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`);
+        const data = res.data;
+        if (data && data.success && Array.isArray(data.data)) {
           const newOrders = data.data;
           if (prevOrdersRef.current.length === 0) {
             prevOrdersRef.current = newOrders;
@@ -57,25 +57,27 @@ const Navbar = () => {
               }));
               setNotifications(initNotifs);
             }
-            return;
+          } else {
+            const existingIds = new Set(prevOrdersRef.current.map(o => o._id));
+            const actualNewOrders = newOrders.filter(o => !existingIds.has(o._id));
+            if (actualNewOrders.length > 0) {
+              const newNotifications = actualNewOrders.map(order => ({
+                id: Date.now() + Math.random(),
+                text: `New ${order.doctorName ? 'Appointment' : 'Order'} from ${order.memberName || order.customer_name || 'Customer'} (₹${order.finalAmount || order.totalAmount || order.amount || 0})`
+              }));
+              setNotifications(prev => [...newNotifications, ...prev]);
+            }
+            prevOrdersRef.current = newOrders;
           }
-          const existingIds = new Set(prevOrdersRef.current.map(o => o._id));
-          const actualNewOrders = newOrders.filter(o => !existingIds.has(o._id));
-          if (actualNewOrders.length > 0) {
-            const newNotifications = actualNewOrders.map(order => ({
-              id: Date.now() + Math.random(),
-              text: `New ${order.doctorName ? 'Appointment' : 'Order'} from ${order.memberName || order.customer_name || 'Customer'} (₹${order.finalAmount || order.totalAmount || order.amount || 0})`
-            }));
-            setNotifications(prev => [...newNotifications, ...prev]);
-          }
-          prevOrdersRef.current = newOrders;
         }
       } catch (err) {
-        console.error('Error fetching orders for notifications:', err);
+        // Silently catch network errors during polling
+      } finally {
+        isFetchingOrdersRef.current = false;
       }
     };
     fetchOrders();
-    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 5000;
+    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 8000;
     const interval = setInterval(fetchOrders, syncInterval);
     return () => clearInterval(interval);
   }, [isAuthenticated, token, user, activeBusinessId]);
