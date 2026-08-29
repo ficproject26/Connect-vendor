@@ -1480,33 +1480,6 @@ const deleteBusiness = async (req, res) => {
   }
 };
 
-module.exports = {
-  getVendorAnalytics,
-  createProduct,
-  getProducts,
-  updateProduct,
-  deleteProduct,
-  getOrders,
-  updateOrderStatus,
-  getCustomers,
-  createDeliveryPartner,
-  getDeliveryPartners,
-  updateDeliveryPartner,
-  deleteDeliveryPartner,
-  updateProfile,
-  getProfile,
-  changePassword,
-  forgotPasswordOTP,
-  resetPasswordOTP,
-  getPlatformConfigReadOnly,
-  getPatients,
-  updatePatientNotes,
-  addPatientRecord,
-  addBusiness,
-  deleteBusiness,
-  updateBusiness
-};
-
 const updateBusiness = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
@@ -1564,4 +1537,31 @@ const updateBusiness = async (req, res) => {
     console.error('Update Business Error:', error);
     res.status(500).json({ success: false, message: 'Server error updating business: ' + error.message });
   }
+};
+
+module.exports = {
+  getVendorAnalytics,
+  createProduct,
+  getProducts,
+  updateProduct,
+  deleteProduct,
+  getOrders,
+  updateOrderStatus,
+  getCustomers,
+  createDeliveryPartner,
+  getDeliveryPartners,
+  updateDeliveryPartner,
+  deleteDeliveryPartner,
+  updateProfile,
+  getProfile,
+  changePassword,
+  forgotPasswordOTP,
+  resetPasswordOTP,
+  getPlatformConfigReadOnly,
+  getPatients,
+  updatePatientNotes,
+  addPatientRecord,
+  addBusiness,
+  deleteBusiness,
+  updateBusiness
 };
