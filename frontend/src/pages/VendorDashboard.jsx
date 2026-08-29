@@ -4868,11 +4868,24 @@ const VendorDashboard = () => {
                                       </td>
                                       {/* Items Ordered */}
                                       <td className="px-6 py-4 text-xs font-semibold">
-                                        {order.items?.map((it, idx) => (
-                                          <div key={idx}>
-                                            <div>{it.name} x{it.quantity}</div>
+                                        {order.items?.map((it, idx) => {
+                                          const guestCount = it.guests || it.numberOfGuests || it.guestCount || order.guests || order.numberOfGuests || order.guestCount || order.noOfGuests || order.no_of_guests;
+                                          return (
+                                            <div key={idx}>
+                                              <div>{it.name} x{it.quantity || 1}</div>
+                                              {guestCount && <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">👥 {guestCount} Guests</div>}
+                                            </div>
+                                          );
+                                        }) || (
+                                          <div>
+                                            <div>{order.product_details}</div>
+                                            {(order.guests || order.numberOfGuests || order.guestCount || order.guestsCount || order.noOfGuests || order.no_of_guests) && (
+                                              <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
+                                                👥 {order.guests || order.numberOfGuests || order.guestCount || order.guestsCount || order.noOfGuests || order.no_of_guests} Guests
+                                              </div>
+                                            )}
                                           </div>
-                                        )) || <div>{order.product_details}</div>}
+                                        )}
                                       </td>
                                       {/* Payment & Status */}
                                       <td className="px-6 py-4 text-xs">
@@ -9168,9 +9181,10 @@ required
             <input
               type="text"
               required
+              maxLength={6}
               value={itemForm.pinCode}
-              onChange={e => setItemForm({ ...itemForm, pinCode: e.target.value })}
-              className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+              onChange={e => setItemForm({ ...itemForm, pinCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+              className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
               placeholder="e.g. 600001"
             />
           </div>
@@ -9441,10 +9455,11 @@ required
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Pincode</label>
               <input
                 type="text"
+                maxLength={6}
                 placeholder="e.g. 636112"
                 value={addBizForm.pincode}
-                onChange={(e) => setAddBizForm({ ...addBizForm, pincode: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
+                onChange={(e) => setAddBizForm({ ...addBizForm, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650 font-mono"
               />
             </div>
             <div className="space-y-1">
@@ -10002,9 +10017,10 @@ required
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">Pincode</label>
                         <input
                           type="text"
+                          maxLength={6}
                           value={partnerForm.pincode}
-                          onChange={e => setPartnerForm({ ...partnerForm, pincode: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          onChange={e => setPartnerForm({ ...partnerForm, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200 font-mono"
                           placeholder="e.g. 110001"
                         />
                       </div>
@@ -11402,38 +11418,75 @@ required
               </div>
 
               {/* Items Listing */}
-              <div>
-                <span className="font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-[9px] block mb-2">Billed Items</span>
-                <div className="border border-slate-200 dark:border-slate-800/80 rounded-2xl overflow-hidden text-xs">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold uppercase text-[9px] tracking-wider">
-                        <th className="py-2.5 px-4">Item & Details</th>
-                        <th className="py-2.5 px-4 text-center">Qty</th>
-                        <th className="py-2.5 px-4 text-right">Unit Price</th>
-                        <th className="py-2.5 px-4 text-right">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedBillOrder.items && selectedBillOrder.items.length > 0 ? selectedBillOrder.items.map((item, idx) => (
-                        <tr key={idx} className="border-b border-slate-100 dark:border-slate-900/60 hover:bg-slate-50/20 dark:hover:bg-slate-900/10 text-slate-800 dark:text-slate-200">
-                          <td className="py-3 px-4 font-semibold">{item.name}</td>
-                          <td className="py-3 px-4 text-center font-mono">{item.quantity}</td>
-                          <td className="py-3 px-4 text-right font-mono">₹{item.price}</td>
-                          <td className="py-3 px-4 text-right font-mono font-bold">₹{item.price * item.quantity}</td>
-                        </tr>
-                      )) : (
-                        <tr className="border-b border-slate-100 dark:border-slate-900/60 text-slate-800 dark:text-slate-200">
-                          <td className="py-3 px-4 font-semibold">{selectedBillOrder.product_details || 'Generic Booking / Service Item'}</td>
-                          <td className="py-3 px-4 text-center font-mono">1</td>
-                          <td className="py-3 px-4 text-right font-mono">₹{selectedBillOrder.finalAmount || selectedBillOrder.amount || 0}</td>
-                          <td className="py-3 px-4 text-right font-mono font-bold">₹{selectedBillOrder.finalAmount || selectedBillOrder.amount || 0}</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              {(() => {
+                const isStayOrBooking = ['STAY', 'HOTEL', 'TRAVEL'].includes(String(selectedBillOrder.type || selectedBillOrder.category || '').toUpperCase()) || Boolean(selectedBillOrder.appointmentDate);
+
+                const getCustomerAddedCount = (order, item) => {
+                  const raw = item?.guests || item?.numberOfGuests || item?.guestCount || item?.noOfGuests || item?.no_of_guests ||
+                              order?.guests || order?.numberOfGuests || order?.guestCount || order?.guestsCount || order?.noOfGuests || order?.no_of_guests || order?.customerCount ||
+                              item?.quantity || order?.quantity;
+                  return Number(raw) || 1;
+                };
+
+                const customerGuestsLabel = selectedBillOrder.guests || selectedBillOrder.numberOfGuests || selectedBillOrder.guestCount || selectedBillOrder.guestsCount || selectedBillOrder.noOfGuests || selectedBillOrder.no_of_guests;
+
+                return (
+                  <div>
+                    <span className="font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-[9px] block mb-2">
+                      {isStayOrBooking ? 'Billed Room & Guest Details' : 'Billed Items'}
+                    </span>
+                    <div className="border border-slate-200 dark:border-slate-800/80 rounded-2xl overflow-hidden text-xs">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold uppercase text-[9px] tracking-wider">
+                            <th className="py-2.5 px-4">Item & Details</th>
+                            <th className="py-2.5 px-4 text-center">{isStayOrBooking ? 'Guests / Qty' : 'Qty'}</th>
+                            <th className="py-2.5 px-4 text-right">Unit Price</th>
+                            <th className="py-2.5 px-4 text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedBillOrder.items && selectedBillOrder.items.length > 0 ? selectedBillOrder.items.map((item, idx) => {
+                            const count = getCustomerAddedCount(selectedBillOrder, item);
+                            const guestVal = item.guests || item.numberOfGuests || item.guestCount || customerGuestsLabel;
+                            return (
+                              <tr key={idx} className="border-b border-slate-100 dark:border-slate-900/60 hover:bg-slate-50/20 dark:hover:bg-slate-900/10 text-slate-800 dark:text-slate-200">
+                                <td className="py-3 px-4 font-semibold">
+                                  <div>{item.name}</div>
+                                  {guestVal && (
+                                    <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                                      👥 Customer Added Guests: {guestVal}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4 text-center font-mono font-bold text-slate-900 dark:text-white">{count}</td>
+                                <td className="py-3 px-4 text-right font-mono">₹{item.price}</td>
+                                <td className="py-3 px-4 text-right font-mono font-bold">₹{item.price * (item.quantity || 1)}</td>
+                              </tr>
+                            );
+                          }) : (
+                            <tr className="border-b border-slate-100 dark:border-slate-900/60 text-slate-800 dark:text-slate-200">
+                              <td className="py-3 px-4 font-semibold">
+                                <div>{selectedBillOrder.product_details || 'Generic Booking / Service Item'}</div>
+                                {customerGuestsLabel && (
+                                  <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                                    👥 Customer Added Guests: {customerGuestsLabel}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono font-bold text-slate-900 dark:text-white">
+                                {getCustomerAddedCount(selectedBillOrder, null)}
+                              </td>
+                              <td className="py-3 px-4 text-right font-mono">₹{selectedBillOrder.finalAmount || selectedBillOrder.amount || 0}</td>
+                              <td className="py-3 px-4 text-right font-mono font-bold">₹{selectedBillOrder.finalAmount || selectedBillOrder.amount || 0}</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Calculations Breakdown */}
               {(() => {

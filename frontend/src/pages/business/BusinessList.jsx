@@ -475,10 +475,11 @@ const BusinessList = () => {
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Pincode</label>
               <input
                 type="text"
+                maxLength={6}
                 placeholder="e.g. 636112"
                 value={addBizForm.pincode}
-                onChange={(e) => setAddBizForm({ ...addBizForm, pincode: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
+                onChange={(e) => setAddBizForm({ ...addBizForm, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650 font-mono"
               />
             </div>
             <div className="space-y-1">
