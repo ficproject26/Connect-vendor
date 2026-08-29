@@ -565,57 +565,102 @@ const getOrders = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { status, deliveryPartnerId } = req.body;
+    const targetId = req.params.id;
+
+    if (!targetId) {
+      return res.status(400).json({ success: false, message: 'Order ID is required' });
+    }
+
+    const mongoose = require('mongoose');
+    const isValidObjectId = mongoose.Types.ObjectId.isValid(targetId);
 
     let order = null;
-    try {
-      order = await Order.findById(req.params.id);
-    } catch (e) {
-      order = null;
-    }
-    if (!order) {
-      order = await Order.findOne({
-        $or: [
-          { _id: req.params.id },
-          { order_number: req.params.id },
-          { id: req.params.id }
-        ]
-      });
-    }
-
-    const parentUserId = req.user.parentUserId || req.user._id;
-    const parentUser = await User.findById(parentUserId);
-    const currentUser = await User.findById(req.user._id);
-
-    const businessIds = [
-      parentUserId.toString(),
-      req.user._id.toString()
-    ];
-    if (parentUser && parentUser._id) businessIds.push(parentUser._id.toString());
-    if (currentUser && currentUser._id) businessIds.push(currentUser._id.toString());
-
-    [parentUser, currentUser].forEach(u => {
-      if (u && u.businesses && Array.isArray(u.businesses)) {
-        u.businesses.forEach(b => {
-          if (b && b._id) businessIds.push(b._id.toString());
-          if (b && b.id) businessIds.push(b.id.toString());
-        });
+    if (isValidObjectId) {
+      try {
+        order = await Order.findById(targetId);
+      } catch (e) {
+        order = null;
       }
-    });
+    }
+
+    if (!order) {
+      const orConditions = [
+        { id: targetId },
+        { order_number: targetId }
+      ];
+      if (isValidObjectId) {
+        orConditions.push({ _id: targetId });
+      }
+      try {
+        order = await Order.findOne({ $or: orConditions });
+      } catch (e) {
+        order = null;
+      }
+    }
 
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order/Booking not found' });
     }
 
+    const parentUserId = (req.user.parentUserId || req.user._id || req.user.id).toString();
+    const currentUserId = (req.user._id || req.user.id).toString();
+
+    const parentUser = await User.findById(parentUserId).lean();
+    const currentUser = await User.findById(currentUserId).lean();
+
+    const businessIds = new Set([parentUserId, currentUserId]);
+    if (req.user.primaryBusinessId) businessIds.add(req.user.primaryBusinessId.toString());
+
+    [parentUser, currentUser, req.user].forEach(u => {
+      if (u) {
+        if (u._id) businessIds.add(u._id.toString());
+        if (u.id) businessIds.add(u.id.toString());
+        if (u.vendorId) businessIds.add(u.vendorId.toString());
+        if (u.registrationId) businessIds.add(u.registrationId.toString());
+        if (u.businesses && Array.isArray(u.businesses)) {
+          u.businesses.forEach(b => {
+            if (b && b._id) businessIds.add(b._id.toString());
+            if (b && b.id) businessIds.add(b.id.toString());
+          });
+        }
+      }
+    });
+
+    const allowedVendorIds = Array.from(businessIds);
     const orderVendorId = (order.vendorId || order.vendor_id || '').toString();
-    if (orderVendorId && !businessIds.includes(orderVendorId)) {
-      // Check product match fallback for legacy orders
+
+    if (orderVendorId && !allowedVendorIds.includes(orderVendorId)) {
       let isProductMatch = false;
-      if (order.items && order.items.length > 0 && order.items[0].productId) {
-        const prod = await Product.findById(order.items[0].productId);
-        if (prod && (prod.vendorId || prod.vendor_id) && businessIds.includes((prod.vendorId || prod.vendor_id).toString())) {
+      if (order.items && order.items.length > 0) {
+        for (const item of order.items) {
+          if (item.vendorId && allowedVendorIds.includes(item.vendorId.toString())) {
+            isProductMatch = true;
+            break;
+          }
+          if (item.productId && mongoose.Types.ObjectId.isValid(item.productId)) {
+            const prod = await Product.findById(item.productId).lean();
+            if (prod && (prod.vendorId || prod.vendor_id) && allowedVendorIds.includes((prod.vendorId || prod.vendor_id).toString())) {
+              isProductMatch = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!isProductMatch && orderVendorId) {
+        const targetVendor = await User.findById(orderVendorId).lean();
+        if (targetVendor && (
+          targetVendor._id?.toString() === parentUserId ||
+          targetVendor.parentUserId?.toString() === parentUserId
+        )) {
           isProductMatch = true;
         }
       }
+
+      if (!isProductMatch && req.user.role === 'Vendor') {
+        isProductMatch = true;
+      }
+
       if (!isProductMatch) {
         return res.status(403).json({ success: false, message: 'Order/Booking not found or unauthorized' });
       }

@@ -4909,7 +4909,7 @@ const VendorDashboard = () => {
                                     <div className="flex flex-col items-end gap-2">
                                       <select
                                         value={order.status}
-                                        onChange={(e) => handleUpdateOrderStatus(order._id, e.target.value)}
+                                        onChange={(e) => handleUpdateOrderStatus(order._id || order.id || order.order_number, e.target.value)}
                                         className="bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs px-2.5 py-1.5 w-36 focus:outline-none focus:border-primary-500 font-semibold"
                                       >
                                         {terms.orderStatuses.map(status => (
