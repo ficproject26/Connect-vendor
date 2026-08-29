@@ -650,8 +650,8 @@ const VendorDashboard = () => {
     if (!isItemModalOpen) return;
     const childCat = (itemForm.subSubcategory || itemForm.childCategory || itemForm.subcategory || '').trim();
     const subCat = (itemForm.category || '').trim();
-    const catToFetch = childCat || subCat;
-    if (!catToFetch) {
+    // Only fetch dynamic required product fields AFTER a child category is selected
+    if (!childCat) {
       setDynamicCategoryFields([]);
       return;
     }
@@ -8758,11 +8758,11 @@ const VendorDashboard = () => {
             </>
           )}
 
-          {/* Dynamic Admin-Configured Required Vendor Fields */}
-          {dynamicCategoryFields && dynamicCategoryFields.length > 0 && (
+          {/* Dynamic Admin-Configured Required Vendor Fields (Shown ONLY after selecting child category) */}
+          {itemForm.subcategory && itemForm.subcategory.trim() !== '' && dynamicCategoryFields && dynamicCategoryFields.length > 0 && (
             <div className="space-y-3 p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 animate-fadeIn">
               <div className="flex items-center gap-2 border-b border-amber-500/20 pb-2">
-                <span className="text-amber-600 dark:text-amber-400 font-extrabold text-xs uppercase tracking-wider">⚡ Required Product Fields ({itemForm.subcategory || itemForm.category})</span>
+                <span className="text-amber-600 dark:text-amber-400 font-extrabold text-xs uppercase tracking-wider">⚡ Required Product Fields ({itemForm.subcategory})</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {dynamicCategoryFields.map(fieldName => (
