@@ -4,28 +4,30 @@ import { store } from '../store';
 export const getBackendUrl = () => {
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-  
-  // 1. Check environment variables first if specified
-  let envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL;
-  if (envUrl && typeof envUrl === 'string') {
-    envUrl = envUrl.trim().replace(/\/+$/, '');
-    if (!envUrl.includes('trycloudflare.com')) {
-      if (envUrl.endsWith('/api')) {
-        envUrl = envUrl.substring(0, envUrl.length - 4);
-      }
-      return envUrl;
-    }
-  }
-
-  // 2. If running locally, connect directly to local backend on port 8002
-  if (
-    !hostname || 
+  const isLocalHost = !hostname || 
     hostname === 'localhost' || 
     hostname === '127.0.0.1' || 
     hostname.startsWith('192.168.') || 
     hostname.startsWith('10.') ||
-    hostname.startsWith('172.')
-  ) {
+    hostname.startsWith('172.');
+
+  // 1. Check environment variables first if specified AND valid for current host
+  let envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL;
+  if (envUrl && typeof envUrl === 'string') {
+    envUrl = envUrl.trim().replace(/\/+$/, '');
+    if (envUrl.endsWith('/api')) {
+      envUrl = envUrl.substring(0, envUrl.length - 4);
+    }
+    // Only use localhost envUrl if actually running on a local host
+    if (isLocalHost || (!envUrl.includes('localhost') && !envUrl.includes('127.0.0.1'))) {
+      if (!envUrl.includes('trycloudflare.com')) {
+        return envUrl;
+      }
+    }
+  }
+
+  // 2. If running locally, connect directly to local backend on port 8002
+  if (isLocalHost) {
     return `http://${hostname || 'localhost'}:8002`;
   }
   
@@ -42,7 +44,7 @@ export const getBackendUrl = () => {
 axios.interceptors.request.use(
   (config) => {
     if (!config.timeout) {
-      config.timeout = 15000; // 15-second default timeout to prevent hanging requests
+      config.timeout = 45000; // 45-second timeout to accommodate Render sleeping cold starts
     }
 
     const backendUrl = getBackendUrl();
@@ -172,7 +174,7 @@ axios.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Only retry on network errors (no response) or 5xx server errors (backend waking up)
+    // Only retry on network errors (no response, timeout) or 5xx server errors (backend waking up)
     const isNetworkError = !error.response;
     const isServerError = error.response && error.response.status >= 500;
 
@@ -191,8 +193,9 @@ axios.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Increment retry count
+    // Increment retry count and expand timeout on retries to allow sleeping backend to start
     config.__retryCount = (config.__retryCount || 0) + 1;
+    config.timeout = 60000; // 60s timeout for retries
     const delay = RETRY_DELAY_MS * config.__retryCount; // 3s, 6s, 9s
 
     // On network error retry, fallback relative URL to explicit remote backend
