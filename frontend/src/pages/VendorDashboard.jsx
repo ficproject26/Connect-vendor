@@ -646,6 +646,33 @@ const VendorDashboard = () => {
   const [dbCategories, setDbCategories] = useState([]);
   const [dynamicCategoryFields, setDynamicCategoryFields] = useState([]);
 
+  // Business Profile Edit States
+  const [isEditBusinessModalOpen, setIsEditBusinessModalOpen] = useState(false);
+  const [editBusinessForm, setEditBusinessForm] = useState({
+    _id: '',
+    businessName: '',
+    vendorType: '',
+    address: '',
+    pincode: '',
+    phone: ''
+  });
+  const [loadingEditBusiness, setLoadingEditBusiness] = useState(false);
+
+  // New Incoming Order / Booking Real-time Popup Alert States
+  const [newIncomingOrder, setNewIncomingOrder] = useState(null);
+  const [isNewOrderPopupOpen, setIsNewOrderPopupOpen] = useState(false);
+
+  useEffect(() => {
+    const handleNewOrderAlert = (e) => {
+      if (e.detail) {
+        setNewIncomingOrder(e.detail);
+        setIsNewOrderPopupOpen(true);
+      }
+    };
+    window.addEventListener('new_incoming_order', handleNewOrderAlert);
+    return () => window.removeEventListener('new_incoming_order', handleNewOrderAlert);
+  }, []);
+
   useEffect(() => {
     if (!isItemModalOpen) return;
     const childCat = (itemForm.subSubcategory || itemForm.childCategory || itemForm.subcategory || '').trim();
@@ -4277,7 +4304,7 @@ const VendorDashboard = () => {
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-700 dark:text-slate-300"
                         >
                           <option value="All">All Categories</option>
-                          {[...new Set(catalog.map(item => item.category || item.subCategory || item.childCategory).filter(Boolean))].map(cat => (
+                          {[...new Set(catalog.filter(item => !selectedMainCat || selectedMainCat === 'All' || getProductMainCategory(item.category, item.vendorType || vendorType) === selectedMainCat).map(item => item.category || item.subCategory || item.childCategory).filter(Boolean))].map(cat => (
                             <option key={cat} value={cat}>{cat}</option>
                           ))}
                         </select>
@@ -4314,6 +4341,8 @@ const VendorDashboard = () => {
                     ) : (
                       (() => {
                         const filteredCatalog = catalog.filter(item => {
+                          const itemMainCat = getProductMainCategory(item.category, item.vendorType || vendorType);
+                          const matchesMainCategory = !selectedMainCat || selectedMainCat === 'All' || itemMainCat === selectedMainCat;
                           const matchesCategory = catalogCategoryFilter === 'All' || item.category === catalogCategoryFilter;
                           const matchesStatus = catalogStatusFilter === 'All' || item.status === catalogStatusFilter;
                           const matchesFoodType = catalogFoodTypeFilter === 'All' || item.foodType === catalogFoodTypeFilter;
@@ -4321,7 +4350,7 @@ const VendorDashboard = () => {
                                                 (item.description && item.description.toLowerCase().includes(catalogSearchQuery.toLowerCase()));
                           const cardTypes = item.cardTypes || ['Silver', 'Gold', 'Diamond'];
                           const matchesCard = catalogCardFilter === 'All' || cardTypes.includes(catalogCardFilter);
-                          return matchesCategory && matchesStatus && matchesFoodType && matchesSearch && matchesCard;
+                          return matchesMainCategory && matchesCategory && matchesStatus && matchesFoodType && matchesSearch && matchesCard;
                         });
 
                         const sortedCatalog = [...filteredCatalog];
@@ -9488,7 +9517,24 @@ required
               </div>
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditBusinessForm({
+                    _id: selectedBusinessForModal._id,
+                    businessName: selectedBusinessForModal.businessName || user?.businessName || '',
+                    vendorType: selectedBusinessForModal.vendorType || user?.vendorType || '',
+                    address: selectedBusinessForModal.address || user?.address || '',
+                    pincode: selectedBusinessForModal.pincode || selectedBusinessForModal.pinCode || selectedBusinessForModal.postalCode || (selectedBusinessForModal.address?.match(/\b\d{6}\b/)?.[0]) || '',
+                    phone: selectedBusinessForModal.phone || user?.mobileNumber || user?.telephone || ''
+                  });
+                  setIsEditBusinessModalOpen(true);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold px-4 py-3 rounded-xl transition-all shadow-md active:scale-95 text-xs flex items-center justify-center gap-1.5"
+              >
+                ✏️ Edit Profile
+              </button>
               {selectedBusinessForModal._id !== activeBusinessId ? (
                 <button
                   type="button"
@@ -9497,7 +9543,7 @@ required
                     setMessage(`Switched business profile to ${selectedBusinessForModal.vendorType}!`);
                     setIsBusinessDetailsModalOpen(false);
                   }}
-                  className="flex-1 bg-[#faed26] hover:bg-[#faed26]/90 text-slate-950 font-bold py-3 rounded-xl transition-all shadow-md active:scale-95"
+                  className="flex-1 bg-[#faed26] hover:bg-[#faed26]/90 text-slate-950 font-extrabold py-3 text-xs rounded-xl transition-all shadow-md active:scale-95"
                 >
                   Switch To This Profile
                 </button>
@@ -9509,7 +9555,7 @@ required
               <button
                 type="button"
                 onClick={() => setIsBusinessDetailsModalOpen(false)}
-                className="px-5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold py-3 rounded-xl transition-all"
+                className="px-4 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold py-3 text-xs rounded-xl transition-all"
               >
                 Close
               </button>
@@ -9517,6 +9563,251 @@ required
           </div>
         </Modal>
       )}
+
+      {/* Modal: Edit Business Profile Details */}
+      {isEditBusinessModalOpen && (
+        <Modal
+          isOpen={isEditBusinessModalOpen}
+          onClose={() => setIsEditBusinessModalOpen(false)}
+          title="Edit Business Profile Details"
+        >
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setLoadingEditBusiness(true);
+              try {
+                const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/business/${editBusinessForm._id}`, editBusinessForm, getAxiosConfig());
+                if (res.data && res.data.success) {
+                  setMessage('Business profile updated successfully!');
+                  if (res.data.user) {
+                    localStorage.setItem('vendor_user', JSON.stringify(res.data.user));
+                    dispatch(loginSuccess({ user: res.data.user, token: localStorage.getItem('vendor_token') }));
+                  }
+                  if (selectedBusinessForModal) {
+                    setSelectedBusinessForModal(prev => ({
+                      ...prev,
+                      businessName: editBusinessForm.businessName,
+                      vendorType: editBusinessForm.vendorType,
+                      address: editBusinessForm.address,
+                      pincode: editBusinessForm.pincode,
+                      phone: editBusinessForm.phone
+                    }));
+                  }
+                  setIsEditBusinessModalOpen(false);
+                }
+              } catch (err) {
+                setError(err.response?.data?.message || 'Failed to update business profile details');
+              } finally {
+                setLoadingEditBusiness(false);
+              }
+            }}
+            className="space-y-4 text-slate-800 dark:text-slate-200 text-left"
+          >
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Business Name *</label>
+              <input
+                type="text"
+                required
+                value={editBusinessForm.businessName}
+                onChange={e => setEditBusinessForm({ ...editBusinessForm, businessName: e.target.value })}
+                className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Category / Product or Service *</label>
+              <select
+                required
+                value={editBusinessForm.vendorType}
+                onChange={e => setEditBusinessForm({ ...editBusinessForm, vendorType: e.target.value })}
+                className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+              >
+                <option value="Products">Products (General / Electronics / Store)</option>
+                <option value="Daily Needs">Daily Needs (Grocery / Pharmacy)</option>
+                <option value="Services">Services (Service Provider / Hospital)</option>
+                <option value="Food">Food (Restaurant / Fast Food)</option>
+                <option value="Stay">Stay (Hotel / PG / Resort)</option>
+                <option value="Travel">Travel (Bus / Cab / Travel Agency)</option>
+                <option value="Jobs">Jobs (Recruitment / Corporate)</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Address *</label>
+              <input
+                type="text"
+                required
+                value={editBusinessForm.address}
+                onChange={e => setEditBusinessForm({ ...editBusinessForm, address: e.target.value })}
+                className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Pincode *</label>
+              <input
+                type="text"
+                required
+                maxLength={6}
+                value={editBusinessForm.pincode}
+                onChange={e => setEditBusinessForm({ ...editBusinessForm, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Phone Number *</label>
+              <input
+                type="text"
+                required
+                maxLength={10}
+                value={editBusinessForm.phone}
+                onChange={e => setEditBusinessForm({ ...editBusinessForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsEditBusinessModalOpen(false)}
+                className="px-5 py-2.5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loadingEditBusiness}
+                className="px-5 py-2.5 bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-black text-xs rounded-xl transition-all shadow-md active:scale-95"
+              >
+                {loadingEditBusiness ? 'Saving Changes...' : 'Save Profile Details'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Modal: New Incoming Order / Booking / Job Real-time Alert Popup */}
+      {isNewOrderPopupOpen && newIncomingOrder && (() => {
+        const isJob = Boolean(newIncomingOrder.candidateEducation || newIncomingOrder.candidateResume || newIncomingOrder.category === 'Jobs' || (newIncomingOrder.items && newIncomingOrder.items[0]?.category === 'Jobs'));
+        const isBooking = Boolean(newIncomingOrder.appointmentDate || newIncomingOrder.type === 'Appointment' || newIncomingOrder.type === 'Booking');
+
+        const popupTitle = isJob ? '🎉 New Job Application Received!' : isBooking ? '📅 New Booking / Appointment Received!' : '🛍️ New Order Received!';
+        const badgeStyle = isJob ? 'bg-purple-100 text-purple-800 border-purple-300' : isBooking ? 'bg-blue-100 text-blue-800 border-blue-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300';
+        const itemName = newIncomingOrder.product_details || (newIncomingOrder.items && newIncomingOrder.items.map(i => `${i.name} (x${i.quantity || 1})`).join(', ')) || (isJob ? 'Job Application' : 'Storefront Order');
+        const customerName = newIncomingOrder.memberName || newIncomingOrder.customer_name || 'Customer';
+        const customerPhone = newIncomingOrder.phone || newIncomingOrder.customerPhone || newIncomingOrder.candidatePhone || 'Not Specified';
+        const customerEmail = newIncomingOrder.candidateEmail || newIncomingOrder.customer_email || formatCustomerId(newIncomingOrder);
+        const deliveryAddress = getCustomerAddress(newIncomingOrder);
+        const totalAmount = newIncomingOrder.finalAmount || newIncomingOrder.totalAmount || newIncomingOrder.amount || 0;
+
+        return (
+          <Modal
+            isOpen={isNewOrderPopupOpen}
+            onClose={() => setIsNewOrderPopupOpen(false)}
+            title={popupTitle}
+          >
+            <div className="space-y-5 animate-fadeIn text-slate-800 dark:text-slate-100 text-left">
+              {/* Alert Header Banner */}
+              <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${badgeStyle}`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">{isJob ? '💼' : isBooking ? '📅' : '🛒'}</span>
+                  <div>
+                    <h4 className="font-extrabold text-sm uppercase tracking-wide">{isJob ? 'Candidate Applied' : isBooking ? 'New Booking Request' : 'New Customer Order'}</h4>
+                    <p className="text-xs opacity-90 font-medium">Real-time alert for your vendor dashboard</p>
+                  </div>
+                </div>
+                <span className="text-xs font-black px-3 py-1 bg-white/90 dark:bg-black/50 rounded-full font-mono shadow-sm">
+                  {newIncomingOrder.status || 'Pending'}
+                </span>
+              </div>
+
+              {/* Customer / Candidate Info Box */}
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-2 text-xs">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Customer / Candidate Details</span>
+                <div className="flex justify-between py-1.5 border-b border-slate-200/40 dark:border-slate-800/40">
+                  <span className="text-slate-500 font-semibold">Name:</span>
+                  <span className="font-extrabold text-slate-900 dark:text-white text-sm">{customerName}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-200/40 dark:border-slate-800/40">
+                  <span className="text-slate-500 font-semibold">Phone Contact:</span>
+                  <span className="font-bold font-mono text-slate-800 dark:text-slate-200">{customerPhone}</span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span className="text-slate-500 font-semibold">Email / ID:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{customerEmail}</span>
+                </div>
+              </div>
+
+              {/* Order / Booking Specifications */}
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-2 text-xs">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Order Item & Delivery Details</span>
+                <div className="flex justify-between py-1.5 border-b border-slate-200/40 dark:border-slate-800/40">
+                  <span className="text-slate-500 font-semibold">{isJob ? 'Applied Position' : 'Item / Service'}:</span>
+                  <span className="font-extrabold text-indigo-600 dark:text-indigo-400 text-right max-w-[65%] truncate">{itemName}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-200/40 dark:border-slate-800/40">
+                  <span className="text-slate-500 font-semibold">Category:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{newIncomingOrder.category || newIncomingOrder.type || 'General'}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-200/40 dark:border-slate-800/40">
+                  <span className="text-slate-500 font-semibold">{isBooking ? 'Booking Schedule' : 'Delivery Address'}:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 text-right max-w-[65%] truncate">
+                    {isBooking && newIncomingOrder.appointmentDate ? `${newIncomingOrder.appointmentDate} (${getBookingTimeSlot(newIncomingOrder)})` : deliveryAddress}
+                  </span>
+                </div>
+                {!isJob && (
+                  <div className="flex justify-between py-1.5">
+                    <span className="text-slate-500 font-semibold">Item Price / Amount:</span>
+                    <span className="font-black text-emerald-600 dark:text-emerald-400 text-base font-mono">₹{totalAmount}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Action Buttons */}
+              <div className="flex flex-wrap gap-2.5 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await handleUpdateOrderStatus(newIncomingOrder._id, 'Accepted');
+                      setMessage('Order / Booking accepted successfully!');
+                      setIsNewOrderPopupOpen(false);
+                    } catch (e) {
+                      setIsNewOrderPopupOpen(false);
+                    }
+                  }}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-3 px-4 rounded-xl transition-all shadow-md active:scale-95 text-xs text-center"
+                >
+                  ✓ Accept & Confirm
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await handleUpdateOrderStatus(newIncomingOrder._id, 'Rejected');
+                      setMessage('Order rejected.');
+                      setIsNewOrderPopupOpen(false);
+                    } catch (e) {
+                      setIsNewOrderPopupOpen(false);
+                    }
+                  }}
+                  className="px-4 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 text-rose-600 dark:text-rose-400 font-bold py-3 rounded-xl border border-rose-200 dark:border-rose-900/30 transition-all text-xs"
+                >
+                  ✕ Decline
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsNewOrderPopupOpen(false)}
+                  className="px-4 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-700 dark:text-slate-300 font-semibold py-3 rounded-xl transition-all text-xs"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {/* Add / Edit Delivery Partner Modal */}
       <Modal isOpen={isPartnerModalOpen} onClose={() => setIsPartnerModalOpen(false)} title={`${isEditPartner ? 'Edit' : 'Add'} ${getPartnerPageTerms().modalTitle}`}>

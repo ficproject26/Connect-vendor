@@ -26,7 +26,8 @@ const {
   updatePatientNotes,
   addPatientRecord,
   addBusiness,
-  deleteBusiness
+  deleteBusiness,
+  updateBusiness
 } = require('../controllers/vendorController');
 
 const { uploadToCloudinary } = require('../config/cloudinary');
@@ -117,6 +118,7 @@ router.put('/change-password', changePassword);
 router.post('/forgot-password-otp', forgotPasswordOTP);
 router.post('/reset-password-otp', resetPasswordOTP);
 router.post('/business', addBusiness);
+router.put('/business/:id', updateBusiness);
 router.delete('/business/:id', deleteBusiness);
 router.get('/commission-config', getPlatformConfigReadOnly);
 

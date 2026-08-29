@@ -1503,5 +1503,65 @@ module.exports = {
   updatePatientNotes,
   addPatientRecord,
   addBusiness,
-  deleteBusiness
+  deleteBusiness,
+  updateBusiness
+};
+
+const updateBusiness = async (req, res) => {
+  try {
+    const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
+    const businessId = req.params.id;
+    const { businessName, vendorType, address, pincode, phone, category, subcategory } = req.body;
+
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    if (!user.businesses) user.businesses = [];
+
+    let biz = user.businesses.find(b => String(b._id) === String(businessId));
+    if (!biz) {
+      if (String(user._id) === String(businessId) || businessId === 'primary') {
+        if (businessName) user.businessName = businessName;
+        if (vendorType) user.vendorType = vendorType;
+        if (address) user.address = address;
+        if (pincode || req.body.pinCode) user.pincode = pincode || req.body.pinCode;
+        if (phone) user.mobileNumber = phone;
+        await user.save();
+        const userResp = user.toObject();
+        delete userResp.password;
+        return res.json({ success: true, message: 'Business profile updated successfully!', user: userResp });
+      }
+      return res.status(404).json({ success: false, message: 'Business profile not found' });
+    }
+
+    if (businessName) biz.businessName = businessName;
+    if (vendorType) {
+      biz.vendorType = vendorType;
+      biz.category = category || vendorType;
+      biz.subcategory = subcategory || vendorType;
+      biz.baseVendorType = getBaseVendorTypeLocal(vendorType, biz.category, biz.subcategory);
+    }
+    if (address) biz.address = address;
+    if (pincode || req.body.pinCode) biz.pincode = pincode || req.body.pinCode;
+    if (phone) biz.phone = phone;
+
+    user.markModified('businesses');
+    await user.save();
+
+    const userResp = user.toObject();
+    delete userResp.password;
+    userResp.id = user._id;
+
+    return res.json({
+      success: true,
+      message: 'Business profile updated successfully!',
+      user: userResp,
+      updatedBusiness: biz
+    });
+  } catch (error) {
+    console.error('Update Business Error:', error);
+    res.status(500).json({ success: false, message: 'Server error updating business: ' + error.message });
+  }
 };

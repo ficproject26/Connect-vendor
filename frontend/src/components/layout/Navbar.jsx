@@ -61,6 +61,11 @@ const Navbar = () => {
             const existingIds = new Set(prevOrdersRef.current.map(o => o._id));
             const actualNewOrders = newOrders.filter(o => !existingIds.has(o._id));
             if (actualNewOrders.length > 0) {
+              actualNewOrders.forEach(order => {
+                try {
+                  window.dispatchEvent(new CustomEvent('new_incoming_order', { detail: order }));
+                } catch (e) {}
+              });
               const newNotifications = actualNewOrders.map(order => ({
                 id: Date.now() + Math.random(),
                 text: `New ${order.doctorName ? 'Appointment' : 'Order'} from ${order.memberName || order.customer_name || 'Customer'} (₹${order.finalAmount || order.totalAmount || order.amount || 0})`
