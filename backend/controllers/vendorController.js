@@ -1040,12 +1040,32 @@ const updateProfile = async (req, res) => {
 
     if (req.body.panNo !== undefined && String(req.body.panNo).trim() !== '') {
       if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(String(req.body.panNo).toUpperCase().trim())) {
-        return res.status(400).json({ success: false, message: 'Invalid PAN Number format. PAN must be 10 characters (e.g. ABCDE1234F).' });
+        return res.status(400).json({ success: false, message: 'Invalid PAN format. Must be 10 characters (5 letters, 4 digits, 1 letter, e.g. ABCDE1234F).' });
       }
     }
     if (req.body.aadhaarNo !== undefined && String(req.body.aadhaarNo).trim() !== '') {
       if (!/^\d{12}$/.test(String(req.body.aadhaarNo).trim())) {
-        return res.status(400).json({ success: false, message: 'Invalid Aadhaar Number format. Must be a 12-digit number.' });
+        return res.status(400).json({ success: false, message: 'Invalid Aadhaar format. Must be exactly 12 numeric digits.' });
+      }
+    }
+    if (req.body.mobileNumber !== undefined && String(req.body.mobileNumber).trim() !== '') {
+      if (!/^\d{10}$/.test(String(req.body.mobileNumber).trim())) {
+        return res.status(400).json({ success: false, message: 'Invalid Phone Number. Mobile number must be exactly 10 digits.' });
+      }
+    }
+    if (req.body.postalCode !== undefined && String(req.body.postalCode).trim() !== '') {
+      if (!/^\d{6}$/.test(String(req.body.postalCode).trim())) {
+        return res.status(400).json({ success: false, message: 'Invalid Pincode. Must be exactly 6 digits.' });
+      }
+    }
+    if (req.body.email !== undefined && String(req.body.email).trim() !== '') {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(req.body.email).trim())) {
+        return res.status(400).json({ success: false, message: 'Invalid Email format. Please enter a valid email address.' });
+      }
+    }
+    if (req.body.gstNumber !== undefined && String(req.body.gstNumber).trim() !== '' && String(req.body.gstNumber).trim() !== 'N/A') {
+      if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(String(req.body.gstNumber).toUpperCase().trim())) {
+        return res.status(400).json({ success: false, message: 'Invalid GSTIN format. Standard GSTIN must be 15 characters.' });
       }
     }
 
@@ -1530,6 +1550,18 @@ const updateBusiness = async (req, res) => {
     const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
     const businessId = req.params.id;
     const { businessName, vendorType, address, pincode, phone, category, subcategory } = req.body;
+
+    const pinVal = pincode || req.body.pinCode;
+    if (pinVal !== undefined && String(pinVal).trim() !== '') {
+      if (!/^\d{6}$/.test(String(pinVal).trim())) {
+        return res.status(400).json({ success: false, message: 'Invalid Pincode. Pincode must be exactly 6 numeric digits.' });
+      }
+    }
+    if (phone !== undefined && String(phone).trim() !== '') {
+      if (!/^\d{10}$/.test(String(phone).trim())) {
+        return res.status(400).json({ success: false, message: 'Invalid Phone Number. Phone number must be exactly 10 numeric digits.' });
+      }
+    }
 
     const user = await User.findById(parentUserId);
     if (!user) {

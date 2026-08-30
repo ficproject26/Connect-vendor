@@ -486,7 +486,13 @@ router.post('/orders', async (req, res) => {
       tableNumber,
       roomNumber,
       prescriptionUrl,
-      customerDisplayId
+      customerDisplayId,
+      guests: req.body.guests || req.body.numberOfGuests || req.body.guestCount || req.body.adults || (items && items[0]?.guests),
+      adults: req.body.adults || (items && items[0]?.adults),
+      children: req.body.children || (items && items[0]?.children),
+      customer_address: req.body.customer_address || req.body.address || req.body.deliveryAddress,
+      deliveryAddress: req.body.deliveryAddress || req.body.customer_address || req.body.address,
+      customer_phone: req.body.customer_phone || req.body.phone
     };
 
     // Helper function for atomic stock reduction
@@ -548,7 +554,13 @@ router.post('/orders', async (req, res) => {
             doctorName: doctorName || existing.doctorName,
             tableNumber: tableNumber || existing.tableNumber,
             roomNumber: roomNumber || existing.roomNumber,
-            prescriptionUrl: prescriptionUrl || existing.prescriptionUrl
+            prescriptionUrl: prescriptionUrl || existing.prescriptionUrl,
+            guests: req.body.guests || req.body.numberOfGuests || req.body.guestCount || req.body.adults || existing.guests,
+            adults: req.body.adults || existing.adults,
+            children: req.body.children || existing.children,
+            customer_address: req.body.customer_address || req.body.address || req.body.deliveryAddress || existing.customer_address,
+            deliveryAddress: req.body.deliveryAddress || req.body.customer_address || req.body.address || existing.deliveryAddress,
+            customer_phone: req.body.customer_phone || req.body.phone || existing.customer_phone
           }
         }
       );

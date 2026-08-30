@@ -1099,11 +1099,37 @@ const VendorDashboard = () => {
   const getCustomerAddress = (order) => {
     if (!order) return 'Not Specified';
 
+    // 1. Direct customer delivery address snapshot captured on order/booking FIRST
+    const directFields = [
+      order.deliveryAddress,
+      order.shippingAddress,
+      order.customer_address,
+      order.address,
+      order.customerAddress,
+      order.location,
+      order.candidateAddress,
+      order.memberAddress,
+      order.customer_details?.address,
+      order.customer_details?.location
+    ];
+
+    for (let addr of directFields) {
+      if (addr && typeof addr === 'object' && addr !== null) {
+        addr = [addr.street, addr.area, addr.city, addr.district, addr.state, addr.pincode].filter(Boolean).join(', ');
+      }
+      if (addr && typeof addr === 'string' && addr.trim() !== '' && addr !== 'N/A' && !/^\d{6}$/.test(addr.trim())) {
+        return addr.trim();
+      }
+    }
+
+    if (order.tableNumber) return `Table #${order.tableNumber}`;
+    if (order.roomNumber) return `Room #${order.roomNumber}`;
+
+    // 2. Fallback: Look up customer profile array (customers or adminMembers) if order address was blank
     const oNameClean = (order.memberName || order.customer_name || order.name || order.candidateName || order.clientName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     const oEmailClean = (order.candidateEmail || order.customer_email || order.email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
     const oPhoneClean = (order.customer_phone || order.phone || order.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
 
-    // 1. Look up real customer address from customer profile array (customers or adminMembers) FIRST
     const allCustomerProfiles = [
       ...(Array.isArray(customers) ? customers : []),
       ...(Array.isArray(adminMembers) ? adminMembers : [])
@@ -1141,32 +1167,6 @@ const VendorDashboard = () => {
         }
       }
     }
-
-    // 2. Direct customer delivery address on order
-    const directFields = [
-      order.deliveryAddress,
-      order.shippingAddress,
-      order.customer_address,
-      order.address,
-      order.customerAddress,
-      order.location,
-      order.candidateAddress,
-      order.memberAddress,
-      order.customer_details?.address,
-      order.customer_details?.location
-    ];
-
-    for (let addr of directFields) {
-      if (addr && typeof addr === 'object' && addr !== null) {
-        addr = [addr.street, addr.area, addr.city, addr.district, addr.state, addr.pincode].filter(Boolean).join(', ');
-      }
-      if (addr && typeof addr === 'string' && addr.trim() !== '' && addr !== 'N/A' && !/^\d{6}$/.test(addr.trim())) {
-        return addr.trim();
-      }
-    }
-
-    if (order.tableNumber) return `Table #${order.tableNumber}`;
-    if (order.roomNumber) return `Room #${order.roomNumber}`;
 
     if (order.city && typeof order.city === 'string' && order.city !== 'N/A' && !/^\d{6}$/.test(order.city.trim())) return order.city;
     if (order.jobLocation && typeof order.jobLocation === 'string' && order.jobLocation !== 'N/A' && !/^\d{6}$/.test(order.jobLocation.trim())) return order.jobLocation;
@@ -2519,6 +2519,8 @@ const VendorDashboard = () => {
     }
     const payload = {
       ...itemForm,
+      aboutProduct: itemForm.description || itemForm.aboutProduct,
+      description: itemForm.description || itemForm.aboutProduct,
       subNavbarCategory: selectedMainCat || activeTab || 'Products',
       mainCategory: selectedMainCat || activeTab || 'Products'
     };
@@ -2673,10 +2675,31 @@ const VendorDashboard = () => {
     }
   };
 
-  // Profile Settings
   const handleSaveProfile = async (e) => {
     e.preventDefault();
+    setError('');
+    setMessage('');
     try {
+      if (profileForm.mobileNumber && !/^\d{10}$/.test(profileForm.mobileNumber.trim())) {
+        setError('Mobile number must be exactly 10 numeric digits.');
+        return;
+      }
+      if (profileForm.postalCode && !/^\d{6}$/.test(profileForm.postalCode.trim())) {
+        setError('Pincode must be exactly 6 numeric digits.');
+        return;
+      }
+      if (profileForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileForm.email.trim())) {
+        setError('Please enter a valid email address.');
+        return;
+      }
+      if (profileForm.panNo && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(profileForm.panNo.toUpperCase().trim())) {
+        setError('PAN must be 10 characters formatted as 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F).');
+        return;
+      }
+      if (profileForm.aadhaarNo && !/^\d{12}$/.test(profileForm.aadhaarNo.trim())) {
+        setError('Aadhaar number must be exactly 12 numeric digits.');
+        return;
+      }
       const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/profile`, {
         ...profileForm,
         activeBusinessId
@@ -5728,6 +5751,26 @@ const VendorDashboard = () => {
                     <div className="pt-3 border-t border-slate-150/40 dark:border-slate-800/40 flex justify-between items-center text-xs">
                       <span className="text-slate-500 font-medium">Status</span>
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedBusinessForModal(biz);
+                            setEditBusinessForm({
+                              _id: biz._id,
+                              businessName: biz.businessName || user?.businessName || '',
+                              vendorType: biz.vendorType || user?.vendorType || '',
+                              address: biz.address || user?.address || '',
+                              pincode: biz.pincode || biz.pinCode || biz.postalCode || (biz.address?.match(/\b\d{6}\b/)?.[0]) || '',
+                              phone: biz.phone || user?.mobileNumber || user?.telephone || ''
+                            });
+                            setIsEditBusinessModalOpen(true);
+                          }}
+                          className="bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-900/30 font-bold text-[10px] flex items-center gap-1 transition-colors"
+                          title="Edit Business Profile"
+                        >
+                          ✏️ Edit
+                        </button>
                         {!isActive && (
                           <button
                             type="button"
@@ -8733,7 +8776,7 @@ const VendorDashboard = () => {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Brief Description</label>
+            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">ABOUT PRODUCT</label>
             <textarea
               value={itemForm.description}
               rows={2}
@@ -9647,6 +9690,16 @@ required
               setError('');
               setMessage('');
               try {
+                if (editBusinessForm.pincode && !/^\d{6}$/.test(editBusinessForm.pincode.trim())) {
+                  setError('Pincode must be exactly 6 numeric digits.');
+                  setLoadingEditBusiness(false);
+                  return;
+                }
+                if (editBusinessForm.phone && !/^\d{10}$/.test(editBusinessForm.phone.trim())) {
+                  setError('Phone number must be exactly 10 numeric digits.');
+                  setLoadingEditBusiness(false);
+                  return;
+                }
                 const targetId = editBusinessForm._id || selectedBusinessForModal?._id || user?.primaryBusinessId || user?._id || 'primary';
                 const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/business/${targetId}`, editBusinessForm, getAxiosConfig());
                 if (res.data && res.data.success) {
@@ -11519,8 +11572,8 @@ required
                 const isStayOrBooking = ['STAY', 'HOTEL', 'TRAVEL'].includes(String(selectedBillOrder.type || selectedBillOrder.category || '').toUpperCase()) || Boolean(selectedBillOrder.appointmentDate);
 
                 const getCustomerAddedCount = (order, item) => {
-                  const raw = item?.guests || item?.numberOfGuests || item?.guestCount || item?.noOfGuests || item?.no_of_guests ||
-                              order?.guests || order?.numberOfGuests || order?.guestCount || order?.guestsCount || order?.noOfGuests || order?.no_of_guests || order?.customerCount ||
+                  const raw = item?.guests || item?.numberOfGuests || item?.guestCount || item?.noOfGuests || item?.no_of_guests || item?.adults ||
+                              order?.guests || order?.numberOfGuests || order?.guestCount || order?.guestsCount || order?.noOfGuests || order?.no_of_guests || order?.customerCount || order?.adults ||
                               item?.quantity || order?.quantity;
                   return Number(raw) || 1;
                 };
