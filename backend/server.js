@@ -28,13 +28,18 @@ app.use((req, res, next) => {
   next();
 });
 
-// Ensure upload directory exists
+// Ensure upload directories exist
 const uploadsDir = path.join(__dirname, 'uploads');
+const resumesDir = path.join(__dirname, 'uploads', 'resumes');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
+if (!fs.existsSync(resumesDir)) {
+  fs.mkdirSync(resumesDir, { recursive: true });
+}
 
 // Serve uploaded files statically
+app.use('/uploads/resumes', express.static(resumesDir));
 app.use('/uploads', express.static(uploadsDir));
 
 // Import Routes

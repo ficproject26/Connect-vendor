@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { Product, User, Order, Category } = require('../models/Schemas');
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
 
@@ -488,6 +489,41 @@ router.post('/orders', async (req, res) => {
       customerDisplayId
     };
 
+    // Helper function for atomic stock reduction
+    const reduceStockForOrder = async (orderDoc, targetVendorId) => {
+      if (!orderDoc || orderDoc.stockReduced) return;
+      try {
+        const items = orderDoc.items && Array.isArray(orderDoc.items) && orderDoc.items.length > 0
+          ? orderDoc.items
+          : (orderDoc.productId || orderDoc.product_details ? [{ productId: orderDoc.productId, name: orderDoc.product_details, quantity: orderDoc.quantity || 1 }] : []);
+
+        for (const item of items) {
+          const qty = Math.max(1, Number(item.quantity || item.qty || 1));
+          let prodId = item.productId || item._id || item.id;
+          let prod = null;
+
+          if (prodId && mongoose.Types.ObjectId.isValid(prodId)) {
+            prod = await Product.findById(prodId);
+          }
+          if (!prod && item.name) {
+            prod = await Product.findOne({ name: item.name, $or: [{ vendorId: targetVendorId }, { vendor_id: targetVendorId }] });
+          }
+
+          if (prod && typeof prod.stock === 'number') {
+            const newStock = Math.max(0, prod.stock - qty);
+            const updateFields = { stock: newStock };
+            if (newStock === 0) {
+              updateFields.status = 'Out of Stock';
+            }
+            await Product.updateOne({ _id: prod._id }, { $set: updateFields });
+          }
+        }
+        await Order.updateOne({ _id: orderDoc._id }, { $set: { stockReduced: true } });
+      } catch (stockErr) {
+        console.error('Error reducing stock for order:', stockErr);
+      }
+    };
+
     // If order already exists in the shared database (created by customer backend), update and return it
     const existing = await Order.findOne({ id: id });
     if (existing) {
@@ -516,49 +552,12 @@ router.post('/orders', async (req, res) => {
           }
         }
       );
+      await reduceStockForOrder(existing, vendorId);
       return res.status(200).json({ success: true, message: 'Order updated in vendor dashboard successfully', data: existing });
     }
 
     const order = await Order.create(orderData);
-
-    // Reduce stock count for ordered items
-    try {
-      if (orderData.items && Array.isArray(orderData.items) && orderData.items.length > 0) {
-        for (const item of orderData.items) {
-          const qty = Number(item.quantity || item.qty || 1);
-          let prod = null;
-          if (item.productId || item._id || item.id) {
-            prod = await Product.findById(item.productId || item._id || item.id);
-          }
-          if (!prod && item.name) {
-            prod = await Product.findOne({ name: item.name, $or: [{ vendorId }, { vendor_id: vendorId }] });
-          }
-          if (prod && typeof prod.stock === 'number') {
-            prod.stock = Math.max(0, prod.stock - qty);
-            if (prod.stock === 0) {
-              prod.status = 'Out of Stock';
-            }
-            await prod.save();
-          }
-        }
-      } else if (req.body.productId || req.body.product_details) {
-        let prod = null;
-        if (req.body.productId) prod = await Product.findById(req.body.productId);
-        if (!prod && req.body.product_details) {
-          prod = await Product.findOne({ name: req.body.product_details, $or: [{ vendorId }, { vendor_id: vendorId }] });
-        }
-        if (prod && typeof prod.stock === 'number') {
-          const qty = Number(req.body.quantity || 1);
-          prod.stock = Math.max(0, prod.stock - qty);
-          if (prod.stock === 0) {
-            prod.status = 'Out of Stock';
-          }
-          await prod.save();
-        }
-      }
-    } catch (stockErr) {
-      console.error('Error reducing stock for public order:', stockErr);
-    }
+    await reduceStockForOrder(order, vendorId);
     
     res.status(201).json({ success: true, message: 'Order created in vendor dashboard successfully', data: order });
   } catch (error) {

@@ -229,8 +229,19 @@ const OrderSchema = new mongoose.Schema({
   doctorName: { type: String },              // Hospital
   roomNumber: { type: String },              // Hotel
   tableNumber: { type: String },             // Restaurant
-  prescriptionUrl: { type: String }          // Pharmacy
-}, { timestamps: true });
+  prescriptionUrl: { type: String },         // Pharmacy
+
+  // Stay booking fields
+  checkInDate: { type: String },
+  checkOutDate: { type: String },
+  checkInTime: { type: String },
+  checkOutTime: { type: String },
+  bookingDate: { type: String },
+  bookingTime: { type: String },
+
+  // Stock tracking
+  stockReduced: { type: Boolean, default: false }
+}, { timestamps: true, strict: false });
 
 OrderSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
 OrderSchema.index({ memberId: 1, createdAt: -1 });

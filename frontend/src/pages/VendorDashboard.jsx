@@ -1696,6 +1696,14 @@ const VendorDashboard = () => {
         setIsAddBusinessModalOpen(false);
         setAddBizForm({ businessName: '', vendorType: '', category: '', subcategory: '', address: '', pincode: '', phone: '' });
 
+        // Refresh analytics KPI data after adding a business
+        try {
+          const analyticsRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/analytics`, getAxiosConfig());
+          if (analyticsRes.data.success) setAnalytics(analyticsRes.data.data);
+        } catch (kpiErr) {
+          console.error('Failed to refresh KPI after business add:', kpiErr);
+        }
+
         // Add a notification if notification state handler exists
         if (typeof setNotifications === 'function') {
           const newNotification = {
@@ -3729,7 +3737,8 @@ const VendorDashboard = () => {
 
               {/* Stats Cards Grid (8 Cards) */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-                {/* 1. Total Revenue Card */}
+                {/* 1. Total Revenue Card (hidden for Job vendors) */}
+                {!(vendorType.startsWith('Job') || selectedMainCat === 'Jobs') && (
                 <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
                   <div className="p-2.5 md:p-3.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-355 rounded-xl md:rounded-2xl shadow-inner shrink-0"><IndianRupee size={20} className="md:w-6 md:h-6" /></div>
                   <div className="min-w-0">
@@ -3737,6 +3746,7 @@ const VendorDashboard = () => {
                     <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-indigo-600 dark:text-indigo-400">₹{(analytics.totalRevenue || 0).toLocaleString('en-IN')}</p>
                   </div>
                 </div>
+                )}
 
                 {/* 2. Total Orders Card */}
                 <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
@@ -4505,6 +4515,26 @@ const VendorDashboard = () => {
                                         </div>
                                       );
                                     })()}
+                                    {/* BUG 7: Job Posting Date + Deadline for Vendor */}
+                                    {(() => {
+                                      const mc = getProductMainCategory(item.category, vendorType);
+                                      if (mc === 'Jobs') {
+                                        const fmtD = (d) => { try { const dt = new Date(d); return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return d; } };
+                                        return (
+                                          <div className="mt-1.5 grid grid-cols-2 gap-1 text-[9px] sm:text-[10px] bg-indigo-50/60 dark:bg-indigo-950/30 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-indigo-200/30 dark:border-indigo-800/30">
+                                            <div className="text-center">
+                                              <span className="block text-[7px] sm:text-[8px] font-semibold text-indigo-400 dark:text-indigo-500 uppercase tracking-wider mb-0.5">Posted</span>
+                                              <span className="font-bold text-indigo-700 dark:text-indigo-300">{item.createdAt ? fmtD(item.createdAt) : 'N/A'}</span>
+                                            </div>
+                                            <div className="text-center border-l border-indigo-200 dark:border-indigo-800">
+                                              <span className="block text-[7px] sm:text-[8px] font-semibold text-indigo-400 dark:text-indigo-500 uppercase tracking-wider mb-0.5">Deadline</span>
+                                              <span className="font-bold text-indigo-700 dark:text-indigo-300">{item.deadline ? fmtD(item.deadline) : 'N/A'}</span>
+                                            </div>
+                                          </div>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
                                   </div>
 
                                   <div className="flex justify-end items-center gap-1.5 sm:gap-2 mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/60">
@@ -4639,7 +4669,7 @@ const VendorDashboard = () => {
 
                 </div>
 
-                {loading ? <p className="text-slate-800 dark:text-slate-200">Loading orders...</p> : orders.length === 0 ? (
+                {loading && orders.length === 0 ? <p className="text-slate-800 dark:text-slate-200">Loading orders...</p> : orders.length === 0 ? (
                   <div className="glass-card p-12 text-center rounded-3xl">
                     <p className="text-slate-800 dark:text-slate-200 font-medium">No {terms.ordersName.toLowerCase()} registered in the system yet.</p>
                   </div>
@@ -4658,7 +4688,16 @@ const VendorDashboard = () => {
 
                     const filteredOrders = orders.filter(order => {
                       const matchesBusiness = !savedActiveId || order.vendorId === savedActiveId || order.vendor_id === savedActiveId;
-                      const matchesStatus = orderStatusFilter === 'All' || order.status === orderStatusFilter;
+                      const matchesStatus = (() => {
+                         if (orderStatusFilter === 'All') return true;
+                         const s = (order.status || '').toLowerCase().trim();
+                         const f = orderStatusFilter.toLowerCase().trim();
+                         if (s === f) return true;
+                         // Map pending aliases
+                         const pendingAliases = ['pending', 'order_pending', 'payment_pending', 'order received', 'application received'];
+                         if (f === 'pending' && pendingAliases.includes(s)) return true;
+                         return false;
+                       })();
                       const matchesSearch = (order.memberName || order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) || 
                                             (order.memberId || order.id || '').toLowerCase().includes(orderSearchQuery.toLowerCase());
                       const orderVType = getOrderVendorType(order);
@@ -4799,7 +4838,7 @@ const VendorDashboard = () => {
                                               📄 {order.candidateResume.split('/').pop().substring(0, 20)}...
                                             </button>
                                             <a
-                                              href={order.candidateResume.startsWith('http') ? order.candidateResume : `${getBackendUrl()}${order.candidateResume.startsWith('/') ? '' : '/'}${order.candidateResume}`}
+                                              href={order.candidateResume.startsWith('http') ? order.candidateResume : `${getVendorBackendUrl()}${order.candidateResume.startsWith('/') ? '' : '/'}${order.candidateResume}`}
                                               download
                                               target="_blank"
                                               rel="noopener noreferrer"
@@ -4850,7 +4889,7 @@ const VendorDashboard = () => {
                                             order.status === 'Cancelled' ? 'bg-red-100/80 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/30' :
                                             'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30'
                                           }`}>
-                                            {order.status}
+                                            {(isJob && (order.status === 'Pending' || order.status === 'Order Received')) ? 'Job Application Received' : order.status}
                                           </span>
                                         </div>
                                       </td>
@@ -11337,6 +11376,38 @@ required
                         {selectedBillOrder.appointmentDate || 'N/A'} ({selectedBillOrder.appointmentTimeSlot || 'Standard Slot'})
                       </span>
                     </div>
+                    {/* Stay Booking Duration (Check-in / Check-out / Nights) */}
+                    {(selectedBillOrder.checkInDate || selectedBillOrder.checkOutDate) && (() => {
+                      const ciRaw = selectedBillOrder.checkInDate || selectedBillOrder.appointmentDate || selectedBillOrder.bookingDate;
+                      const coRaw = selectedBillOrder.checkOutDate;
+                      let nights = '';
+                      if (ciRaw && coRaw) {
+                        const ciD = new Date(ciRaw);
+                        const coD = new Date(coRaw);
+                        if (!isNaN(ciD.getTime()) && !isNaN(coD.getTime())) {
+                          nights = Math.max(1, Math.round((coD - ciD) / 86400000));
+                        }
+                      }
+                      const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return d; } };
+                      return (
+                        <>
+                          <div>
+                            <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Check-in</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{ciRaw ? fmtDate(ciRaw) : 'N/A'} {selectedBillOrder.checkInTime ? `• ${selectedBillOrder.checkInTime}` : ''}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Check-out</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{coRaw ? fmtDate(coRaw) : 'N/A'} {selectedBillOrder.checkOutTime ? `• ${selectedBillOrder.checkOutTime}` : ''}</span>
+                          </div>
+                          {nights && (
+                            <div>
+                              <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Duration</span>
+                              <span className="font-extrabold text-indigo-600 dark:text-indigo-400">{nights} {nights === 1 ? 'Night' : 'Nights'}</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Amount Paid</span>
                       <span className="font-extrabold text-slate-900 dark:text-white text-sm">₹{selectedBillOrder.finalAmount}</span>
@@ -11587,9 +11658,12 @@ required
                     resumeUrl = rawResume;
                   } else if (rawResume.startsWith('/') || rawResume.includes('uploads/')) {
                     const clean = rawResume.replace(/\\/g, '/');
-                    resumeUrl = `${getBackendUrl()}${clean.startsWith('/') ? '' : '/'}${clean}`;
+                    resumeUrl = `${getVendorBackendUrl()}${clean.startsWith('/') ? '' : '/'}${clean}`;
                   } else if (/\.(pdf|png|jpg|jpeg|doc|docx)$/i.test(rawResume)) {
-                    resumeUrl = `${getBackendUrl()}/uploads/resumes/${rawResume.replace(/\\/g, '/')}`;
+                    resumeUrl = `${getVendorBackendUrl()}/uploads/resumes/${rawResume.replace(/\\/g, '/')}`;
+                  } else {
+                    // Treat as a plain filename or text content — try to serve as a file
+                    resumeUrl = `${getVendorBackendUrl()}/uploads/resumes/${encodeURIComponent(rawResume)}`;
                   }
                 }
 
