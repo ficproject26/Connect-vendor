@@ -9242,6 +9242,7 @@ required
           </div>
 
 
+          {!(selectedMainCat === 'Jobs' || vendorType.startsWith('Job') || terms.catalogItem === 'Job') && (
           <div className="space-y-2">
             <div className="flex items-center justify-between pl-1">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{terms.imageLabel}</label>
@@ -9398,6 +9399,7 @@ required
               <p className="text-xs text-emerald-500 font-bold mt-1">✓ {message}</p>
             )}
           </div>
+          )}
 
           <div className="flex gap-3">
             <button
