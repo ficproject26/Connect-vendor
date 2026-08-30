@@ -1538,46 +1538,87 @@ const updateBusiness = async (req, res) => {
 
     if (!user.businesses) user.businesses = [];
 
-    let biz = user.businesses.find(b => String(b._id) === String(businessId));
-    if (!biz) {
-      if (String(user._id) === String(businessId) || businessId === 'primary') {
+    // 1. Try finding in user.businesses by _id or id
+    let biz = user.businesses.find(b => 
+      b && (String(b._id) === String(businessId) || String(b.id) === String(businessId))
+    );
+
+    if (biz) {
+      if (businessName) biz.businessName = businessName;
+      if (vendorType) {
+        biz.vendorType = vendorType;
+        biz.category = category || vendorType;
+        biz.subcategory = subcategory || vendorType;
+        biz.baseVendorType = getBaseVendorTypeLocal(vendorType, biz.category, biz.subcategory);
+      }
+      if (address) biz.address = address;
+      if (pincode || req.body.pinCode) biz.pincode = pincode || req.body.pinCode;
+      if (phone) biz.phone = phone;
+
+      // If updating primary/active business or the only business, also update top-level user fields
+      if (!user.primaryBusinessId || String(user.primaryBusinessId) === String(biz._id) || String(user.primaryBusinessId) === String(biz.id) || user.businesses.length === 1) {
         if (businessName) user.businessName = businessName;
         if (vendorType) user.vendorType = vendorType;
         if (address) user.address = address;
         if (pincode || req.body.pinCode) user.pincode = pincode || req.body.pinCode;
         if (phone) user.mobileNumber = phone;
-        await user.save();
-        const userResp = user.toObject();
-        delete userResp.password;
-        return res.json({ success: true, message: 'Business profile updated successfully!', user: userResp });
       }
-      return res.status(404).json({ success: false, message: 'Business profile not found' });
+
+      user.markModified('businesses');
+      await user.save();
+
+      const userResp = user.toObject();
+      delete userResp.password;
+      userResp.id = user._id;
+
+      return res.json({
+        success: true,
+        message: 'Business profile updated successfully!',
+        user: userResp,
+        updatedBusiness: biz
+      });
     }
 
-    if (businessName) biz.businessName = businessName;
-    if (vendorType) {
-      biz.vendorType = vendorType;
-      biz.category = category || vendorType;
-      biz.subcategory = subcategory || vendorType;
-      biz.baseVendorType = getBaseVendorTypeLocal(vendorType, biz.category, biz.subcategory);
+    // 2. Fallback: Update main user object directly if businessId is 'primary', 'undefined', 'null', or matches user._id
+    if (!businessId || businessId === 'primary' || businessId === 'undefined' || businessId === 'null' || String(user._id) === String(businessId) || String(user.id) === String(businessId)) {
+      if (businessName) user.businessName = businessName;
+      if (vendorType) user.vendorType = vendorType;
+      if (address) user.address = address;
+      if (pincode || req.body.pinCode) user.pincode = pincode || req.body.pinCode;
+      if (phone) user.mobileNumber = phone;
+
+      // Update first/matching entry in user.businesses if present
+      if (user.businesses.length > 0) {
+        const primBiz = user.businesses.find(b => b && (String(b._id) === String(user.primaryBusinessId) || String(b.id) === String(user.primaryBusinessId))) || user.businesses[0];
+        if (primBiz) {
+          if (businessName) primBiz.businessName = businessName;
+          if (vendorType) {
+            primBiz.vendorType = vendorType;
+            primBiz.category = category || vendorType;
+            primBiz.subcategory = subcategory || vendorType;
+            primBiz.baseVendorType = getBaseVendorTypeLocal(vendorType, primBiz.category, primBiz.subcategory);
+          }
+          if (address) primBiz.address = address;
+          if (pincode || req.body.pinCode) primBiz.pincode = pincode || req.body.pinCode;
+          if (phone) primBiz.phone = phone;
+          user.markModified('businesses');
+        }
+      }
+
+      await user.save();
+
+      const userResp = user.toObject();
+      delete userResp.password;
+      userResp.id = user._id;
+
+      return res.json({
+        success: true,
+        message: 'Business profile updated successfully!',
+        user: userResp
+      });
     }
-    if (address) biz.address = address;
-    if (pincode || req.body.pinCode) biz.pincode = pincode || req.body.pinCode;
-    if (phone) biz.phone = phone;
 
-    user.markModified('businesses');
-    await user.save();
-
-    const userResp = user.toObject();
-    delete userResp.password;
-    userResp.id = user._id;
-
-    return res.json({
-      success: true,
-      message: 'Business profile updated successfully!',
-      user: userResp,
-      updatedBusiness: biz
-    });
+    return res.status(404).json({ success: false, message: 'Business profile not found' });
   } catch (error) {
     console.error('Update Business Error:', error);
     res.status(500).json({ success: false, message: 'Server error updating business: ' + error.message });

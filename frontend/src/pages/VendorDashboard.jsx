@@ -9631,8 +9631,11 @@ required
             onSubmit={async (e) => {
               e.preventDefault();
               setLoadingEditBusiness(true);
+              setError('');
+              setMessage('');
               try {
-                const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/business/${editBusinessForm._id}`, editBusinessForm, getAxiosConfig());
+                const targetId = editBusinessForm._id || selectedBusinessForModal?._id || user?.primaryBusinessId || user?._id || 'primary';
+                const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/business/${targetId}`, editBusinessForm, getAxiosConfig());
                 if (res.data && res.data.success) {
                   setMessage('Business profile updated successfully!');
                   if (res.data.user) {
@@ -9652,6 +9655,7 @@ required
                   setIsEditBusinessModalOpen(false);
                 }
               } catch (err) {
+                console.error('Save Profile Details Error:', err);
                 setError(err.response?.data?.message || 'Failed to update business profile details');
               } finally {
                 setLoadingEditBusiness(false);
@@ -9722,6 +9726,13 @@ required
                 className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
               />
             </div>
+
+            {error && (
+              <p className="text-xs text-red-500 font-bold mt-1">⚠️ {error}</p>
+            )}
+            {message && (
+              <p className="text-xs text-emerald-500 font-bold mt-1">✓ {message}</p>
+            )}
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
               <button
