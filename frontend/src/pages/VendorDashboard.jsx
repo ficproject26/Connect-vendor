@@ -453,7 +453,11 @@ const VendorDashboard = () => {
       isCheckingStatusRef.current = true;
       try {
         const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`, getAxiosConfig());
-        const status = (res.data?.data?.status || res.data?.user?.status || user.status || '').toLowerCase().trim();
+        const updatedUser = res.data?.data || res.data?.user;
+        if (updatedUser) {
+          dispatch(updateUser(updatedUser));
+        }
+        const status = (updatedUser?.status || user.status || '').toLowerCase().trim();
         if (['suspended', 'inactive', 'rejected'].includes(status)) {
           alert('Your vendor account has been suspended. Please contact the administrator.');
           dispatch(logout());
@@ -3259,7 +3263,8 @@ const VendorDashboard = () => {
                   else if (type.startsWith('Services')) Icon = HeartHandshake;
 
                   const bStatus = (biz.status || '').toLowerCase().trim();
-                  const isBizSuspended = ['suspended', 'inactive', 'rejected'].includes(bStatus) || biz.isActive === false;
+                  const isBizApprovedOrActive = ['active', 'approved'].includes(bStatus) || biz.isActive === true;
+                  const isBizSuspended = !isBizApprovedOrActive && (['suspended', 'inactive', 'rejected'].includes(bStatus) || biz.isActive === false);
 
                   return {
                     id: biz._id,
@@ -4100,8 +4105,16 @@ const VendorDashboard = () => {
               return true;
             });
 
-            const activeBizObj = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
-            const isCurBizSuspended = activeBizObj && (['suspended', 'inactive', 'rejected'].includes((activeBizObj.status || '').toLowerCase().trim()) || activeBizObj.isActive === false);
+            const searchTarget = String(activeBusinessId || '').toLowerCase();
+            const activeBizObj = user?.businesses?.find(b => b && (
+              String(b._id || '').toLowerCase() === searchTarget ||
+              String(b.id || '').toLowerCase() === searchTarget ||
+              String(b.category || '').toLowerCase() === searchTarget ||
+              String(b.vendorType || '').toLowerCase() === searchTarget
+            ));
+            const curStat = (activeBizObj?.status || '').toLowerCase().trim();
+            const isCurActiveOrApproved = ['active', 'approved'].includes(curStat) || activeBizObj?.isActive === true;
+            const isCurBizSuspended = activeBizObj && !isCurActiveOrApproved && (['suspended', 'inactive', 'rejected'].includes(curStat) || activeBizObj.isActive === false);
 
             return (
               <div className="space-y-6 animate-fadeIn">

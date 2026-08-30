@@ -60,10 +60,17 @@ const protect = async (req, res, next) => {
         let activeBusiness = null;
 
         if (activeBusinessId) {
-          activeBusiness = user.businesses.find(b => b._id.toString() === activeBusinessId.toString());
+          const searchKey = String(activeBusinessId).trim().toLowerCase();
+          activeBusiness = user.businesses.find(b => b && (
+            (b._id && String(b._id).toLowerCase() === searchKey) ||
+            (b.id && String(b.id).toLowerCase() === searchKey) ||
+            (b.category && String(b.category).toLowerCase() === searchKey) ||
+            (b.vendorType && String(b.vendorType).toLowerCase() === searchKey)
+          ));
           if (activeBusiness) {
             const bStatus = (activeBusiness.status || '').toLowerCase().trim();
-            if (['pending', 'pending approval', 'pending_approval', 'under_verification', 'suspended', 'rejected'].includes(bStatus) || activeBusiness.isActive === false) {
+            const isApprovedOrActive = ['active', 'approved'].includes(bStatus) || activeBusiness.isActive === true;
+            if (!isApprovedOrActive && (['pending', 'pending approval', 'pending_approval', 'under_verification', 'suspended', 'rejected'].includes(bStatus) || activeBusiness.isActive === false)) {
               return res.status(403).json({
                 success: false,
                 isPendingApproval: true,
@@ -75,13 +82,16 @@ const protect = async (req, res, next) => {
 
         if (!activeBusiness) {
           // fallback to primaryBusinessId or the first active business
-          const primaryIdStr = user.primaryBusinessId ? user.primaryBusinessId.toString() : '';
+          const primaryIdStr = user.primaryBusinessId ? String(user.primaryBusinessId).toLowerCase() : '';
           activeBusiness = user.businesses.find(b => {
+            if (!b) return false;
             const bStatus = (b.status || '').toLowerCase().trim();
-            return b._id.toString() === primaryIdStr && (bStatus === 'active' || bStatus === 'approved') && b.isActive !== false;
+            const isOk = ['active', 'approved'].includes(bStatus) || b.isActive === true;
+            return (b._id && String(b._id).toLowerCase() === primaryIdStr) && isOk;
           }) || user.businesses.find(b => {
+            if (!b) return false;
             const bStatus = (b.status || '').toLowerCase().trim();
-            return (bStatus === 'active' || bStatus === 'approved') && b.isActive !== false;
+            return (bStatus === 'active' || bStatus === 'approved') || b.isActive === true;
           }) || user.businesses[0];
         }
 
