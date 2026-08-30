@@ -274,11 +274,30 @@ const createProduct = async (req, res) => {
   }
 };
 
+const normalizeCategoryType = (raw) => {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  const lower = s.toLowerCase();
+
+  if (lower.startsWith('product') || lower.startsWith('store') || lower.startsWith('electronic') || lower.startsWith('home & furniture')) return 'Products';
+  if (lower.startsWith('service') || lower.startsWith('hospital') || lower.startsWith('doctor')) return 'Services';
+  if (lower.startsWith('food') || lower.startsWith('restaurant') || lower.startsWith('dish')) return 'Food';
+  if (lower.startsWith('daily') || lower.startsWith('grocery') || lower.startsWith('pharmacy')) return 'Daily Needs';
+  if (lower.startsWith('stay') || lower.startsWith('hotel') || lower.startsWith('room')) return 'Stay';
+  if (lower.startsWith('travel') || lower.startsWith('bus') || lower.startsWith('travel agency')) return 'Travel';
+  if (lower.startsWith('job')) return 'Jobs';
+
+  return s;
+};
+
 const getProducts = async (req, res) => {
   try {
-    const parentId = req.user.parentUserId || req.user._id;
-    const activeBusinessId = req.user._id;
-    const activeVendorType = req.user.vendorType || '';
+    const parentId = (req.user.parentUserId || req.user._id).toString();
+    const activeBusinessId = req.user._id.toString();
+    const activeVendorType = req.user.vendorType || req.user.category || '';
+
+    const reqType = (req.query.type || req.query.mainCategory || req.query.subNavbarCategory || req.query.category || '').trim();
+    const targetType = reqType ? normalizeCategoryType(reqType) : normalizeCategoryType(activeVendorType);
 
     const products = await Product.find({
       $or: [
@@ -290,40 +309,25 @@ const getProducts = async (req, res) => {
     }).lean();
 
     const filtered = products.filter(p => {
+      // 1. Business ownership isolation check
       const pVendorId = (p.vendorId || p.vendor_id || '').toString();
-      if (pVendorId === activeBusinessId.toString()) {
-        return true;
-      }
-      if (pVendorId === parentId.toString()) {
-        const mainCat = getProductMainCategory(p.category);
-        
-        // Normalize vendor types / main categories (e.g. Services, Jobs, Stay, Food, Products, Daily Needs)
-        let normalizedVendorType = activeVendorType;
-        if (activeVendorType.endsWith(' Vendor')) {
-          normalizedVendorType = activeVendorType.replace(' Vendor', '');
-        }
-        if (normalizedVendorType.startsWith('Restaurant')) {
-          normalizedVendorType = 'Food';
-        }
-        if (normalizedVendorType.startsWith('Hotel')) {
-          normalizedVendorType = 'Stay';
-        }
-        if (normalizedVendorType.startsWith('Travel Agency')) {
-          normalizedVendorType = 'Travel';
-        }
-        if (normalizedVendorType.startsWith('Hospital') || normalizedVendorType.startsWith('Service')) {
-          normalizedVendorType = 'Services';
-        }
-        if (normalizedVendorType.startsWith('Grocery') || normalizedVendorType.startsWith('Pharmacy')) {
-          normalizedVendorType = 'Daily Needs';
-        }
-        if (normalizedVendorType.startsWith('Store') || normalizedVendorType.startsWith('Electronics') || normalizedVendorType.startsWith('Home & Furniture')) {
-          normalizedVendorType = 'Products';
-        }
+      const belongsToVendor = (pVendorId === activeBusinessId || pVendorId === parentId);
+      if (!belongsToVendor) return false;
 
-        return !mainCat || mainCat.toLowerCase() === normalizedVendorType.toLowerCase() || (p.category && p.category.toLowerCase().includes(normalizedVendorType.toLowerCase()));
+      // 2. Strict Category / Catalog Type isolation check
+      if (!targetType || targetType.toLowerCase() === 'all') return true;
+
+      const pMain = normalizeCategoryType(p.mainCategory || p.subNavbarCategory);
+      const pCat = normalizeCategoryType(p.category);
+
+      if (pMain) {
+        return pMain.toLowerCase() === targetType.toLowerCase();
       }
-      return false;
+      if (pCat) {
+        return pCat.toLowerCase() === targetType.toLowerCase() || pCat.toLowerCase().includes(targetType.toLowerCase());
+      }
+
+      return true;
     });
 
     res.status(200).json({ success: true, data: filtered });

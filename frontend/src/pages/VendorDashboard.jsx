@@ -1797,7 +1797,10 @@ const VendorDashboard = () => {
             }
           }
         } else if (activeTab === 'catalog') {
-          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/products`, getAxiosConfig());
+          setCatalog([]);
+          const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
+          const targetCategoryType = getProductMainCategory('', activeBiz?.vendorType || user?.vendorType || '');
+          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/products?type=${encodeURIComponent(targetCategoryType)}`, getAxiosConfig());
           if (res.data.success) setCatalog(res.data.data);
           try {
             const ordersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
@@ -4350,7 +4353,17 @@ const VendorDashboard = () => {
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-700 dark:text-slate-300"
                         >
                           <option value="All">All Categories</option>
-                          {[...new Set(catalog.filter(item => !selectedMainCat || selectedMainCat === 'All' || getProductMainCategory(item.category, item.vendorType || vendorType) === selectedMainCat).map(item => item.category || item.subCategory || item.childCategory).filter(Boolean))].map(cat => (
+                          {[...new Set(
+                            catalog
+                              .filter(item => {
+                                const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
+                                const activeCatType = getProductMainCategory('', activeBiz?.vendorType || user?.vendorType || '');
+                                const itemMainCat = getProductMainCategory(item.category, item.vendorType || activeBiz?.vendorType || vendorType);
+                                return !activeCatType || activeCatType === 'All' || itemMainCat.toLowerCase() === activeCatType.toLowerCase();
+                              })
+                              .map(item => item.category || item.subCategory || item.childCategory)
+                              .filter(Boolean)
+                          )].map(cat => (
                             <option key={cat} value={cat}>{cat}</option>
                           ))}
                         </select>
@@ -4380,39 +4393,48 @@ const VendorDashboard = () => {
                       </div>
                     </div>
 
-                    {loading ? <p className="text-slate-800 dark:text-slate-200">Loading catalog...</p> : catalog.length === 0 ? (
-                      <div className="glass-card p-12 text-center rounded-3xl">
-                        <p className="text-slate-800 dark:text-slate-200 font-medium">Your catalog is currently empty. Click the button to add items.</p>
-                      </div>
-                    ) : (
-                      (() => {
-                        const filteredCatalog = catalog.filter(item => {
-                          const itemMainCat = getProductMainCategory(item.category, item.vendorType || vendorType);
-                          const matchesMainCategory = !selectedMainCat || selectedMainCat === 'All' || itemMainCat === selectedMainCat;
-                          const matchesCategory = catalogCategoryFilter === 'All' || item.category === catalogCategoryFilter;
-                          const matchesStatus = catalogStatusFilter === 'All' || item.status === catalogStatusFilter;
-                          const matchesFoodType = catalogFoodTypeFilter === 'All' || item.foodType === catalogFoodTypeFilter;
-                          const matchesSearch = item.name.toLowerCase().includes(catalogSearchQuery.toLowerCase()) || 
-                                                (item.description && item.description.toLowerCase().includes(catalogSearchQuery.toLowerCase()));
-                          const cardTypes = item.cardTypes || ['Silver', 'Gold', 'Diamond'];
-                          const matchesCard = catalogCardFilter === 'All' || cardTypes.includes(catalogCardFilter);
-                          return matchesMainCategory && matchesCategory && matchesStatus && matchesFoodType && matchesSearch && matchesCard;
-                        });
+                    {(() => {
+                      const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
+                      const activeCatType = getProductMainCategory('', activeBiz?.vendorType || user?.vendorType || '');
 
-                        const sortedCatalog = [...filteredCatalog];
-                        if (catalogSortOrder === 'lowToHigh') {
-                          sortedCatalog.sort((a, b) => a.price - b.price);
-                        } else if (catalogSortOrder === 'highToLow') {
-                          sortedCatalog.sort((a, b) => b.price - a.price);
-                        }
+                      const filteredCatalog = catalog.filter(item => {
+                        const itemMainCat = getProductMainCategory(item.category, item.vendorType || activeBiz?.vendorType || vendorType);
+                        const matchesMainCategory = !activeCatType || activeCatType === 'All' || itemMainCat.toLowerCase() === activeCatType.toLowerCase();
+                        const matchesCategory = catalogCategoryFilter === 'All' || item.category === catalogCategoryFilter;
+                        const matchesStatus = catalogStatusFilter === 'All' || item.status === catalogStatusFilter;
+                        const matchesFoodType = catalogFoodTypeFilter === 'All' || item.foodType === catalogFoodTypeFilter;
+                        const matchesSearch = !catalogSearchQuery || item.name.toLowerCase().includes(catalogSearchQuery.toLowerCase()) || 
+                                              (item.description && item.description.toLowerCase().includes(catalogSearchQuery.toLowerCase()));
+                        const cardTypes = item.cardTypes || ['Silver', 'Gold', 'Diamond'];
+                        const matchesCard = catalogCardFilter === 'All' || cardTypes.includes(catalogCardFilter);
+                        return matchesMainCategory && matchesCategory && matchesStatus && matchesFoodType && matchesSearch && matchesCard;
+                      });
 
-                        if (sortedCatalog.length === 0) {
-                          return (
-                            <div className="glass-card p-12 text-center rounded-3xl">
-                              <p className="text-slate-800 dark:text-slate-200 font-medium">No items match your filter criteria.</p>
-                            </div>
-                          );
-                        }
+                      const sortedCatalog = [...filteredCatalog];
+                      if (catalogSortOrder === 'lowToHigh') {
+                        sortedCatalog.sort((a, b) => a.price - b.price);
+                      } else if (catalogSortOrder === 'highToLow') {
+                        sortedCatalog.sort((a, b) => b.price - a.price);
+                      }
+
+                      if (loading) {
+                        return (
+                          <div className="glass-card p-12 text-center rounded-3xl">
+                            <p className="text-slate-800 dark:text-slate-200 font-medium">Loading {activeCatType || 'catalog'}...</p>
+                          </div>
+                        );
+                      }
+
+                      if (sortedCatalog.length === 0) {
+                        const isFiltered = catalogCategoryFilter !== 'All' || catalogStatusFilter !== 'All' || Boolean(catalogSearchQuery);
+                        return (
+                          <div className="glass-card p-12 text-center rounded-3xl">
+                            <p className="text-slate-800 dark:text-slate-200 font-medium">
+                              {isFiltered ? "No items match your filter criteria." : `No ${activeCatType || 'items'} found.`}
+                            </p>
+                          </div>
+                        );
+                      }
 
                         return (
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-4">
@@ -4602,9 +4624,8 @@ const VendorDashboard = () => {
                             })}
                           </div>
                         );
-                      })()
-                    )}
-                  </div>
+                      })()}
+                    </div>
                 </div>
               </div>
             );
