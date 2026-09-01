@@ -248,11 +248,26 @@ OrderSchema.index({ memberId: 1, createdAt: -1 });
 OrderSchema.index({ status: 1, createdAt: -1 });
 
 OrderSchema.pre('save', function(next) {
-  if (!this.id) {
-    this.id = this._id || new mongoose.Types.ObjectId().toString();
-  }
-  if (!this.order_number) {
-    this.order_number = 'ORD' + Math.floor(100000 + Math.random() * 900000);
+  if (this.type === 'Job') {
+    if (!this.order_number) {
+      this.order_number = 'APP-' + new Date().getFullYear() + '-' + String(Math.floor(100000 + Math.random() * 900000));
+    }
+    if (!this.applicationId) {
+      this.applicationId = this.order_number || this.id;
+    }
+    if (!this.id) {
+      this.id = this.applicationId || this._id || new mongoose.Types.ObjectId().toString();
+    }
+    if (!this.status || this.status === 'Pending' || this.status === 'Order Received') {
+      this.status = 'APPLICATION RECEIVED';
+    }
+  } else {
+    if (!this.id) {
+      this.id = this._id || new mongoose.Types.ObjectId().toString();
+    }
+    if (!this.order_number) {
+      this.order_number = 'ORD' + Math.floor(100000 + Math.random() * 900000);
+    }
   }
   next();
 });

@@ -2165,7 +2165,7 @@ const VendorDashboard = () => {
         priceLabel: 'Salary / Package (₹/year)',
         imageLabel: 'Company Logo / Banner',
         catalogStatuses: ['Available', 'Unavailable'],
-        orderStatuses: ['Application Received', 'Resume Screening', 'Shortlisted', 'Interview Scheduled', 'Selected / Offered', 'Rejected'],
+        orderStatuses: ['APPLICATION RECEIVED', 'UNDER REVIEW', 'SHORTLISTED', 'SELECTED', 'REJECTED'],
         customersName: 'Customers',
         customersSub: 'Candidates who applied for job postings',
         customerSpentLabel: 'Total Application Fees Paid (₹)',
@@ -4817,10 +4817,11 @@ const VendorDashboard = () => {
                               {vendorType.startsWith('Job') ? (
                                 <>
                                   <th className="px-6 py-4">Candidate Name</th>
-                                  <th className="px-6 py-4">Education</th>
-                                  <th className="px-6 py-4">Applied For Role</th>
+                                  <th className="px-6 py-4">Application & Job ID</th>
+                                  <th className="px-6 py-4">Education / Exp</th>
+                                  <th className="px-6 py-4">Applied Position</th>
                                   <th className="px-6 py-4">CV / Resume</th>
-                                  <th className="px-6 py-4">Job Location</th>
+                                  <th className="px-6 py-4">Application Date</th>
                                   <th className="px-6 py-4 text-right">Actions / View</th>
                                 </>
                               ) : (selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || vendorType.startsWith('Products') || vendorType.startsWith('Daily Needs')) ? (
@@ -4869,22 +4870,31 @@ const VendorDashboard = () => {
                                     <>
                                       {/* Candidate Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
-                                        <div>{order.memberName || order.customer_name || 'N/A'}</div>
+                                        <div>{order.candidateName || order.memberName || order.customer_name || 'Candidate'}</div>
                                         {order.candidateEmail && (
                                           <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">{order.candidateEmail}</div>
                                         )}
+                                        {order.candidatePhone && (
+                                          <div className="text-[10px] text-slate-400 font-medium">{order.candidatePhone}</div>
+                                        )}
                                       </td>
-                                      {/* Education */}
+                                      {/* Application & Job ID */}
+                                      <td className="px-6 py-4 text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                                        <div className="text-primary-600 dark:text-primary-400">App ID: #{order.applicationId || order.order_number || order.id || 'N/A'}</div>
+                                        <div className="text-[10px] text-slate-400 font-normal mt-0.5">Job ID: #{order.jobId || (order.items && order.items[0]?.productId) || 'N/A'}</div>
+                                      </td>
+                                      {/* Education / Exp */}
                                       <td className="px-6 py-4 text-xs font-semibold text-slate-750 dark:text-slate-300">
-                                        {order.candidateEducation || 'Graduate'}
+                                        <div>{order.candidateEducation || 'Graduate'}</div>
+                                        <div className="text-[10px] text-slate-400 font-normal mt-0.5">Exp: {order.experience || 'Fresher'}</div>
                                       </td>
-                                      {/* Applied For Role */}
+                                      {/* Applied Position */}
                                       <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                                        {order.product_details || (order.items && order.items[0]?.name) || 'Job Role'}
+                                        {order.jobTitle || order.product_details || (order.items && order.items[0]?.name) || 'Job Role'}
                                       </td>
                                       {/* CV / Resume */}
                                       <td className="px-6 py-4 text-xs">
-                                        {order.candidateResume && (
+                                        {order.candidateResume ? (
                                           <div className="flex gap-2 items-center">
                                             <button
                                               type="button"
@@ -4906,11 +4916,18 @@ const VendorDashboard = () => {
                                               <Download size={14} />
                                             </a>
                                           </div>
+                                        ) : (
+                                          <span className="text-[10px] text-slate-400 italic">No Resume</span>
                                         )}
                                       </td>
-                                      {/* Job Location */}
-                                      <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
-                                        {getCustomerAddress(order)}
+                                      {/* Application Date */}
+                                      <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400 font-medium">
+                                        {(() => {
+                                          const rawDate = order.applicationDate || order.createdAt || order.created_at;
+                                          if (!rawDate) return 'N/A';
+                                          const d = new Date(rawDate);
+                                          return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                        })()}
                                       </td>
                                     </>
                                   ) : isService ? (

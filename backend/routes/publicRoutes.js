@@ -463,23 +463,32 @@ router.post('/orders', async (req, res) => {
       }
     }
 
+    const isJob = orderType === 'Job' || req.body.type === 'Job';
+    const appId = req.body.applicationId || id || order_number || (isJob ? ('APP-' + new Date().getFullYear() + '-' + String(Math.floor(100000 + Math.random() * 900000))) : ('ORD' + Math.floor(100000 + Math.random() * 900000)));
+
     const orderData = {
-      id: id,
-      order_number: order_number,
+      id: appId,
+      order_number: appId,
+      applicationId: appId,
+      jobId: req.body.jobId || (items && items[0]?.productId) || req.body.productId,
+      jobTitle: req.body.jobTitle || (items && items[0]?.name) || req.body.product_details,
       vendorId,
       memberId: memberId || 'cust_dhanush',
-      memberName,
+      memberName: req.body.candidateName || memberName || req.body.customer_name || 'Candidate',
+      candidateName: req.body.candidateName || memberName || req.body.customer_name || 'Candidate',
       type: orderType,
       items: items || [],
       totalAmount: totalAmount ?? finalAmount,
       discountApplied: discountApplied || 0,
       finalAmount: finalAmount,
-      status: 'Pending',
-      candidateEmail,
+      status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : 'APPLICATION RECEIVED') : (req.body.status || 'Pending'),
+      candidateEmail: candidateEmail || req.body.customer_email,
+      candidatePhone: req.body.customer_phone || req.body.candidatePhone || req.body.phone,
       candidateResume,
-      experience,
-      candidateEducation,
-      jobLocation: req.body.jobLocation,
+      experience: experience || 'Fresher',
+      candidateEducation: candidateEducation || 'Graduate',
+      jobLocation: req.body.jobLocation || req.body.candidateLocation || req.body.customer_address,
+      applicationDate: req.body.applicationDate || req.body.created_at || new Date().toISOString(),
       appointmentDate,
       appointmentTimeSlot,
       doctorName,
@@ -531,24 +540,31 @@ router.post('/orders', async (req, res) => {
     };
 
     // If order already exists in the shared database (created by customer backend), update and return it
-    const existing = await Order.findOne({ id: id });
+    const existing = await Order.findOne({ $or: [{ id: appId }, { id: id }, { order_number: appId }, { order_number: id }] });
     if (existing) {
       await Order.updateOne(
-        { id: id },
+        { _id: existing._id },
         {
           $set: {
+            applicationId: appId || existing.applicationId || existing.order_number || existing.id,
+            jobId: req.body.jobId || (items && items[0]?.productId) || existing.jobId,
+            jobTitle: req.body.jobTitle || (items && items[0]?.name) || existing.jobTitle || existing.product_details,
             vendorId: vendorId || existing.vendorId,
             memberId: memberId || existing.memberId,
-            memberName: memberName || existing.memberName,
-            candidateEmail: candidateEmail || existing.candidateEmail,
+            memberName: req.body.candidateName || memberName || existing.memberName,
+            candidateName: req.body.candidateName || memberName || existing.candidateName || existing.memberName,
+            candidateEmail: candidateEmail || req.body.customer_email || existing.candidateEmail,
+            candidatePhone: req.body.customer_phone || req.body.candidatePhone || existing.candidatePhone,
             candidateResume: candidateResume || existing.candidateResume,
             experience: experience || existing.experience,
             candidateEducation: candidateEducation || existing.candidateEducation,
-            jobLocation: req.body.jobLocation || existing.jobLocation,
+            jobLocation: req.body.jobLocation || req.body.candidateLocation || existing.jobLocation,
+            applicationDate: req.body.applicationDate || existing.applicationDate || existing.createdAt || existing.created_at,
             items: (items && items.length > 0) ? items : existing.items,
             totalAmount: totalAmount ?? finalAmount,
             finalAmount: finalAmount,
             type: orderType,
+            status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : (existing.status && existing.status !== 'Pending' && existing.status !== 'Order Received' ? existing.status : 'APPLICATION RECEIVED')) : (req.body.status || existing.status || 'Pending'),
             appointmentDate: appointmentDate || existing.appointmentDate,
             appointmentTimeSlot: appointmentTimeSlot || existing.appointmentTimeSlot,
             doctorName: doctorName || existing.doctorName,

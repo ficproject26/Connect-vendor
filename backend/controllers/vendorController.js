@@ -553,6 +553,18 @@ const getOrders = async (req, res) => {
         }
       }
 
+      if (obj.type === 'Job') {
+        const isDefaultStatus = !obj.status || obj.status === 'Pending' || obj.status === 'Order Received';
+        if (isDefaultStatus) obj.status = 'APPLICATION RECEIVED';
+        if (!obj.applicationId) obj.applicationId = obj.order_number || obj.id || obj._id;
+        if (!obj.jobId && obj.items && obj.items.length > 0) obj.jobId = obj.items[0].productId;
+        if (!obj.jobTitle && obj.items && obj.items.length > 0) obj.jobTitle = obj.items[0].name || obj.product_details;
+        if (!obj.candidateName) obj.candidateName = obj.memberName || obj.customer_name;
+        if (!obj.candidateEmail) obj.candidateEmail = obj.customer_email;
+        if (!obj.candidatePhone) obj.candidatePhone = obj.customer_phone;
+        if (!obj.applicationDate) obj.applicationDate = obj.created_at || obj.createdAt;
+      }
+
       return obj;
     });
 
