@@ -4547,7 +4547,7 @@ const VendorDashboard = () => {
                                     {/* Compact metadata fields grid */}
                                     {(() => {
                                       const mainCat = getProductMainCategory(item.category, vendorType);
-                                      const shouldShowStock = ['Products', 'Daily Needs', 'Food', 'Jobs', 'Education'].includes(mainCat);
+                                      const shouldShowStock = ['Products', 'Daily Needs', 'Jobs', 'Education'].includes(mainCat);
                                       const salesInfo = getItemSalesData(item._id, item);
                                       const salesCount = salesInfo.count;
                                       const customersCount = salesInfo.customersCount;
