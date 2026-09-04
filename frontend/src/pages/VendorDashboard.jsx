@@ -4744,15 +4744,23 @@ const VendorDashboard = () => {
                     const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
 
                     const filteredOrders = orders.filter(order => {
-                      const matchesBusiness = !savedActiveId || order.vendorId === savedActiveId || order.vendor_id === savedActiveId;
+                      const matchesBusiness = !savedActiveId || 
+                        String(order.vendorId) === String(savedActiveId) || 
+                        String(order.vendor_id) === String(savedActiveId) || 
+                        String(order.vendorId) === String(user?._id) || 
+                        String(order.vendorId) === String(user?.registrationId) ||
+                        (user?.businesses || []).some(b => String(b._id || b.id) === String(order.vendorId || order.vendor_id));
+
                       const matchesStatus = (() => {
                          if (orderStatusFilter === 'All') return true;
                          const s = (order.status || '').toLowerCase().trim();
                          const f = orderStatusFilter.toLowerCase().trim();
                          if (s === f) return true;
                          // Map pending aliases
-                         const pendingAliases = ['pending', 'order_pending', 'payment_pending', 'order received', 'application received'];
+                         const pendingAliases = ['pending', 'order_pending', 'payment_pending', 'order received', 'application received', 'new', 'applied', 'under review'];
                          if (f === 'pending' && pendingAliases.includes(s)) return true;
+                         const confirmedAliases = ['confirmed', 'accepted', 'approved', 'in progress', 'processing'];
+                         if (f === 'confirmed' && confirmedAliases.includes(s)) return true;
                          return false;
                        })();
                       const matchesSearch = (order.memberName || order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) || 
@@ -11379,15 +11387,23 @@ required
       <Modal 
         isOpen={isBillModalOpen} 
         onClose={() => setIsBillModalOpen(false)} 
-        title={
-          selectedBillOrder?.candidateEmail || selectedBillOrder?.candidateResume || selectedBillOrder?.vendorId === '3w8hhon38mqg7ni0u'
-            ? "Candidate Job Application Details"
-            : (selectedBillOrder?.appointmentDate ? "Booking & Service Details" : "Order & Transaction Details")
-        }
+        title={(() => {
+          const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
+          if (rawCat === 'JOB' || rawCat === 'JOBS') return "Candidate Job Application Details";
+          if (rawCat === 'TRAVEL') return "Travel Booking Details";
+          if (rawCat === 'STAY' || rawCat === 'HOTEL') return "Stay Booking Details";
+          if (rawCat === 'FOOD' || rawCat === 'RESTAURANT') return "Food Order Details";
+          if (rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL') return "Service Booking Details";
+          return "Order & Transaction Details";
+        })()}
       >
         {Boolean(selectedBillOrder) && (() => {
-          const isJobOrder = Boolean(selectedBillOrder?.candidateEmail || selectedBillOrder?.candidateResume || selectedBillOrder?.vendorId === '3w8hhon38mqg7ni0u');
-          const isServiceOrder = Boolean(selectedBillOrder?.appointmentDate || (selectedBillOrder?.items && selectedBillOrder?.items[0]?.productId?.startsWith('service-')) || ['Hospital Vendor', 'Service Provider Vendor', 'Education Vendor'].includes(vendorType));
+          const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
+          const isJobOrder = rawCat === 'JOB' || rawCat === 'JOBS';
+          const isTravelOrder = rawCat === 'TRAVEL';
+          const isStayOrder = rawCat === 'STAY' || rawCat === 'HOTEL';
+          const isFoodOrder = rawCat === 'FOOD' || rawCat === 'RESTAURANT';
+          const isServiceOrder = rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL';
           
           if (isJobOrder) {
             return (
@@ -11398,7 +11414,7 @@ required
                     <Briefcase size={24} />
                   </div>
                   <h4 className="text-lg font-black uppercase tracking-wider text-slate-900 dark:text-white">Job Application Details</h4>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Applied Position: {selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name)}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Applied Position: {selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Job Candidate'}</p>
                 </div>
 
                 {/* Grid details */}
@@ -11406,15 +11422,15 @@ required
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Candidate Name</span>
-                      <span className="font-extrabold text-sm text-slate-900 dark:text-white">{selectedBillOrder.memberName || selectedBillOrder.customer_name || 'N/A'}</span>
+                      <span className="font-extrabold text-sm text-slate-900 dark:text-white">{selectedBillOrder.candidateName || selectedBillOrder.memberName || selectedBillOrder.customer_name || 'N/A'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Candidate Email</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.candidateEmail || 'N/A'}</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.candidateEmail || selectedBillOrder.customer_email || 'N/A'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Education</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.candidateEducation || 'Graduate'}</span>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Education / Exp</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.candidateEducation || selectedBillOrder.experience || 'Graduate'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Job Location</span>
@@ -11423,7 +11439,7 @@ required
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Application Date</span>
                       <span className="font-bold text-slate-800 dark:text-slate-200">
-                        {selectedBillOrder.createdAt ? new Date(selectedBillOrder.createdAt).toLocaleDateString() : 'N/A'}
+                        {selectedBillOrder.applicationDate || selectedBillOrder.createdAt ? new Date(selectedBillOrder.applicationDate || selectedBillOrder.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
                       </span>
                     </div>
                     <div>
@@ -11443,6 +11459,126 @@ required
                   >
                     📄 View Resume
                   </button>
+                </div>
+
+                {/* Close Button */}
+                <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-slate-800/80">
+                  <button
+                    onClick={() => setIsBillModalOpen(false)}
+                    className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 font-semibold text-xs px-5 py-2.5 rounded-xl transition-all active:scale-[0.98]"
+                  >
+                    Close Details
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          if (isTravelOrder) {
+            return (
+              <div className="space-y-5 text-slate-800 dark:text-slate-200 text-xs">
+                {/* Header */}
+                <div className="text-center pb-4 border-b border-dashed border-slate-200 dark:border-slate-800">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 mb-2">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <h4 className="text-lg font-black uppercase tracking-wider text-slate-900 dark:text-white">Travel Booking Details</h4>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Package/Service: {selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Travel Package'}</p>
+                </div>
+
+                {/* Details grid */}
+                <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-850 p-4 rounded-2xl space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Customer Name</span>
+                      <span className="font-extrabold text-sm text-slate-900 dark:text-white">{selectedBillOrder.memberName || selectedBillOrder.customer_name || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Contact Phone</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300 font-bold">{selectedBillOrder.customer_phone || selectedBillOrder.phone || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Travel Date</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.appointmentDate || selectedBillOrder.bookingDate || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Departure / Time Slot</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.appointmentTimeSlot || selectedBillOrder.bookingTime || 'Standard Slot'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Guests / Passengers</span>
+                      <span className="font-extrabold text-blue-600 dark:text-blue-400">
+                        {selectedBillOrder.guests || selectedBillOrder.numberOfGuests || selectedBillOrder.adults || selectedBillOrder.quantity || 1} Person(s)
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Boarding / Location</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{getCustomerAddress(selectedBillOrder)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Total Booking Amount</span>
+                      <span className="font-extrabold text-slate-900 dark:text-white text-sm">₹{selectedBillOrder.finalAmount || selectedBillOrder.amount || 0}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Status</span>
+                      <span className="font-extrabold text-emerald-600 dark:text-emerald-450 uppercase">{selectedBillOrder.status}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Close Button */}
+                <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-slate-800/80">
+                  <button
+                    onClick={() => setIsBillModalOpen(false)}
+                    className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 font-semibold text-xs px-5 py-2.5 rounded-xl transition-all active:scale-[0.98]"
+                  >
+                    Close Details
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          if (isStayOrder) {
+            return (
+              <div className="space-y-5 text-slate-800 dark:text-slate-200 text-xs">
+                {/* Header */}
+                <div className="text-center pb-4 border-b border-dashed border-slate-200 dark:border-slate-800">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 mb-2">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <h4 className="text-lg font-black uppercase tracking-wider text-slate-900 dark:text-white">Stay Booking Details</h4>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Room/Suite: {selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Room Reservation'}</p>
+                </div>
+
+                {/* Details grid */}
+                <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-850 p-4 rounded-2xl space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Guest Name</span>
+                      <span className="font-extrabold text-sm text-slate-900 dark:text-white">{selectedBillOrder.memberName || selectedBillOrder.customer_name || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Room Number</span>
+                      <span className="font-extrabold text-purple-600 dark:text-purple-400">{selectedBillOrder.roomNumber ? `Room #${selectedBillOrder.roomNumber}` : 'Standard Room'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Check-in</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.checkInDate || selectedBillOrder.appointmentDate || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Check-out</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.checkOutDate || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Total Amount</span>
+                      <span className="font-extrabold text-slate-900 dark:text-white text-sm">₹{selectedBillOrder.finalAmount || selectedBillOrder.amount || 0}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Booking Status</span>
+                      <span className="font-extrabold text-emerald-600 dark:text-emerald-450 uppercase">{selectedBillOrder.status}</span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Close Button */}
@@ -11486,48 +11622,14 @@ required
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{getCustomerAddress(selectedBillOrder)}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">
-                        {(['Products', 'Daily Needs', 'Food'].includes(selectedMainCat) || ['Products', 'Daily Needs', 'Food', 'Store', 'Restaurant', 'Grocery', 'Pharmacy'].some(t => vendorType.startsWith(t)) || ['Products', 'Daily Needs', 'Food', 'Dishes', 'Items'].includes(terms.catalogName)) ? 'Order Timing' : 'Booking Schedule'}
-                      </span>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Booking Schedule</span>
                       <span className="font-bold text-slate-800 dark:text-slate-200">
                         {selectedBillOrder.appointmentDate || 'N/A'} ({selectedBillOrder.appointmentTimeSlot || 'Standard Slot'})
                       </span>
                     </div>
-                    {/* Stay Booking Duration (Check-in / Check-out / Nights) */}
-                    {(selectedBillOrder.checkInDate || selectedBillOrder.checkOutDate) && (() => {
-                      const ciRaw = selectedBillOrder.checkInDate || selectedBillOrder.appointmentDate || selectedBillOrder.bookingDate;
-                      const coRaw = selectedBillOrder.checkOutDate;
-                      let nights = '';
-                      if (ciRaw && coRaw) {
-                        const ciD = new Date(ciRaw);
-                        const coD = new Date(coRaw);
-                        if (!isNaN(ciD.getTime()) && !isNaN(coD.getTime())) {
-                          nights = Math.max(1, Math.round((coD - ciD) / 86400000));
-                        }
-                      }
-                      const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return d; } };
-                      return (
-                        <>
-                          <div>
-                            <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Check-in</span>
-                            <span className="font-bold text-slate-800 dark:text-slate-200">{ciRaw ? fmtDate(ciRaw) : 'N/A'} {selectedBillOrder.checkInTime ? `• ${selectedBillOrder.checkInTime}` : ''}</span>
-                          </div>
-                          <div>
-                            <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Check-out</span>
-                            <span className="font-bold text-slate-800 dark:text-slate-200">{coRaw ? fmtDate(coRaw) : 'N/A'} {selectedBillOrder.checkOutTime ? `• ${selectedBillOrder.checkOutTime}` : ''}</span>
-                          </div>
-                          {nights && (
-                            <div>
-                              <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Duration</span>
-                              <span className="font-extrabold text-indigo-600 dark:text-indigo-400">{nights} {nights === 1 ? 'Night' : 'Nights'}</span>
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Amount Paid</span>
-                      <span className="font-extrabold text-slate-900 dark:text-white text-sm">₹{selectedBillOrder.finalAmount}</span>
+                      <span className="font-extrabold text-slate-900 dark:text-white text-sm">₹{selectedBillOrder.finalAmount || selectedBillOrder.amount || 0}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Status</span>

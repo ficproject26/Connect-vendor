@@ -602,7 +602,8 @@ const updateOrderStatus = async (req, res) => {
     if (!order) {
       const orConditions = [
         { id: targetId },
-        { order_number: targetId }
+        { order_number: targetId },
+        { applicationId: targetId }
       ];
       if (isValidObjectId) {
         orConditions.push({ _id: targetId });
