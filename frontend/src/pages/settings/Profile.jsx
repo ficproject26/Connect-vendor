@@ -186,8 +186,17 @@ const Profile = () => {
       }, getAxiosConfig());
       if (res.data.success) {
         setMessage('Business profile updated successfully!');
-        if (res.data.data) {
-          dispatch(updateUser(res.data.data));
+        const updatedData = res.data.data || res.data.user;
+        if (updatedData) {
+          dispatch(updateUser(updatedData));
+        }
+        try {
+          const freshRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`, getAxiosConfig());
+          if (freshRes.data.success && freshRes.data.user) {
+            dispatch(updateUser(freshRes.data.user));
+          }
+        } catch (fetchErr) {
+          console.warn('Profile refetch warning:', fetchErr);
         }
       }
     } catch (err) {

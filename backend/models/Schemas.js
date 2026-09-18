@@ -198,7 +198,7 @@ ProductSchema.index({ createdAt: -1 });
 
 // --- ORDER / BOOKING SCHEMA ---
 const OrderSchema = new mongoose.Schema({
-  _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+  _id: { type: mongoose.Schema.Types.Mixed, default: () => new mongoose.Types.ObjectId() },
   id: { type: String },
   order_number: { type: String },
   vendorId: { type: String, required: true },
@@ -230,6 +230,11 @@ const OrderSchema = new mongoose.Schema({
   roomNumber: { type: String },              // Hotel
   tableNumber: { type: String },             // Restaurant
   prescriptionUrl: { type: String },         // Pharmacy
+
+  // Travel booking fields
+  travelDate: { type: String },
+  journeyDate: { type: String },
+  departureDate: { type: String },
 
   // Stay booking fields
   checkInDate: { type: String },

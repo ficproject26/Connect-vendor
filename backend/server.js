@@ -19,8 +19,8 @@ app.use(cors({
 }));
 app.options('*', cors());
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -41,6 +41,71 @@ if (!fs.existsSync(resumesDir)) {
 // Serve uploaded files statically
 app.use('/uploads/resumes', express.static(resumesDir));
 app.use('/uploads', express.static(uploadsDir));
+
+// Smart fallback handler for candidate resumes if static file is missing from ephemeral disk
+app.get('/uploads/resumes/:filename', async (req, res, next) => {
+  try {
+    const rawFilename = req.params.filename;
+    let decodedFilename = rawFilename;
+    try {
+      decodedFilename = decodeURIComponent(rawFilename);
+    } catch (e) {
+      decodedFilename = rawFilename;
+    }
+
+    // Check disk variations
+    const candidates = [
+      path.join(resumesDir, rawFilename),
+      path.join(resumesDir, decodedFilename),
+      path.join(resumesDir, decodedFilename.replace(/\s+/g, ' ')),
+      path.join(resumesDir, decodedFilename.replace(/\s+/g, '')),
+      path.join(uploadsDir, rawFilename),
+      path.join(uploadsDir, decodedFilename)
+    ];
+    for (const cand of candidates) {
+      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+        res.setHeader('Content-Type', 'application/pdf');
+        return res.sendFile(path.resolve(cand));
+      }
+    }
+
+    // Search order in MongoDB matching candidateResume or candidate name
+    const { Order } = require('./models/Schemas');
+    const sanitizedSearch = decodedFilename.replace(/\.pdf$/i, '').trim();
+    const order = await Order.findOne({
+      $or: [
+        { candidateResume: new RegExp(sanitizedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+        { memberName: new RegExp(sanitizedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+        { candidateName: new RegExp(sanitizedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }
+      ]
+    }).lean();
+
+    if (order) {
+      const { generateCandidateResumePdf } = require('./utils/pdfGenerator');
+      const candidateName = order.candidateName || order.memberName || order.customer_name || 'Candidate';
+      const pdfBuffer = generateCandidateResumePdf({
+        candidateName,
+        candidateEmail: order.candidateEmail || 'Not Provided',
+        candidatePhone: order.candidatePhone || order.customer_phone || 'Not Provided',
+        jobTitle: order.jobTitle || order.product_details || (order.items && order.items[0]?.name) || 'Job Role',
+        candidateEducation: order.candidateEducation || 'Graduate',
+        experience: order.experience || 'Fresher',
+        jobLocation: order.jobLocation || 'Not Specified',
+        applicationId: order.applicationId || order.order_number || order.id || String(order._id),
+        applicationDate: order.applicationDate || order.created_at || order.createdAt || new Date().toISOString(),
+        status: order.status || 'APPLICATION RECEIVED',
+        filename: decodedFilename
+      });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(decodedFilename)}"`);
+      return res.send(pdfBuffer);
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Import Routes
 const authRoutes = require('./routes/authRoutes');

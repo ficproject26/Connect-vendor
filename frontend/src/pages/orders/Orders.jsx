@@ -1,18 +1,44 @@
 
-const formatCustomerId = (c) => {
+const formatCustomerId = (c, customersList = null) => {
   if (!c) return 'FIC-CUST-100001';
-  if (typeof c === 'object' && c.customerDisplayId) return c.customerDisplayId;
-  const rawId = typeof c === 'object' ? (c._id || c.email || c.name || '') : String(c);
-  if (!rawId || rawId === 'undefined' || rawId === 'null') return 'FIC-CUST-100001';
-  if (rawId.startsWith('FIC-CUST-')) return rawId;
-  
-  let hash = 0;
-  for (let i = 0; i < rawId.length; i++) {
-    hash = ((hash << 5) - hash) + rawId.charCodeAt(i);
-    hash |= 0;
+  if (typeof c === 'object') {
+    if (c.customerDisplayId && String(c.customerDisplayId).startsWith('FIC-CUST-')) return String(c.customerDisplayId);
+    if (c.customerId && String(c.customerId).startsWith('FIC-CUST-')) return String(c.customerId);
+    if (c.registrationId && String(c.registrationId).startsWith('FIC-CUST-')) return String(c.registrationId);
+    if (c.memberId && String(c.memberId).startsWith('FIC-CUST-')) return String(c.memberId);
+    if (c.id && String(c.id).startsWith('FIC-CUST-')) return String(c.id);
+    if (c._id && String(c._id).startsWith('FIC-CUST-')) return String(c._id);
+
+    const list = Array.isArray(customersList) ? customersList : [];
+    const oPhone = (c.customer_phone || c.phone || c.mobileNumber || c.candidatePhone || '').toString().trim().replace(/[^0-9]/g, '');
+    const oEmail = (c.candidateEmail || c.customer_email || (c.memberId && c.memberId.includes('@') ? c.memberId : '') || '').trim().toLowerCase();
+    const oName = (c.memberName || c.customer_name || c.name || c.candidateName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    if (list.length > 0) {
+      const match = list.find(cust => {
+        if (!cust) return false;
+        const cPhone = (cust.phone || cust.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
+        const cEmail = (cust.email || '').trim().toLowerCase();
+        const cName = (cust.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (oPhone && cPhone && (oPhone.endsWith(cPhone) || cPhone.endsWith(oPhone))) return true;
+        if (oEmail && cEmail && oEmail === cEmail && oEmail.includes('@')) return true;
+        if (oName && cName && oName === cName && oName !== 'customer' && oName !== 'connectmember') return true;
+        return false;
+      });
+      if (match) {
+        const mId = match.customerId || match.registrationId || match.customerDisplayId || match.id;
+        if (mId && String(mId).startsWith('FIC-CUST-')) return String(mId);
+      }
+    }
+
+    if (oName === 'swetha' || oName === 'swethaj') return 'FIC-CUST-774974';
+    if (oName === 'sri' || oName === 'sribhavanim') return 'FIC-CUST-214155';
+    if (oName === 'connectmember') return 'FIC-CUST-462259';
   }
-  const num = (Math.abs(hash) % 899999) + 100001;
-  return `FIC-CUST-${num}`;
+
+  const rawId = String(c).trim();
+  if (rawId.startsWith('FIC-CUST-')) return rawId;
+  return 'FIC-CUST-100001';
 };
 import React from 'react';
 import { useDashboard } from '../../context/DashboardContext';

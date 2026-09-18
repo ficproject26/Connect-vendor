@@ -11,6 +11,7 @@ const {
   deleteProduct,
   getOrders,
   updateOrderStatus,
+  getOrderResume,
   getCustomers,
   createDeliveryPartner,
   getDeliveryPartners,
@@ -35,7 +36,7 @@ const { uploadToCloudinary } = require('../config/cloudinary');
 // Multer Config for Product Images using Memory Storage
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     const filetypes = /jpeg|jpg|png|webp|gif/;
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
@@ -59,7 +60,7 @@ router.post('/upload', (req, res) => {
     if (err) {
       // Multer errors (file size, file type, etc.)
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ success: false, message: 'File is too large. Maximum size is 5MB.' });
+        return res.status(400).json({ success: false, message: 'File is too large. Maximum size is 10MB.' });
       }
       return res.status(400).json({ success: false, message: err.message || 'Failed to upload image' });
     }
@@ -75,11 +76,19 @@ router.post('/upload', (req, res) => {
       });
     } catch (uploadErr) {
       console.error('Image Upload Error:', uploadErr);
-      const dataUri = `data:image/jpeg;base64,${req.file.buffer.toString('base64')}`;
-      return res.status(200).json({
-        success: true,
-        imageUrl: dataUri
-      });
+      try {
+        const uploadsDir = path.join(__dirname, '..', 'uploads');
+        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+        const ext = path.extname(req.file.originalname || '') || '.jpg';
+        const filename = `img_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
+        fs.writeFileSync(path.join(uploadsDir, filename), req.file.buffer);
+        return res.status(200).json({
+          success: true,
+          imageUrl: `/uploads/${filename}`
+        });
+      } catch (localSaveErr) {
+        return res.status(500).json({ success: false, message: 'Failed to save image' });
+      }
     }
   });
 });
@@ -96,6 +105,7 @@ router.delete('/products/:id', deleteProduct);
 // Orders / Bookings
 router.get('/orders', getOrders);
 router.put('/orders/:id/status', updateOrderStatus);
+router.get('/orders/:id/resume', getOrderResume);
 
 // Customers
 router.get('/customers', getCustomers);

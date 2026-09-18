@@ -20,18 +20,17 @@ const Customers = () => {
 
   const formatCustomerId = (c) => {
     if (!c) return 'FIC-CUST-100001';
-    if (typeof c === 'object' && c.customerDisplayId) return c.customerDisplayId;
-    const rawId = typeof c === 'object' ? (c._id || c.email || c.name || '') : String(c);
-    if (!rawId || rawId === 'undefined' || rawId === 'null') return 'FIC-CUST-100001';
-    if (rawId.startsWith('FIC-CUST-')) return rawId;
-
-    let hash = 0;
-    for (let i = 0; i < rawId.length; i++) {
-      hash = ((hash << 5) - hash) + rawId.charCodeAt(i);
-      hash |= 0;
+    if (typeof c === 'object') {
+      if (c.customerDisplayId && String(c.customerDisplayId).startsWith('FIC-CUST-')) return String(c.customerDisplayId);
+      if (c.customerId && String(c.customerId).startsWith('FIC-CUST-')) return String(c.customerId);
+      if (c.registrationId && String(c.registrationId).startsWith('FIC-CUST-')) return String(c.registrationId);
+      if (c.memberId && String(c.memberId).startsWith('FIC-CUST-')) return String(c.memberId);
+      if (c.id && String(c.id).startsWith('FIC-CUST-')) return String(c.id);
+      if (c._id && String(c._id).startsWith('FIC-CUST-')) return String(c._id);
     }
-    const num = (Math.abs(hash) % 899999) + 100001;
-    return `FIC-CUST-${num}`;
+    const rawId = String(c).trim();
+    if (rawId.startsWith('FIC-CUST-')) return rawId;
+    return 'FIC-CUST-100001';
   };
 
   return (

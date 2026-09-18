@@ -471,8 +471,31 @@ const Overview = () => {
           const expiredMemberships = Math.max(0, totalMembersCount - activeMemberships);
           const newMembersCount = customers.filter(c => new Date(c.createdAt) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length;
 
+          const formatOrderDate = (order) => {
+            if (!order) return 'N/A';
+            const rawDate = order.createdAt || order.created_at || order.orderDate || order.date || order.applicationDate || order.appointmentDate || order.updatedAt;
+            if (rawDate) {
+              const d = new Date(rawDate);
+              if (!isNaN(d.getTime())) {
+                return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+              }
+            }
+            if (order._id && typeof order._id === 'string' && order._id.length === 24) {
+              try {
+                const timestamp = parseInt(order._id.substring(0, 8), 16) * 1000;
+                if (!isNaN(timestamp) && timestamp > 0) {
+                  const d = new Date(timestamp);
+                  if (!isNaN(d.getTime())) {
+                    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                  }
+                }
+              } catch (e) {}
+            }
+            return 'N/A';
+          };
+
           const recentOrdersList = [...orders]
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .sort((a, b) => new Date(b.createdAt || b.created_at || b.orderDate || b.date || 0) - new Date(a.createdAt || a.created_at || a.orderDate || a.date || 0))
             .slice(0, 5);
 
           return (
@@ -727,7 +750,7 @@ const Overview = () => {
                             <th className="px-6 py-4">Customer Name</th>
                             <th className="px-6 py-4">Amount</th>
                             <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4">Date</th>
+                            <th className="px-6 py-4 whitespace-nowrap min-w-[120px]">Date</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -747,7 +770,7 @@ const Overview = () => {
                                   {order.status}
                                 </span>
                               </td>
-                              <td className="px-6 py-4 text-xs font-medium text-slate-500">{order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A'}</td>
+                              <td className="px-6 py-4 text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">{formatOrderDate(order)}</td>
                             </tr>
                           ))}
                         </tbody>
