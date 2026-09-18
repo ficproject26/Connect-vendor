@@ -643,6 +643,12 @@ const getOrders = async (req, res) => {
     }
 
     // Query strictly for transactional product/food/daily needs orders
+    const ORDER_CATEGORY_TYPES = [
+      'Products', 'Product', 'products', 'product',
+      'Food', 'food', 'Restaurant', 'restaurant',
+      'Daily Needs', 'daily needs', 'daily_needs', 'Daily_Needs', 'Grocery', 'grocery'
+    ];
+
     const baseQuery = {
       $and: [
         {
@@ -651,26 +657,77 @@ const getOrders = async (req, res) => {
             { vendor_id: { $in: businessIds } }
           ]
         },
+        // Must be in allowed order categories
         {
-          type: { $nin: [...BOOKING_BASED_TYPES, ...APPLICATION_BASED_TYPES] }
+          $or: [
+            { type: { $in: ORDER_CATEGORY_TYPES } },
+            { category: { $in: ORDER_CATEGORY_TYPES } }
+          ]
+        },
+        // Never allow Job applications or Bookings
+        {
+          type: { $nin: ['Job', 'Jobs', 'job', 'jobs', 'Application', 'application', 'Booking', 'booking', 'Services', 'Service', 'service', 'services', 'Stay', 'stay', 'Hotel', 'hotel', 'Travel', 'travel', 'Travels'] }
+        },
+        {
+          category: { $nin: ['Job', 'Jobs', 'job', 'jobs', 'Application', 'application', 'Booking', 'booking', 'Services', 'Service', 'service', 'services', 'Stay', 'stay', 'Hotel', 'hotel', 'Travel', 'travel', 'Travels'] }
         }
       ]
     };
 
-    // Support search
+    // Support category filter
+    if (req.query.category && req.query.category !== 'All') {
+      const catRegex = new RegExp('^' + String(req.query.category).trim(), 'i');
+      baseQuery.$and.push({
+        $or: [
+          { type: catRegex },
+          { category: catRegex }
+        ]
+      });
+    }
+
+    // Support payment status filter
+    if (req.query.paymentStatus && req.query.paymentStatus !== 'All') {
+      if (req.query.paymentStatus === 'Paid') {
+        baseQuery.$and.push({
+          $or: [
+            { paymentStatus: 'Paid' },
+            { status: { $in: ['Delivered', 'Completed'] } }
+          ]
+        });
+      } else if (req.query.paymentStatus === 'Payment Pending' || req.query.paymentStatus === 'Pending') {
+        baseQuery.$and.push({
+          $or: [
+            { paymentStatus: { $in: ['Pending', 'Payment Pending'] } },
+            { paymentStatus: { $exists: false } },
+            { paymentStatus: null }
+          ],
+          status: { $nin: ['Delivered', 'Completed'] }
+        });
+      }
+    }
+
+    // Support search (customer name, customer email, customer ID, order ID, product/item name)
     if (req.query.search) {
       const sRegex = new RegExp(String(req.query.search).trim(), 'i');
       baseQuery.$and.push({
         $or: [
           { order_number: sRegex },
+          { id: sRegex },
           { memberName: sRegex },
           { customer_name: sRegex },
-          { memberId: sRegex }
+          { memberId: sRegex },
+          { customer_id: sRegex },
+          { customerId: sRegex },
+          { customerDisplayId: sRegex },
+          { customer_email: sRegex },
+          { customerEmail: sRegex },
+          { product_details: sRegex },
+          { 'items.name': sRegex }
         ]
       });
     }
 
-    // Support status filter
+    // Support order status filter
     if (req.query.status && req.query.status !== 'All') {
       baseQuery.$and.push({ status: req.query.status });
     }

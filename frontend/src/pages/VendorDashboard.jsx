@@ -1104,6 +1104,8 @@ const VendorDashboard = () => {
   const [catalogSortOrder, setCatalogSortOrder] = useState('Default');
 
   const [orderStatusFilter, setOrderStatusFilter] = useState('All');
+  const [orderCategoryFilter, setOrderCategoryFilter] = useState('All');
+  const [orderPaymentFilter, setOrderPaymentFilter] = useState('All');
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [orderTimeFilter, setOrderTimeFilter] = useState('All');
   const [orderVendorTypeFilter, setOrderVendorTypeFilter] = useState('All');
@@ -4819,53 +4821,86 @@ const VendorDashboard = () => {
               <div>
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Orders Management</h2>
                 <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">
-                  Process your product and store orders, dispatch schedules, and delivery details
+                  Process your customer orders, dispatch schedules, and delivery details
                 </p>
               </div>
             </div>
 
             {/* Filter controls */}
-            <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
+            <div className="flex flex-col lg:flex-row items-center gap-3 bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
               {/* Search input */}
               <div className="flex-1 w-full">
                 <input
                   type="text"
-                  placeholder="Search orders by customer name, order number, or ID..."
+                  placeholder="Search orders by customer, order ID, item..."
                   value={orderSearchInput}
                   onChange={(e) => setOrderSearchInput(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
                 />
               </div>
 
-              {/* Date range filter */}
-              <div className="w-full sm:w-48 shrink-0">
-                <select
-                  value={orderTimeFilter}
-                  onChange={(e) => setOrderTimeFilter(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
-                >
-                  <option value="All">All Time</option>
-                  <option value="Today">Today</option>
-                  <option value="Yesterday">Yesterday</option>
-                  <option value="LastWeek">Last Week</option>
-                  <option value="LastMonth">Last Month</option>
-                  <option value="Last30Days">Last 30 Days</option>
-                  <option value="LastYear">Last Year</option>
-                </select>
-              </div>
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full lg:w-auto">
+                {/* Category filter */}
+                <div className="w-full sm:w-40 shrink-0">
+                  <select
+                    value={orderCategoryFilter}
+                    onChange={(e) => setOrderCategoryFilter(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                  >
+                    <option value="All">All Categories</option>
+                    <option value="Products">Products</option>
+                    <option value="Food">Food</option>
+                    <option value="Daily Needs">Daily Needs</option>
+                  </select>
+                </div>
 
-              {/* Status filter */}
-              <div className="w-full sm:w-48 shrink-0">
-                <select
-                  value={orderStatusFilter}
-                  onChange={(e) => setOrderStatusFilter(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 animate-fadeIn"
-                >
-                  <option value="All">All Statuses</option>
-                  {['Pending', 'Accepted', 'Out for Delivery', 'Delivered', 'Cancelled'].map(status => (
-                    <option key={status} value={status}>{status}</option>
-                  ))}
-                </select>
+                {/* Payment filter */}
+                <div className="w-full sm:w-36 shrink-0">
+                  <select
+                    value={orderPaymentFilter}
+                    onChange={(e) => setOrderPaymentFilter(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                  >
+                    <option value="All">All Payments</option>
+                    <option value="Paid">Paid</option>
+                    <option value="Payment Pending">Payment Pending</option>
+                  </select>
+                </div>
+
+                {/* Status filter */}
+                <div className="w-full sm:w-36 shrink-0">
+                  <select
+                    value={orderStatusFilter}
+                    onChange={(e) => setOrderStatusFilter(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Confirmed">Confirmed</option>
+                    <option value="Preparing">Preparing</option>
+                    <option value="Ready">Ready</option>
+                    <option value="Out for Delivery">Out for Delivery</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                {/* Date range filter */}
+                <div className="w-full sm:w-36 shrink-0">
+                  <select
+                    value={orderTimeFilter}
+                    onChange={(e) => setOrderTimeFilter(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                  >
+                    <option value="All">All Time</option>
+                    <option value="Today">Today</option>
+                    <option value="Yesterday">Yesterday</option>
+                    <option value="LastWeek">Last Week</option>
+                    <option value="LastMonth">Last Month</option>
+                    <option value="Last30Days">Last 30 Days</option>
+                    <option value="LastYear">Last Year</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -4878,333 +4913,283 @@ const VendorDashboard = () => {
               </div>
             ) : orders.length === 0 ? (
               <div className="glass-card p-12 text-center rounded-3xl">
-                <p className="text-slate-800 dark:text-slate-200 font-medium">No orders registered in the system yet.</p>
+                <p className="text-slate-800 dark:text-slate-200 font-bold text-base">No orders found</p>
+                <p className="text-slate-500 text-xs mt-1 font-medium">No customer orders registered in the system yet.</p>
               </div>
             ) : (
-                  (() => {
-                    const hasBookingBusiness = getAvailableVendorTypes().some(type => 
-                      type.startsWith('Hospital') || 
-                      type.startsWith('Hotel') || 
-                      type.startsWith('Service Provider') || 
-                      type.startsWith('Education') || 
-                      type.startsWith('Job') || 
-                      type.startsWith('Travel')
-                    );
+              (() => {
+                const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
 
-                    const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
+                const filteredOrders = orders.filter(order => {
+                  // Strict category guard: NEVER show job applications or bookings in Orders
+                  const oType = (order.type || '').toLowerCase();
+                  const oCat = (order.category || '').toLowerCase();
+                  const isBookingOrJob = ['job', 'jobs', 'application', 'services', 'service', 'stay', 'hotel', 'travel', 'booking'].some(
+                    k => oType.startsWith(k) || oCat.startsWith(k)
+                  );
+                  if (isBookingOrJob) return false;
 
-                    const filteredOrders = orders.filter(order => {
-                      const matchesBusiness = !savedActiveId || 
-                        String(order.vendorId) === String(savedActiveId) || 
-                        String(order.vendor_id) === String(savedActiveId) || 
-                        String(order.vendorId) === String(user?._id) || 
-                        String(order.vendorId) === String(user?.registrationId) ||
-                        (user?.businesses || []).some(b => String(b._id || b.id) === String(order.vendorId || order.vendor_id));
+                  const matchesBusiness = !savedActiveId || 
+                    String(order.vendorId) === String(savedActiveId) || 
+                    String(order.vendor_id) === String(savedActiveId) || 
+                    String(order.vendorId) === String(user?._id) || 
+                    String(order.vendorId) === String(user?.registrationId) ||
+                    (user?.businesses || []).some(b => String(b._id || b.id) === String(order.vendorId || order.vendor_id));
 
-                      const matchesStatus = (() => {
-                         if (orderStatusFilter === 'All') return true;
-                         const s = (order.status || '').toLowerCase().trim();
-                         const f = orderStatusFilter.toLowerCase().trim();
-                         if (s === f) return true;
-                         // Map pending aliases
-                         const pendingAliases = ['pending', 'order_pending', 'payment_pending', 'order received', 'application received', 'new', 'applied', 'under review'];
-                         if (f === 'pending' && pendingAliases.includes(s)) return true;
-                         const confirmedAliases = ['confirmed', 'accepted', 'approved', 'in progress', 'processing'];
-                         if (f === 'confirmed' && confirmedAliases.includes(s)) return true;
-                         return false;
-                       })();
-                      const matchesSearch = (order.memberName || order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) || 
-                                            (order.memberId || order.id || '').toLowerCase().includes(orderSearchQuery.toLowerCase());
-                      const orderVType = getOrderVendorType(order);
-                      const matchesVType = orderVendorTypeFilter === 'All' || orderVType === orderVendorTypeFilter;
-                      
-                      let matchesTime = true;
-                      if (orderTimeFilter !== 'All') {
-                        const rawDateStr = order.createdAt || order.created_at || order.appointmentDate || order.orderDate || order.date;
-                        if (!rawDateStr) {
-                          matchesTime = false;
-                        } else {
-                          const orderDateObj = new Date(rawDateStr);
-                          if (isNaN(orderDateObj.getTime())) {
-                            matchesTime = false;
-                          } else {
-                            const orderTime = orderDateObj.getTime();
-                            const now = new Date();
-                            const nowTime = now.getTime();
-                            
-                            if (orderTimeFilter === 'Today') {
-                              matchesTime = orderDateObj.toDateString() === now.toDateString();
-                            } else if (orderTimeFilter === 'Yesterday') {
-                              const yesterday = new Date();
-                              yesterday.setDate(yesterday.getDate() - 1);
-                              matchesTime = orderDateObj.toDateString() === yesterday.toDateString();
-                            } else if (orderTimeFilter === 'LastWeek') {
-                              matchesTime = (nowTime - orderTime) <= 7 * 24 * 60 * 60 * 1000;
-                            } else if (orderTimeFilter === 'LastMonth') {
-                              const curYear = now.getFullYear();
-                              const curMonth = now.getMonth();
-                              const targetMonth = curMonth === 0 ? 11 : curMonth - 1;
-                              const targetYear = curMonth === 0 ? curYear - 1 : curYear;
-                              matchesTime = orderDateObj.getFullYear() === targetYear && orderDateObj.getMonth() === targetMonth;
-                            } else if (orderTimeFilter === 'Last30Days') {
-                              matchesTime = (nowTime - orderTime) <= 30 * 24 * 60 * 60 * 1000;
-                            } else if (orderTimeFilter === 'LastYear') {
-                              const targetYear = now.getFullYear() - 1;
-                              matchesTime = orderDateObj.getFullYear() === targetYear;
-                            }
-                          }
-                        }
-                      }
-                      
-                      return matchesBusiness && matchesStatus && matchesSearch && matchesTime && matchesVType;
-                    });
+                  if (!matchesBusiness) return false;
 
-                    if (filteredOrders.length === 0) {
-                      return (
-                        <div className="glass-card p-12 text-center rounded-3xl">
-                          <p className="text-slate-800 dark:text-slate-200 font-medium">No orders match your filter criteria.</p>
-                        </div>
-                      );
+                  // Category filter
+                  if (orderCategoryFilter !== 'All') {
+                    const cf = orderCategoryFilter.toLowerCase();
+                    const matchCat = oType.includes(cf) || oCat.includes(cf);
+                    if (!matchCat) return false;
+                  }
+
+                  // Payment filter
+                  if (orderPaymentFilter !== 'All') {
+                    const isPaid = order.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(order.status);
+                    if (orderPaymentFilter === 'Paid' && !isPaid) return false;
+                    if (orderPaymentFilter === 'Payment Pending' && isPaid) return false;
+                  }
+
+                  // Status filter
+                  if (orderStatusFilter !== 'All') {
+                    const s = (order.status || '').toLowerCase().trim();
+                    const f = orderStatusFilter.toLowerCase().trim();
+                    let matchStatus = s === f;
+                    if (!matchStatus) {
+                      const pendingAliases = ['pending', 'order received', 'order_pending', 'payment_pending'];
+                      if (f === 'pending' && pendingAliases.includes(s)) matchStatus = true;
+                      const confirmedAliases = ['confirmed', 'order confirmed', 'accepted', 'approved', 'in progress', 'processing'];
+                      if (f === 'confirmed' && confirmedAliases.includes(s)) matchStatus = true;
+                      const deliveredAliases = ['delivered', 'completed'];
+                      if (f === 'delivered' && deliveredAliases.includes(s)) matchStatus = true;
                     }
+                    if (!matchStatus) return false;
+                  }
 
-                    return (
-                      <div className="glass-card rounded-3xl overflow-x-auto">
-                        <table className="w-full text-left border-collapse min-w-[800px]">
-                          <thead>
-                            <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/30 text-slate-600 dark:text-slate-400 text-xs uppercase font-bold">
-                              {vendorType.startsWith('Job') ? (
-                                <>
-                                  <th className="px-6 py-4">Candidate Name</th>
-                                  <th className="px-6 py-4">Application & Job ID</th>
-                                  <th className="px-6 py-4">Education / Exp</th>
-                                  <th className="px-6 py-4">Applied Position</th>
-                                  <th className="px-6 py-4">CV / Resume</th>
-                                  <th className="px-6 py-4">Application Date</th>
-                                  <th className="px-6 py-4 text-right">Actions / View</th>
-                                </>
-                              ) : (selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || vendorType.startsWith('Products') || vendorType.startsWith('Daily Needs')) ? (
-                                <>
-                                  <th className="px-6 py-4">Customer Name</th>
-                                  <th className="px-6 py-4">Product / Items</th>
-                                  <th className="px-6 py-4">Delivery Address</th>
-                                  <th className="px-6 py-4">Order Date & Time</th>
-                                  <th className="px-6 py-4">Payment & Status</th>
-                                  <th className="px-6 py-4 text-right">Actions / View</th>
-                                </>
-                              ) : (terms.ordersName !== 'Orders' || hasBookingBusiness) ? (
-                                <>
-                                  <th className="px-6 py-4">Customer Name</th>
-                                  <th className="px-6 py-4">
-                                    {(['Products', 'Daily Needs', 'Food'].includes(selectedMainCat) || ['Products', 'Daily Needs', 'Food', 'Store', 'Restaurant', 'Grocery', 'Pharmacy'].some(t => vendorType.startsWith(t)) || ['Products', 'Daily Needs', 'Food', 'Dishes', 'Items'].includes(terms.catalogName)) ? 'Order Type' : 'Service Type'}
-                                  </th>
-                                  <th className="px-6 py-4">Address</th>
-                                  <th className="px-6 py-4">
-                                    {(['Products', 'Daily Needs', 'Food'].includes(selectedMainCat) || ['Products', 'Daily Needs', 'Food', 'Store', 'Restaurant', 'Grocery', 'Pharmacy'].some(t => vendorType.startsWith(t)) || ['Products', 'Daily Needs', 'Food', 'Dishes', 'Items'].includes(terms.catalogName)) ? 'Order Timing' : 'Booking Schedule'}
-                                  </th>
-                                  <th className="px-6 py-4">Payment & Status</th>
-                                  <th className="px-6 py-4 text-right">Actions / View</th>
-                                </>
-                              ) : (
-                                <>
-                                  <th className="px-6 py-4">Customer Name</th>
-                                  <th className="px-6 py-4">Address</th>
-                                  <th className="px-6 py-4">Items Ordered</th>
-                                  <th className="px-6 py-4">Payment & Status</th>
-                                  <th className="px-6 py-4 text-right">Actions / View</th>
-                                </>
-                              )}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredOrders.map(order => {
-                              const orderVType = getOrderVendorType(order);
-                              const isJob = orderVType.startsWith('Job') || vendorType.startsWith('Job');
-                              const isProductOrderTab = selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || vendorType.startsWith('Products') || vendorType.startsWith('Daily Needs') || order.category === 'Daily Needs' || order.category === 'Products' || (order.items && (order.items[0]?.category === 'Daily Needs' || order.items[0]?.category === 'Products'));
-                              const isService = !isProductOrderTab && (orderVType.startsWith('Hospital') || orderVType.startsWith('Service') || orderVType.startsWith('Education') || terms.ordersName !== 'Orders' || hasBookingBusiness);
+                  // Search query
+                  if (orderSearchQuery && orderSearchQuery.trim() !== '') {
+                    const q = orderSearchQuery.toLowerCase().trim();
+                    const cName = (order.customer_name || order.memberName || '').toLowerCase();
+                    const cEmail = (order.customer_email || order.customerEmail || order.candidateEmail || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').toLowerCase();
+                    const cId = (order.customerDisplayId || order.customerId || order.memberId || getCustomerDisplayId(order) || '').toLowerCase();
+                    const oId = (order.order_number || order.id || order._id || '').toLowerCase();
+                    const itemMatch = (order.product_details || '').toLowerCase().includes(q) ||
+                      (Array.isArray(order.items) && order.items.some(it => (it.name || it.productName || '').toLowerCase().includes(q)));
 
-                              return (
-                                <tr key={order._id} className="border-b border-slate-200 dark:border-slate-800/60 hover:bg-slate-100/40 dark:hover:bg-slate-900/20 text-sm text-slate-700 dark:text-slate-200">
-                                  {isJob ? (
-                                    <>
-                                      {/* Candidate Name */}
-                                      <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
-                                        <div>{order.candidateName || order.memberName || order.customer_name || 'Candidate'}</div>
-                                        {order.candidateEmail && (
-                                          <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">{order.candidateEmail}</div>
-                                        )}
-                                        {order.candidatePhone && (
-                                          <div className="text-[10px] text-slate-400 font-medium">{order.candidatePhone}</div>
-                                        )}
-                                      </td>
-                                      {/* Application & Job ID */}
-                                      <td className="px-6 py-4 text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
-                                        <div className="text-primary-600 dark:text-primary-400">App ID: #{order.applicationId || order.order_number || order.id || 'N/A'}</div>
-                                        <div className="text-[10px] text-slate-400 font-normal mt-0.5">Job ID: #{order.jobId || (order.items && order.items[0]?.productId) || 'N/A'}</div>
-                                      </td>
-                                      {/* Education / Exp */}
-                                      <td className="px-6 py-4 text-xs font-semibold text-slate-750 dark:text-slate-300">
-                                        <div>{order.candidateEducation || 'Graduate'}</div>
-                                        <div className="text-[10px] text-slate-400 font-normal mt-0.5">Exp: {order.experience || 'Fresher'}</div>
-                                      </td>
-                                      {/* Applied Position */}
-                                      <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                                        {order.jobTitle || order.product_details || (order.items && order.items[0]?.name) || 'Job Role'}
-                                      </td>
-                                      {/* CV / Resume */}
-                                      <td className="px-6 py-4 text-xs">
-                                        {order.candidateResume ? (
-                                          <div className="flex gap-2 items-center">
-                                            <button
-                                              type="button"
-                                              onClick={(e) => { e.stopPropagation(); setSelectedBillOrder(order); setIsResumeViewerOpen(true); }}
-                                              className="text-[10px] text-slate-500 font-medium bg-slate-50/70 hover:bg-slate-100 dark:bg-slate-950/60 dark:hover:bg-slate-900 p-2 rounded-lg border border-slate-200/50 dark:border-slate-800 max-w-xs break-words text-left transition-colors cursor-pointer"
-                                              title="View Resume"
-                                            >
-                                              📄 {order.candidateResume.split('/').pop().substring(0, 20)}...
-                                            </button>
-                                            <a
-                                              href={order.candidateResume.startsWith('http') ? order.candidateResume : `${getVendorBackendUrl()}/api/vendor/orders/${order._id || order.id || order.order_number}/resume?download=true`}
-                                              download
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              onClick={(e) => e.stopPropagation()}
-                                              className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-md transition-colors"
-                                              title="Download Resume"
-                                            >
-                                              <Download size={14} />
-                                            </a>
-                                          </div>
-                                        ) : (
-                                          <span className="text-[10px] text-slate-400 italic">No Resume</span>
-                                        )}
-                                      </td>
-                                      {/* Application Date */}
-                                      <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400 font-medium">
-                                        {(() => {
-                                          const rawDate = order.applicationDate || order.createdAt || order.created_at;
-                                          if (!rawDate) return 'N/A';
-                                          const d = new Date(rawDate);
-                                          return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                        })()}
-                                      </td>
-                                    </>
-                                  ) : isService ? (
-                                    <>
-                                      {/* Customer Name */}
-                                      <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
-                                        <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {getCustomerDisplayId(order)}</div>
-                                      </td>
-                                      {/* Service Type */}
-                                      <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                                        {order.product_details || (order.items && order.items[0]?.name) || 'Service Type'}
-                                      </td>
-                                      {/* Address */}
-                                      <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
-                                        {getCustomerAddress(order)}
-                                      </td>
-                                      {/* Booking Schedule */}
-                                      <td className="px-6 py-4 text-xs font-semibold text-slate-750 dark:text-slate-300">
-                                        <div>📅 {order.appointmentDate || (order.createdAt || order.created_at ? (order.createdAt || order.created_at).substring(0, 10) : 'N/A')}</div>
-                                        <div className="text-[10px] text-indigo-650 dark:text-indigo-400 font-bold mt-0.5">⌚ {getBookingTimeSlot(order)}</div>
-                                      </td>
-                                      {/* Payment & Status */}
-                                      <td className="px-6 py-4 text-xs">
-                                        <div className="font-semibold text-slate-850 dark:text-slate-350 flex items-center gap-1">
-                                          <span className="text-[#faed26]">💳</span>
-                                          <span>{order.membershipPlanName || order.planName || order.membershipCardName || (order.finalAmount >= 5000 ? 'Diamond' : order.finalAmount >= 3000 ? 'Gold' : 'Silver')} Card</span>
-                                        </div>
-                                        <div className="mt-1">
-                                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                                            order.status === 'Completed' || order.status === 'Delivered' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200/30' :
-                                            order.status === 'Pending' ? 'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/30' :
-                                            order.status === 'Cancelled' ? 'bg-red-100/80 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/30' :
-                                            'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30'
-                                          }`}>
-                                            {(isJob && (order.status === 'Pending' || order.status === 'Order Received')) ? 'Job Application Received' : order.status}
-                                          </span>
-                                        </div>
-                                      </td>
-                                    </>
-                                  ) : (
-                                    <>
-                                      {/* Customer Name */}
-                                      <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
-                                        <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {getCustomerDisplayId(order)}</div>
-                                      </td>
-                                      {/* Address */}
-                                      <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
-                                        {getCustomerAddress(order)}
-                                      </td>
-                                      {/* Items Ordered */}
-                                      <td className="px-6 py-4 text-xs font-semibold">
-                                        {order.items?.map((it, idx) => {
-                                          const guestCount = it.guests || it.numberOfGuests || it.guestCount || order.guests || order.numberOfGuests || order.guestCount || order.noOfGuests || order.no_of_guests;
-                                          return (
-                                            <div key={idx}>
-                                              <div>{it.name} x{it.quantity || 1}</div>
-                                              {guestCount && <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">👥 {guestCount} Guests</div>}
-                                            </div>
-                                          );
-                                        }) || (
-                                          <div>
-                                            <div>{order.product_details}</div>
-                                            {(order.guests || order.numberOfGuests || order.guestCount || order.guestsCount || order.noOfGuests || order.no_of_guests) && (
-                                              <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
-                                                👥 {order.guests || order.numberOfGuests || order.guestCount || order.guestsCount || order.noOfGuests || order.no_of_guests} Guests
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-                                      </td>
-                                      {/* Payment & Status */}
-                                      <td className="px-6 py-4 text-xs">
-                                        <div className="font-semibold text-slate-850 dark:text-slate-355">Amt: ₹{order.finalAmount || order.amount || 0}</div>
-                                        <div className="mt-1">
-                                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                                            order.status === 'Completed' || order.status === 'Delivered' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200/30' :
-                                            order.status === 'Pending' ? 'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/30' :
-                                            order.status === 'Cancelled' ? 'bg-red-100/80 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/30' :
-                                            'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30'
-                                          }`}>
-                                            {order.status}
-                                          </span>
-                                        </div>
-                                      </td>
-                                    </>
-                                  )}
+                    if (!cName.includes(q) && !cEmail.includes(q) && !cId.includes(q) && !oId.includes(q) && !itemMatch) {
+                      return false;
+                    }
+                  }
 
-                                  {/* Actions & View Details */}
-                                  <td className="px-6 py-4 text-right">
-                                    <div className="flex flex-col items-end gap-2">
-                                      <select
-                                        value={order.status}
-                                        disabled={updatingStatusIds.has(String(order._id || order.id || order.order_number))}
-                                        onChange={(e) => handleUpdateOrderStatus(order._id || order.id || order.order_number, e.target.value)}
-                                        className={`bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs px-2.5 py-1.5 w-36 focus:outline-none focus:border-primary-500 font-semibold ${updatingStatusIds.has(String(order._id || order.id || order.order_number)) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                      >
-                                        {terms.orderStatuses.map(status => (
-                                          <option key={status} value={status}>{status}</option>
-                                        ))}
-                                      </select>
-                                      
-                                      <button
-                                        onClick={() => {
-                                          setSelectedBillOrder(order);
-                                          setIsBillModalOpen(true);
-                                        }}
-                                        className="text-[10px] font-extrabold uppercase bg-[#faed26]/80 text-[#0b3c7b] hover:bg-[#faed26] px-3 py-1 rounded-lg border border-yellow-500/10 transition-all active:scale-[0.97]"
-                                      >
-                                        View
-                                      </button>
+                  // Time filter
+                  if (orderTimeFilter !== 'All') {
+                    const rawDateStr = order.createdAt || order.created_at || order.orderDate || order.date;
+                    if (!rawDateStr) return false;
+                    const orderDateObj = new Date(rawDateStr);
+                    if (isNaN(orderDateObj.getTime())) return false;
+                    const orderTime = orderDateObj.getTime();
+                    const now = new Date();
+                    const nowTime = now.getTime();
+
+                    if (orderTimeFilter === 'Today') {
+                      if (orderDateObj.toDateString() !== now.toDateString()) return false;
+                    } else if (orderTimeFilter === 'Yesterday') {
+                      const yesterday = new Date();
+                      yesterday.setDate(yesterday.getDate() - 1);
+                      if (orderDateObj.toDateString() !== yesterday.toDateString()) return false;
+                    } else if (orderTimeFilter === 'LastWeek') {
+                      if ((nowTime - orderTime) > 7 * 24 * 60 * 60 * 1000) return false;
+                    } else if (orderTimeFilter === 'LastMonth') {
+                      const curYear = now.getFullYear();
+                      const curMonth = now.getMonth();
+                      const targetMonth = curMonth === 0 ? 11 : curMonth - 1;
+                      const targetYear = curMonth === 0 ? curYear - 1 : curYear;
+                      if (!(orderDateObj.getFullYear() === targetYear && orderDateObj.getMonth() === targetMonth)) return false;
+                    } else if (orderTimeFilter === 'Last30Days') {
+                      if ((nowTime - orderTime) > 30 * 24 * 60 * 60 * 1000) return false;
+                    } else if (orderTimeFilter === 'LastYear') {
+                      const targetYear = now.getFullYear() - 1;
+                      if (orderDateObj.getFullYear() !== targetYear) return false;
+                    }
+                  }
+
+                  return true;
+                });
+
+                if (filteredOrders.length === 0) {
+                  return (
+                    <div className="glass-card p-12 text-center rounded-3xl">
+                      <p className="text-slate-800 dark:text-slate-200 font-bold text-base">No orders found</p>
+                      <p className="text-slate-500 text-xs mt-1 font-medium">No customer orders match your filter criteria.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="glass-card rounded-3xl overflow-x-auto border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
+                    <table className="w-full text-left border-collapse min-w-[950px]">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">
+                          <th className="px-4 py-4 text-center w-12">S.No</th>
+                          <th className="px-5 py-4">Customer Details</th>
+                          <th className="px-5 py-4">Order Details</th>
+                          <th className="px-5 py-4">Product / Item</th>
+                          <th className="px-5 py-4">Order Date & Time</th>
+                          <th className="px-5 py-4">Payment Method</th>
+                          <th className="px-5 py-4">Status</th>
+                          <th className="px-5 py-4 text-right">Actions / View</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 text-sm">
+                        {filteredOrders.map((order, index) => {
+                          const orderIdStr = String(order._id || order.id || order.order_number);
+                          const isUpdating = updatingStatusIds.has(orderIdStr);
+
+                          return (
+                            <tr
+                              key={order._id || order.id || order.order_number}
+                              className="hover:bg-slate-50/60 dark:hover:bg-slate-900/30 text-slate-700 dark:text-slate-200 transition-colors"
+                            >
+                              {/* 1. S.No */}
+                              <td className="px-4 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 text-center">
+                                {index + 1}
+                              </td>
+
+                              {/* 2. Customer Details */}
+                              <td className="px-5 py-4">
+                                <div className="font-semibold text-slate-900 dark:text-white text-sm">
+                                  {order.customer_name || order.memberName || 'N/A'}
+                                </div>
+                                {(order.customer_email || order.customerEmail || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || order.candidateEmail) && (
+                                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                    {order.customer_email || order.customerEmail || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || order.candidateEmail}
+                                  </div>
+                                )}
+                                <div className="text-[11px] font-mono font-medium text-primary-600 dark:text-primary-400 mt-0.5">
+                                  Customer ID: {getCustomerDisplayId(order)}
+                                </div>
+                              </td>
+
+                              {/* 3. Order Details */}
+                              <td className="px-5 py-4">
+                                <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                                  Order ID: <span className="text-primary-600 dark:text-primary-400">#{order.order_number || order.id || order._id}</span>
+                                </div>
+                                <div
+                                  className="text-xs text-slate-600 dark:text-slate-400 mt-1 max-w-[220px] break-words line-clamp-2"
+                                  title={getCustomerAddress(order)}
+                                >
+                                  {getCustomerAddress(order) || 'Address not specified'}
+                                </div>
+                              </td>
+
+                              {/* 4. Product / Item */}
+                              <td className="px-5 py-4">
+                                {order.items && order.items.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {order.items.map((item, i) => (
+                                      <div key={i} className="text-xs font-bold text-slate-900 dark:text-white">
+                                        {item.name || item.productName || 'Item'} <span className="text-slate-500 font-normal">× {item.quantity || 1}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs font-bold text-slate-900 dark:text-white">
+                                    {order.product_details || 'N/A'} <span className="text-slate-500 font-normal">× 1</span>
+                                  </div>
+                                )}
+                                <div className="mt-1">
+                                  <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                    Category: {order.type || order.category || 'Product'}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* 5. Order Date & Time */}
+                              <td className="px-5 py-4 whitespace-nowrap">
+                                {(() => {
+                                  const rawDate = order.created_at || order.createdAt || order.orderDate || order.date;
+                                  if (!rawDate) return <span className="text-xs text-slate-400">N/A</span>;
+                                  const d = new Date(rawDate);
+                                  if (isNaN(d.getTime())) return <span className="text-xs text-slate-400">N/A</span>;
+                                  return (
+                                    <div className="text-xs text-slate-700 dark:text-slate-300">
+                                      <div className="font-semibold">{d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
                                     </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                                  );
+                                })()}
+                              </td>
+
+                              {/* 6. Payment Method */}
+                              <td className="px-5 py-4 whitespace-nowrap">
+                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                  {order.paymentMethod || order.payment_method || order.paymentMode || order.paymentType || 'N/A'}
+                                </span>
+                              </td>
+
+                              {/* 7. Status */}
+                              <td className="px-5 py-4">
+                                <div className="space-y-1">
+                                  <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                    Payment:{' '}
+                                    <span className={`font-bold ${
+                                      (order.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(order.status))
+                                        ? 'text-emerald-600 dark:text-emerald-400'
+                                        : 'text-amber-600 dark:text-amber-400'
+                                    }`}>
+                                      {order.paymentStatus || (['Completed', 'Delivered'].includes(order.status) ? 'Paid' : 'Pending')}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                    Order:{' '}
+                                    <span className={`font-bold ${
+                                      ['Delivered', 'Completed'].includes(order.status)
+                                        ? 'text-emerald-600 dark:text-emerald-400'
+                                        : ['Cancelled', 'Rejected'].includes(order.status)
+                                        ? 'text-red-600 dark:text-red-400'
+                                        : 'text-blue-600 dark:text-blue-400'
+                                    }`}>
+                                      {order.status || 'Pending'}
+                                    </span>
+                                  </div>
+                                  <div className="pt-1">
+                                    <select
+                                      value={order.status}
+                                      disabled={isUpdating}
+                                      onChange={(e) => handleUpdateOrderStatus(order._id || order.id || order.order_number, e.target.value)}
+                                      className={`bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:border-primary-500 font-semibold ${
+                                        isUpdating ? 'opacity-50 cursor-not-allowed' : ''
+                                      }`}
+                                    >
+                                      {['Order Received', 'Pending', 'Confirmed', 'Preparing', 'Ready', 'Out for Delivery', 'Delivered', 'Cancelled'].map(st => (
+                                        <option key={st} value={st}>{st}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* 8. Actions / View */}
+                              <td className="px-5 py-4 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedBillOrder(order);
+                                    setIsBillModalOpen(true);
+                                  }}
+                                  className="text-xs font-bold uppercase bg-[#faed26]/90 text-[#0b3c7b] hover:bg-[#faed26] px-3.5 py-1.5 rounded-xl border border-yellow-500/20 shadow-sm transition-all active:scale-[0.97]"
+                                >
+                                  View
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      </table>
                       </div>
                     );
                   })()
