@@ -17,6 +17,40 @@ const getProductMainCategory = (category) => {
   return '';
 };
 
+// Category constants for strict separation
+const ORDER_BASED_TYPES = ['Order', 'Daily Needs', 'Food', 'Products', 'order', 'Store', 'Grocery', 'Pharmacy', 'Restaurant', 'Electronics', 'Furniture'];
+const BOOKING_BASED_TYPES = ['Booking', 'Appointment', 'Stay', 'Travel', 'Services', 'booking', 'Hotel', 'Hospital', 'Travel Agency', 'Technician'];
+const APPLICATION_BASED_TYPES = ['Job', 'Jobs', 'Job Application', 'application', 'Application'];
+
+const vendorHasOrderCategories = (user) => {
+  if (!user) return false;
+  const allBiz = [{ vendorType: user.vendorType, category: user.category }, ...(user.businesses || [])];
+  return allBiz.some(b => {
+    const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+    return t.startsWith('product') || t.startsWith('daily need') || t.startsWith('food') || 
+           ['store', 'grocery', 'pharmacy', 'restaurant', 'electronics', 'furniture'].some(k => t.includes(k));
+  });
+};
+
+const vendorHasBookingCategories = (user) => {
+  if (!user) return false;
+  const allBiz = [{ vendorType: user.vendorType, category: user.category }, ...(user.businesses || [])];
+  return allBiz.some(b => {
+    const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+    return t.startsWith('service') || t.startsWith('stay') || t.startsWith('travel') || 
+           ['hotel', 'hospital'].some(k => t.includes(k));
+  });
+};
+
+const vendorHasJobCategories = (user) => {
+  if (!user) return false;
+  const allBiz = [{ vendorType: user.vendorType, category: user.category }, ...(user.businesses || [])];
+  return allBiz.some(b => {
+    const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+    return t.startsWith('job');
+  });
+};
+
 // --- ANALYTICS ---
 // @desc    Get vendor dashboard analytics
 // @route   GET /api/vendor/analytics
@@ -60,7 +94,13 @@ const getVendorAnalytics = async (req, res) => {
     });
     
     // Calculations
-    const totalOrdersCount = orders.length;
+    const ordersOnly = orders.filter(o => !BOOKING_BASED_TYPES.includes(o.type) && !APPLICATION_BASED_TYPES.includes(o.type));
+    const bookingsOnly = orders.filter(o => BOOKING_BASED_TYPES.includes(o.type));
+    const applicationsOnly = orders.filter(o => APPLICATION_BASED_TYPES.includes(o.type));
+
+    const totalOrdersCount = ordersOnly.length;
+    const totalBookingsCount = bookingsOnly.length;
+    const totalApplicationsCount = applicationsOnly.length;
     const completedOrders = orders.filter(o => ['Completed', 'Delivered', 'Checked Out', 'Hired', 'Enrolled'].includes(o.status));
     const pendingOrdersCount = orders.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'].includes(o.status)).length;
     
@@ -171,6 +211,8 @@ const getVendorAnalytics = async (req, res) => {
       data: {
         totalRevenue,
         ordersCount: totalOrdersCount,
+        bookingsCount: totalBookingsCount,
+        applicationsCount: totalApplicationsCount,
         pendingOrdersCount,
         customersCount: uniqueCustomersCount,
         itemsCount: totalItemsCount,
@@ -570,9 +612,6 @@ const normalizeAddressStateForOrder = (obj) => {
   }
 };
 
-const TRANSACTIONAL_ORDER_TYPES = ['Order', 'Daily Needs', 'Food', 'Products', 'order', 'Store', 'Grocery', 'Pharmacy', 'Restaurant'];
-const RESERVATION_BOOKING_TYPES = ['Booking', 'Appointment', 'Stay', 'Travel', 'Services', 'booking', 'Job', 'Hotel', 'Hospital', 'Travel Agency', 'Job Application'];
-
 // --- ORDERS (Transactional products / food / daily needs) ---
 // @desc    Get all orders of the vendor
 // @route   GET /api/vendor/orders
@@ -585,6 +624,17 @@ const getOrders = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
+    // Category guard: Only vendors with Product, Daily Needs, or Food can retrieve orders
+    if (!vendorHasOrderCategories(user)) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        total: 0,
+        page: 1,
+        totalPages: 1
+      });
+    }
+
     const businessIds = [parentUserId.toString()];
     if (user.businesses && user.businesses.length > 0) {
       user.businesses.forEach(b => {
@@ -592,9 +642,7 @@ const getOrders = async (req, res) => {
       });
     }
 
-    const activeBizId = req.user._id.toString();
-
-    // Query strictly for transactional orders, excluding bookings
+    // Query strictly for transactional product/food/daily needs orders
     const baseQuery = {
       $and: [
         {
@@ -604,7 +652,7 @@ const getOrders = async (req, res) => {
           ]
         },
         {
-          type: { $nin: RESERVATION_BOOKING_TYPES }
+          type: { $nin: [...BOOKING_BASED_TYPES, ...APPLICATION_BASED_TYPES] }
         }
       ]
     };
@@ -717,7 +765,7 @@ const getOrders = async (req, res) => {
   }
 };
 
-// --- BOOKINGS (Stay / Services / Appointments / Travel / Jobs) ---
+// --- BOOKINGS (Stay / Services / Appointments / Travel) ---
 // @desc    Get all bookings and reservations of the vendor
 // @route   GET /api/vendor/bookings
 // @access  Private (Vendor)
@@ -729,6 +777,17 @@ const getBookings = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
+    // Category guard: Only vendors with Services, Stay, or Travel can retrieve bookings
+    if (!vendorHasBookingCategories(user)) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        total: 0,
+        page: 1,
+        totalPages: 1
+      });
+    }
+
     const businessIds = [parentUserId.toString()];
     if (user.businesses && user.businesses.length > 0) {
       user.businesses.forEach(b => {
@@ -736,7 +795,7 @@ const getBookings = async (req, res) => {
       });
     }
 
-    // Query strictly for bookings and reservation types
+    // Query strictly for bookings and reservation types, excluding orders and jobs
     const baseQuery = {
       $and: [
         {
@@ -746,7 +805,7 @@ const getBookings = async (req, res) => {
           ]
         },
         {
-          type: { $in: RESERVATION_BOOKING_TYPES }
+          type: { $in: BOOKING_BASED_TYPES, $nin: [...ORDER_BASED_TYPES, ...APPLICATION_BASED_TYPES] }
         }
       ]
     };
@@ -757,10 +816,8 @@ const getBookings = async (req, res) => {
       baseQuery.$and.push({
         $or: [
           { order_number: sRegex },
-          { applicationId: sRegex },
           { memberName: sRegex },
           { customer_name: sRegex },
-          { candidateName: sRegex },
           { doctorName: sRegex },
           { serviceName: sRegex }
         ]
@@ -819,9 +876,9 @@ const getBookings = async (req, res) => {
       } else if (obj.memberId && String(obj.memberId).startsWith('FIC-CUST-')) {
         resolvedCustomerId = String(obj.memberId);
       } else {
-        const oPhone = (obj.customer_phone || obj.phone || obj.candidatePhone || '').toString().replace(/[^0-9]/g, '');
-        const oEmail = (obj.candidateEmail || obj.customer_email || (obj.memberId && obj.memberId.includes('@') ? obj.memberId : '') || '').trim().toLowerCase();
-        const oName = (obj.memberName || obj.customer_name || obj.candidateName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        const oPhone = (obj.customer_phone || obj.phone || '').toString().replace(/[^0-9]/g, '');
+        const oEmail = (obj.customer_email || (obj.memberId && obj.memberId.includes('@') ? obj.memberId : '') || '').trim().toLowerCase();
+        const oName = (obj.memberName || obj.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
         if (oPhone && oPhone.length >= 10 && customerLookup.byPhone[oPhone.slice(-10)]) {
           resolvedCustomerId = customerLookup.byPhone[oPhone.slice(-10)];
@@ -845,18 +902,6 @@ const getBookings = async (req, res) => {
         obj.membershipPlanName = membershipMap[obj.memberId.toString()];
       }
 
-      if (obj.type === 'Job') {
-        const isDefaultStatus = !obj.status || obj.status === 'Pending' || obj.status === 'Order Received';
-        if (isDefaultStatus) obj.status = 'APPLICATION RECEIVED';
-        if (!obj.applicationId) obj.applicationId = obj.order_number || obj.id || obj._id;
-        if (!obj.jobId && obj.items && obj.items.length > 0) obj.jobId = obj.items[0].productId;
-        if (!obj.jobTitle && obj.items && obj.items.length > 0) obj.jobTitle = obj.items[0].name || obj.product_details;
-        if (!obj.candidateName) obj.candidateName = obj.memberName || obj.customer_name;
-        if (!obj.candidateEmail) obj.candidateEmail = obj.customer_email;
-        if (!obj.candidatePhone) obj.candidatePhone = obj.customer_phone;
-        if (!obj.applicationDate) obj.applicationDate = obj.created_at || obj.createdAt;
-      }
-
       const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || obj.bookingDate || obj.appointmentDate;
       if (travelDateVal) {
         obj.travelDate = travelDateVal;
@@ -878,6 +923,156 @@ const getBookings = async (req, res) => {
   } catch (error) {
     console.error('Get Bookings Error:', error);
     res.status(500).json({ success: false, message: 'Server error retrieving bookings' });
+  }
+};
+
+// --- APPLICATIONS (Job applications submitted for vendor's vacancies) ---
+// @desc    Get all job applications for the vendor's vacancies
+// @route   GET /api/vendor/applications
+// @access  Private (Vendor)
+const getApplications = async (req, res) => {
+  try {
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    // Category guard: Only vendors with Jobs can retrieve job applications
+    if (!vendorHasJobCategories(user)) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        total: 0,
+        page: 1,
+        totalPages: 1
+      });
+    }
+
+    const businessIds = [parentUserId.toString()];
+    if (user.businesses && user.businesses.length > 0) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+      });
+    }
+
+    // Find all job postings created by this vendor to strictly guard candidate applications
+    const vendorJobs = await Product.find({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ],
+      $or: [
+        { type: { $regex: /^job/i } },
+        { mainCategory: { $regex: /^job/i } },
+        { category: { $regex: /^job/i } }
+      ]
+    }).select('_id id name').lean();
+
+    const vendorJobIds = vendorJobs.map(j => String(j._id || j.id));
+
+    // Base query: strictly applications matching this vendor's vacancies or vendor ID
+    const baseQuery = {
+      $and: [
+        {
+          $or: [
+            { type: { $in: APPLICATION_BASED_TYPES } },
+            { applicationId: { $exists: true, $ne: null } }
+          ]
+        },
+        {
+          $or: [
+            { vendorId: { $in: businessIds } },
+            { vendor_id: { $in: businessIds } },
+            ...(vendorJobIds.length > 0 ? [{ jobId: { $in: vendorJobIds } }, { productId: { $in: vendorJobIds } }] : [])
+          ]
+        }
+      ]
+    };
+
+    // Support search
+    if (req.query.search) {
+      const sRegex = new RegExp(String(req.query.search).trim(), 'i');
+      baseQuery.$and.push({
+        $or: [
+          { applicationId: sRegex },
+          { order_number: sRegex },
+          { candidateName: sRegex },
+          { memberName: sRegex },
+          { customer_name: sRegex },
+          { candidateEmail: sRegex },
+          { candidatePhone: sRegex },
+          { jobTitle: sRegex }
+        ]
+      });
+    }
+
+    // Support status filter
+    if (req.query.status && req.query.status !== 'All') {
+      baseQuery.$and.push({ status: req.query.status });
+    }
+
+    const page = parseInt(req.query.page, 10);
+    const limit = parseInt(req.query.limit, 10);
+
+    let query = Order.find(baseQuery).sort({ applicationDate: -1, createdAt: -1, created_at: -1 }).lean();
+
+    let total = 0;
+    if (!isNaN(page) && !isNaN(limit) && limit > 0) {
+      total = await Order.countDocuments(baseQuery);
+      query = query.skip((page - 1) * limit).limit(limit);
+    }
+
+    const applications = await query;
+    const customerLookup = await buildCustomerLookupForOrders(applications);
+
+    const normalizedApplications = applications.map(app => {
+      const obj = app.toObject ? app.toObject() : app;
+      if (!obj.vendorId && obj.vendor_id) obj.vendorId = obj.vendor_id;
+      if (!obj.candidateName) obj.candidateName = obj.memberName || obj.customer_name || 'Candidate';
+      if (!obj.memberName) obj.memberName = obj.candidateName;
+      if (!obj.candidateEmail) obj.candidateEmail = obj.customer_email || '';
+      if (!obj.candidatePhone) obj.candidatePhone = obj.customer_phone || obj.phone || '';
+      if (!obj.applicationId) obj.applicationId = obj.order_number || obj.id || String(obj._id);
+      if (!obj.applicationDate) obj.applicationDate = obj.createdAt || obj.created_at || new Date().toISOString();
+      if (!obj.status || obj.status === 'Pending' || obj.status === 'Order Received') {
+        obj.status = 'APPLICATION RECEIVED';
+      }
+
+      let resolvedCustomerId = null;
+      if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-')) {
+        resolvedCustomerId = String(obj.customerId);
+      } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-')) {
+        resolvedCustomerId = String(obj.customerDisplayId);
+      } else {
+        const oPhone = (obj.candidatePhone || obj.customer_phone || '').toString().replace(/[^0-9]/g, '');
+        const oEmail = (obj.candidateEmail || obj.customer_email || '').trim().toLowerCase();
+        const oName = (obj.candidateName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        if (oPhone && oPhone.length >= 10 && customerLookup.byPhone[oPhone.slice(-10)]) {
+          resolvedCustomerId = customerLookup.byPhone[oPhone.slice(-10)];
+        } else if (oEmail && customerLookup.byEmail[oEmail]) {
+          resolvedCustomerId = customerLookup.byEmail[oEmail];
+        } else if (oName && customerLookup.byName[oName]) {
+          resolvedCustomerId = customerLookup.byName[oName];
+        }
+      }
+      obj.customerId = resolvedCustomerId || 'FIC-CUST-100001';
+      obj.customerDisplayId = resolvedCustomerId || 'FIC-CUST-100001';
+
+      return obj;
+    });
+
+    res.status(200).json({
+      success: true,
+      data: normalizedApplications,
+      total: total || normalizedApplications.length,
+      page: page || 1,
+      totalPages: limit ? Math.ceil((total || normalizedApplications.length) / limit) : 1
+    });
+  } catch (error) {
+    console.error('Get Applications Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving applications' });
   }
 };
 
@@ -2239,6 +2434,7 @@ module.exports = {
   deleteProduct,
   getOrders,
   getBookings,
+  getApplications,
   updateOrderStatus,
   getOrderResume,
   getCustomers,

@@ -3,13 +3,39 @@ import { useDashboard } from '../../context/DashboardContext';
 import { useSelector } from 'react-redux';
 import { 
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
-  LogOut, Bell, Settings, CreditCard, Store, ChevronLeft, ChevronRight, Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, IndianRupee, ShieldAlert, HelpCircle, Calendar
+  LogOut, Bell, Settings, CreditCard, Store, ChevronLeft, ChevronRight, Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, IndianRupee, ShieldAlert, HelpCircle, Calendar, FileText
 } from 'lucide-react';
 
 const Sidebar = () => {
   const { 
     activeTab, setActiveTab, sidebarCollapsed, user, activeBusinessId, dispatch, logout, switchBusinessSuccess, setMessage, getOrderVendorType, vendorType, terms, setIsUserInfoOpen
   } = useDashboard();
+
+  const hasOrderCategory = () => {
+    const allBiz = [{ vendorType: user?.vendorType, category: user?.category }, ...(user?.businesses || [])];
+    return allBiz.some(b => {
+      const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+      return t.startsWith('product') || t.startsWith('daily need') || t.startsWith('food') || 
+             ['store', 'grocery', 'pharmacy', 'restaurant', 'electronics', 'furniture'].some(k => t.includes(k));
+    });
+  };
+
+  const hasBookingCategory = () => {
+    const allBiz = [{ vendorType: user?.vendorType, category: user?.category }, ...(user?.businesses || [])];
+    return allBiz.some(b => {
+      const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+      return t.startsWith('service') || t.startsWith('stay') || t.startsWith('travel') || 
+             ['hotel', 'hospital'].some(k => t.includes(k));
+    });
+  };
+
+  const hasJobCategory = () => {
+    const allBiz = [{ vendorType: user?.vendorType, category: user?.category }, ...(user?.businesses || [])];
+    return allBiz.some(b => {
+      const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+      return t.startsWith('job');
+    });
+  };
 
   const getFirstItem = () => {
     if (user?.role === 'Member') return { id: 'dashboard', name: 'Home', icon: Home };
@@ -63,11 +89,17 @@ const Sidebar = () => {
         { id: 'Jobs', name: 'Jobs', icon: Briefcase }
       ];
     }
-    const items = [
-      { id: 'orders', name: 'Orders', icon: ClipboardList },
-      { id: 'bookings', name: 'Bookings', icon: Calendar },
-      { id: 'customers', name: terms.customersName || 'Customers', icon: Users }
-    ];
+    const items = [];
+    if (hasOrderCategory()) {
+      items.push({ id: 'orders', name: 'Orders', icon: ClipboardList });
+    }
+    if (hasBookingCategory()) {
+      items.push({ id: 'bookings', name: 'Bookings', icon: Calendar });
+    }
+    if (hasJobCategory()) {
+      items.push({ id: 'applications', name: 'Applications', icon: FileText });
+    }
+    items.push({ id: 'customers', name: terms.customersName || 'Customers', icon: Users });
     const partnerLabel = getPartnerLabel();
     if (!['Education Vendor', 'Job Vendor'].includes(vendorType)) {
       items.push({ id: 'delivery', name: partnerLabel, icon: Truck });

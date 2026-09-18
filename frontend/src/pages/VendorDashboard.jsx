@@ -574,6 +574,32 @@ const VendorDashboard = () => {
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   
+  const hasOrderCategory = () => {
+    const allBiz = [{ vendorType: user?.vendorType, category: user?.category }, ...(user?.businesses || [])];
+    return allBiz.some(b => {
+      const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+      return t.startsWith('product') || t.startsWith('daily need') || t.startsWith('food') || 
+             ['store', 'grocery', 'pharmacy', 'restaurant', 'electronics', 'furniture'].some(k => t.includes(k));
+    });
+  };
+
+  const hasBookingCategory = () => {
+    const allBiz = [{ vendorType: user?.vendorType, category: user?.category }, ...(user?.businesses || [])];
+    return allBiz.some(b => {
+      const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+      return t.startsWith('service') || t.startsWith('stay') || t.startsWith('travel') || 
+             ['hotel', 'hospital'].some(k => t.includes(k));
+    });
+  };
+
+  const hasJobCategory = () => {
+    const allBiz = [{ vendorType: user?.vendorType, category: user?.category }, ...(user?.businesses || [])];
+    return allBiz.some(b => {
+      const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+      return t.startsWith('job');
+    });
+  };
+
   // Guard helper to validate if a tab is allowed for the user's role and category
   const isTabAllowed = (tab, role, vType) => {
     if (!tab) return false;
@@ -584,7 +610,10 @@ const VendorDashboard = () => {
       return ['dashboard', 'discounts', 'redeem', 'payments', 'renewal', 'Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'].includes(tab);
     }
     if (role === 'Vendor') {
-      const allowed = ['dashboard', 'catalog', 'orders', 'bookings', 'customers', 'payments', 'profile', 'business', 'queries'];
+      const allowed = ['dashboard', 'catalog', 'customers', 'payments', 'profile', 'business', 'queries'];
+      if (hasOrderCategory()) allowed.push('orders');
+      if (hasBookingCategory()) allowed.push('bookings');
+      if (hasJobCategory()) allowed.push('applications');
       if (!['Hotel Vendor', 'Education Vendor', 'Job Vendor'].includes(vType)) {
         allowed.push('delivery');
       }
@@ -632,6 +661,7 @@ const VendorDashboard = () => {
   const [catalog, setCatalog] = useState([]);
   const [orders, setOrders] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [applications, setApplications] = useState([]);
   const [partners, setPartners] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [commissionConfig, setCommissionConfig] = useState({
@@ -1082,10 +1112,15 @@ const VendorDashboard = () => {
   const [bookingSearchQuery, setBookingSearchQuery] = useState('');
   const [bookingTimeFilter, setBookingTimeFilter] = useState('All');
 
+  const [applicationStatusFilter, setApplicationStatusFilter] = useState('All');
+  const [applicationSearchQuery, setApplicationSearchQuery] = useState('');
+  const [applicationTimeFilter, setApplicationTimeFilter] = useState('All');
+
   // Debounced search states
   const [catalogSearchInput, setCatalogSearchInput] = useState('');
   const [orderSearchInput, setOrderSearchInput] = useState('');
   const [bookingSearchInput, setBookingSearchInput] = useState('');
+  const [applicationSearchInput, setApplicationSearchInput] = useState('');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1107,6 +1142,13 @@ const VendorDashboard = () => {
     }, 300);
     return () => clearTimeout(timer);
   }, [bookingSearchInput]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setApplicationSearchQuery(applicationSearchInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [applicationSearchInput]);
 
   const [partnerStatusFilter, setPartnerStatusFilter] = useState('All');
   const [partnerSearchQuery, setPartnerSearchQuery] = useState('');
@@ -1878,6 +1920,9 @@ const VendorDashboard = () => {
         } else if (activeTab === 'bookings') {
           const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig());
           if (res.data.success) setBookings(res.data.data);
+        } else if (activeTab === 'applications') {
+          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/applications`, getAxiosConfig());
+          if (res.data.success) setApplications(res.data.data);
         } else if (activeTab === 'delivery') {
           const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig());
           if (res.data.success) setPartners(res.data.data);
@@ -2004,6 +2049,7 @@ const VendorDashboard = () => {
   useEffect(() => {
     setOrders([]);
     setBookings([]);
+    setApplications([]);
     setCatalog([]);
     setCustomers([]);
     setAnalytics({});
@@ -2672,6 +2718,17 @@ const VendorDashboard = () => {
           }
           return b;
         }));
+        setApplications(prevApps => (prevApps || []).map(a => {
+          if (!a) return a;
+          if (String(a._id) === strId || String(a.id) === strId || String(a.order_number) === strId || String(a.applicationId) === strId) {
+            return {
+              ...a,
+              ...(updatedData || {}),
+              status: updatedData?.status || status
+            };
+          }
+          return a;
+        }));
         setMessage(`Status updated to ${status}`);
         
         // If partner assigned, reload partners status
@@ -3106,11 +3163,17 @@ const VendorDashboard = () => {
                       { id: 'Jobs', name: 'Jobs', icon: Briefcase }
                     ];
                   }
-                  const items = [
-                    { id: 'orders', name: 'Orders', icon: ClipboardList },
-                    { id: 'bookings', name: 'Bookings', icon: Calendar },
-                    { id: 'customers', name: terms.customersName || 'Customers', icon: Users }
-                  ];
+                  const items = [];
+                  if (hasOrderCategory()) {
+                    items.push({ id: 'orders', name: 'Orders', icon: ClipboardList });
+                  }
+                  if (hasBookingCategory()) {
+                    items.push({ id: 'bookings', name: 'Bookings', icon: Calendar });
+                  }
+                  if (hasJobCategory()) {
+                    items.push({ id: 'applications', name: 'Applications', icon: FileText });
+                  }
+                  items.push({ id: 'customers', name: terms.customersName || 'Customers', icon: Users });
                   const partnerLabel = getPartnerLabel();
                   if (!['Education Vendor', 'Job Vendor'].includes(vendorType)) {
                     items.push({ id: 'delivery', name: partnerLabel, icon: Truck });
@@ -3359,11 +3422,17 @@ const VendorDashboard = () => {
                   { id: 'Jobs', name: 'Jobs', icon: Briefcase }
                 ];
               }
-              const items = [
-                { id: 'orders', name: 'Orders', icon: ClipboardList },
-                { id: 'bookings', name: 'Bookings', icon: Calendar },
-                { id: 'customers', name: terms.customersName || 'Customers', icon: Users }
-              ];
+              const items = [];
+              if (hasOrderCategory()) {
+                items.push({ id: 'orders', name: 'Orders', icon: ClipboardList });
+              }
+              if (hasBookingCategory()) {
+                items.push({ id: 'bookings', name: 'Bookings', icon: Calendar });
+              }
+              if (hasJobCategory()) {
+                items.push({ id: 'applications', name: 'Applications', icon: FileText });
+              }
+              items.push({ id: 'customers', name: terms.customersName || 'Customers', icon: Users });
               const partnerLabel = getPartnerLabel();
               if (!['Education Vendor', 'Job Vendor'].includes(vendorType)) {
                 items.push({ id: 'delivery', name: partnerLabel, icon: Truck });
@@ -5750,6 +5819,257 @@ const VendorDashboard = () => {
                 )}
               </div>
             )}
+
+        {/* Applications Tab */}
+        {activeTab === 'applications' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Job Applications</h2>
+                <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">
+                  Review applicant profiles, qualifications, CVs, and manage recruitment pipeline for your job vacancies
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-primary-50 dark:bg-primary-950/60 text-primary-600 dark:text-primary-400 border border-primary-200/50 dark:border-primary-800/50">
+                  {applications.length} Total Applications
+                </span>
+              </div>
+            </div>
+
+            {/* Filter controls */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
+              {/* Search input */}
+              <div className="flex-1 w-full">
+                <input
+                  type="text"
+                  placeholder="Search candidate by name, email, phone, or job position..."
+                  value={applicationSearchInput}
+                  onChange={(e) => setApplicationSearchInput(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
+                />
+              </div>
+
+              {/* Date range filter */}
+              <div className="w-full sm:w-48 shrink-0">
+                <select
+                  value={applicationTimeFilter}
+                  onChange={(e) => setApplicationTimeFilter(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                >
+                  <option value="all">All Time</option>
+                  <option value="today">Today</option>
+                  <option value="week">Last Week</option>
+                  <option value="month">Last Month</option>
+                </select>
+              </div>
+
+              {/* Status filter */}
+              <div className="w-full sm:w-48 shrink-0">
+                <select
+                  value={applicationStatusFilter}
+                  onChange={(e) => setApplicationStatusFilter(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="APPLICATION RECEIVED">Application Received</option>
+                  <option value="UNDER REVIEW">Under Review</option>
+                  <option value="SHORTLISTED">Shortlisted</option>
+                  <option value="SELECTED">Selected</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+              </div>
+            </div>
+
+            {loading && applications.length === 0 ? (
+              <div className="glass-card p-8 rounded-3xl animate-pulse space-y-4">
+                <div className="h-6 bg-slate-200 dark:bg-slate-800/60 rounded w-1/4"></div>
+                <div className="h-10 bg-slate-200 dark:bg-slate-800/60 rounded"></div>
+                <div className="h-10 bg-slate-200 dark:bg-slate-800/60 rounded"></div>
+              </div>
+            ) : applications.length === 0 ? (
+              <div className="glass-card p-12 text-center rounded-3xl">
+                <p className="text-slate-800 dark:text-slate-200 font-medium">No job applications received yet.</p>
+                <p className="text-slate-500 text-xs mt-1">Applications for your posted job vacancies will appear here.</p>
+              </div>
+            ) : (
+              (() => {
+                const filteredApps = applications.filter(app => {
+                  if (applicationStatusFilter !== 'all') {
+                    const st = (app.status || '').toUpperCase();
+                    const targetSt = applicationStatusFilter.toUpperCase();
+                    if (st !== targetSt) {
+                      if (targetSt === 'APPLICATION RECEIVED' && ['PENDING', 'ORDER RECEIVED', 'APPLIED'].includes(st)) {
+                        // match
+                      } else {
+                        return false;
+                      }
+                    }
+                  }
+
+                  if (applicationSearchQuery && applicationSearchQuery.trim() !== '') {
+                    const q = applicationSearchQuery.toLowerCase().trim();
+                    const cName = (app.candidateName || app.memberName || app.customer_name || '').toLowerCase();
+                    const cEmail = (app.candidateEmail || '').toLowerCase();
+                    const cPhone = (app.candidatePhone || '').toLowerCase();
+                    const jTitle = (app.jobTitle || app.product_details || (app.items && app.items[0]?.name) || '').toLowerCase();
+                    const appId = (app.applicationId || app.order_number || app.id || '').toLowerCase();
+                    if (!cName.includes(q) && !cEmail.includes(q) && !cPhone.includes(q) && !jTitle.includes(q) && !appId.includes(q)) {
+                      return false;
+                    }
+                  }
+
+                  if (applicationTimeFilter !== 'all') {
+                    const rawDate = app.applicationDate || app.createdAt || app.created_at;
+                    if (!rawDate) return false;
+                    const d = new Date(rawDate);
+                    if (isNaN(d.getTime())) return false;
+                    const now = new Date();
+                    if (applicationTimeFilter === 'today') {
+                      if (d.toDateString() !== now.toDateString()) return false;
+                    } else if (applicationTimeFilter === 'week') {
+                      if ((now.getTime() - d.getTime()) > 7 * 24 * 60 * 60 * 1000) return false;
+                    } else if (applicationTimeFilter === 'month') {
+                      if ((now.getTime() - d.getTime()) > 30 * 24 * 60 * 60 * 1000) return false;
+                    }
+                  }
+
+                  return true;
+                });
+
+                if (filteredApps.length === 0) {
+                  return (
+                    <div className="glass-card p-12 text-center rounded-3xl">
+                      <p className="text-slate-800 dark:text-slate-200 font-medium">No applications match your filter criteria.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="overflow-x-auto rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/40 shadow-sm">
+                    <table className="w-full text-left border-collapse min-w-[850px]">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-950/50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                          <th className="px-6 py-4">Candidate</th>
+                          <th className="px-6 py-4">Application & Job ID</th>
+                          <th className="px-6 py-4">Education / Exp</th>
+                          <th className="px-6 py-4">Applied Position</th>
+                          <th className="px-6 py-4">CV / Resume</th>
+                          <th className="px-6 py-4">Applied Date</th>
+                          <th className="px-6 py-4 text-right">Status & Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 text-sm">
+                        {filteredApps.map(app => {
+                          const appIdStr = String(app._id || app.id || app.order_number);
+                          const isUpdating = updatingStatusIds.has(appIdStr);
+
+                          return (
+                            <tr key={app._id || app.id || app.order_number} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 text-slate-700 dark:text-slate-200 transition-colors">
+                              {/* Candidate Name, Email, Phone */}
+                              <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
+                                <div>{app.candidateName || app.memberName || app.customer_name || 'Candidate'}</div>
+                                {app.candidateEmail && (
+                                  <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">{app.candidateEmail}</div>
+                                )}
+                                {app.candidatePhone && (
+                                  <div className="text-[10px] text-slate-400 font-medium">{app.candidatePhone}</div>
+                                )}
+                              </td>
+
+                              {/* Application & Job ID */}
+                              <td className="px-6 py-4 text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                                <div className="text-primary-600 dark:text-primary-400">App ID: #{app.applicationId || app.order_number || app.id || 'N/A'}</div>
+                                <div className="text-[10px] text-slate-400 font-normal mt-0.5">Job ID: #{app.jobId || (app.items && app.items[0]?.productId) || 'N/A'}</div>
+                              </td>
+
+                              {/* Education / Exp */}
+                              <td className="px-6 py-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                <div>{app.candidateEducation || 'Graduate'}</div>
+                                <div className="text-[10px] text-slate-400 font-normal mt-0.5">Exp: {app.experience || 'Fresher'}</div>
+                              </td>
+
+                              {/* Applied Position */}
+                              <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                {app.jobTitle || app.product_details || (app.items && app.items[0]?.name) || 'Job Role'}
+                              </td>
+
+                              {/* CV / Resume */}
+                              <td className="px-6 py-4 text-xs">
+                                {app.candidateResume ? (
+                                  <div className="flex gap-2 items-center">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); setSelectedBillOrder(app); setIsResumeViewerOpen(true); }}
+                                      className="text-[10px] text-slate-500 font-medium bg-slate-50/70 hover:bg-slate-100 dark:bg-slate-950/60 dark:hover:bg-slate-900 p-2 rounded-lg border border-slate-200/50 dark:border-slate-800 max-w-xs break-words text-left transition-colors cursor-pointer"
+                                      title="View Resume"
+                                    >
+                                      📄 {app.candidateResume.split('/').pop().substring(0, 18)}...
+                                    </button>
+                                    <a
+                                      href={app.candidateResume.startsWith('http') ? app.candidateResume : `${getVendorBackendUrl()}/api/vendor/orders/${app._id || app.id || app.order_number}/resume?download=true`}
+                                      download
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-md transition-colors"
+                                      title="Download Resume"
+                                    >
+                                      <Download size={14} />
+                                    </a>
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 italic">No Resume</span>
+                                )}
+                              </td>
+
+                              {/* Application Date */}
+                              <td className="px-6 py-4 text-xs text-slate-600 dark:text-slate-400 font-medium">
+                                {(() => {
+                                  const rawDate = app.applicationDate || app.createdAt || app.created_at;
+                                  if (!rawDate) return 'N/A';
+                                  const d = new Date(rawDate);
+                                  return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                })()}
+                              </td>
+
+                              {/* Status & Actions */}
+                              <td className="px-6 py-4 text-right">
+                                <div className="flex flex-col items-end gap-2">
+                                  <select
+                                    value={app.status || 'APPLICATION RECEIVED'}
+                                    disabled={isUpdating}
+                                    onChange={(e) => handleUpdateOrderStatus(app._id || app.id || app.order_number, e.target.value)}
+                                    className={`bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs px-2.5 py-1.5 w-44 focus:outline-none focus:border-primary-500 font-semibold ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  >
+                                    {['APPLICATION RECEIVED', 'UNDER REVIEW', 'SHORTLISTED', 'SELECTED', 'REJECTED'].map(status => (
+                                      <option key={status} value={status}>{status}</option>
+                                    ))}
+                                  </select>
+                                  
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedBillOrder(app);
+                                      setIsBillModalOpen(true);
+                                    }}
+                                    className="text-[10px] font-extrabold uppercase bg-[#faed26]/80 text-[#0b3c7b] hover:bg-[#faed26] px-3 py-1 rounded-lg border border-yellow-500/10 transition-all active:scale-[0.97]"
+                                  >
+                                    View Details
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()
+            )}
+          </div>
+        )}
 
         {/* Customers Tab */}
         {activeTab === 'customers' && (

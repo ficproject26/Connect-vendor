@@ -324,6 +324,32 @@ export const DashboardProvider = ({ children }) => {
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   
+  const hasOrderCategory = () => {
+    const allBiz = [{ vendorType: user?.vendorType, category: user?.category }, ...(user?.businesses || [])];
+    return allBiz.some(b => {
+      const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+      return t.startsWith('product') || t.startsWith('daily need') || t.startsWith('food') || 
+             ['store', 'grocery', 'pharmacy', 'restaurant', 'electronics', 'furniture'].some(k => t.includes(k));
+    });
+  };
+
+  const hasBookingCategory = () => {
+    const allBiz = [{ vendorType: user?.vendorType, category: user?.category }, ...(user?.businesses || [])];
+    return allBiz.some(b => {
+      const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+      return t.startsWith('service') || t.startsWith('stay') || t.startsWith('travel') || 
+             ['hotel', 'hospital'].some(k => t.includes(k));
+    });
+  };
+
+  const hasJobCategory = () => {
+    const allBiz = [{ vendorType: user?.vendorType, category: user?.category }, ...(user?.businesses || [])];
+    return allBiz.some(b => {
+      const t = (b?.vendorType || b?.category || b?.name || '').toLowerCase();
+      return t.startsWith('job');
+    });
+  };
+
   // Guard helper to validate if a tab is allowed for the user's role and category
   const isTabAllowed = (tab, role, vType) => {
     if (!tab) return false;
@@ -334,7 +360,10 @@ export const DashboardProvider = ({ children }) => {
       return ['dashboard', 'discounts', 'redeem', 'payments', 'renewal', 'Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'].includes(tab);
     }
     if (role === 'Vendor') {
-      const allowed = ['dashboard', 'catalog', 'orders', 'customers', 'payments', 'profile', 'business'];
+      const allowed = ['dashboard', 'catalog', 'customers', 'payments', 'profile', 'business', 'queries'];
+      if (hasOrderCategory()) allowed.push('orders');
+      if (hasBookingCategory()) allowed.push('bookings');
+      if (hasJobCategory()) allowed.push('applications');
       if (!['Education Vendor', 'Job Vendor'].includes(vType)) {
         allowed.push('delivery');
       }
