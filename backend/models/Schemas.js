@@ -192,6 +192,8 @@ const ProductSchema = new mongoose.Schema({
 
 ProductSchema.index({ vendorId: 1, category: 1 });
 ProductSchema.index({ vendor_id: 1 });
+ProductSchema.index({ vendorId: 1, mainCategory: 1, createdAt: -1 });
+ProductSchema.index({ vendorId: 1, type: 1, createdAt: -1 });
 ProductSchema.index({ category: 1, subcategory: 1 });
 ProductSchema.index({ status: 1, createdAt: -1 });
 ProductSchema.index({ createdAt: -1 });
@@ -249,6 +251,9 @@ const OrderSchema = new mongoose.Schema({
 }, { timestamps: true, strict: false });
 
 OrderSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
+OrderSchema.index({ vendorId: 1, type: 1, createdAt: -1 });
+OrderSchema.index({ vendor_id: 1, type: 1, createdAt: -1 });
+OrderSchema.index({ type: 1, createdAt: -1 });
 OrderSchema.index({ memberId: 1, createdAt: -1 });
 OrderSchema.index({ status: 1, createdAt: -1 });
 

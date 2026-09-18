@@ -304,38 +304,84 @@ const getProducts = async (req, res) => {
     const reqType = (req.query.type || req.query.mainCategory || req.query.subNavbarCategory || req.query.category || '').trim();
     const targetType = reqType ? normalizeCategoryType(reqType) : normalizeCategoryType(activeVendorType);
 
-    const products = await Product.find({
-      $or: [
-        { vendorId: activeBusinessId },
-        { vendor_id: activeBusinessId },
-        { vendorId: parentId },
-        { vendor_id: parentId }
-      ]
-    }).lean();
+    const vendorIds = [activeBusinessId, parentId];
+    const queryConditions = [
+      {
+        $or: [
+          { vendorId: { $in: vendorIds } },
+          { vendor_id: { $in: vendorIds } }
+        ]
+      }
+    ];
 
+    if (targetType && targetType.toLowerCase() !== 'all') {
+      const typeRegex = new RegExp('^' + targetType, 'i');
+      queryConditions.push({
+        $or: [
+          { mainCategory: typeRegex },
+          { subNavbarCategory: typeRegex },
+          { category: typeRegex }
+        ]
+      });
+    }
+
+    if (req.query.subCategory && req.query.subCategory !== 'All') {
+      queryConditions.push({ category: req.query.subCategory });
+    }
+
+    if (req.query.search) {
+      const sRegex = new RegExp(String(req.query.search).trim(), 'i');
+      queryConditions.push({
+        $or: [{ name: sRegex }, { description: sRegex }]
+      });
+    }
+
+    if (req.query.status && req.query.status !== 'All') {
+      queryConditions.push({ status: req.query.status });
+    }
+
+    const mongoQuery = queryConditions.length > 1 ? { $and: queryConditions } : queryConditions[0];
+
+    const page = parseInt(req.query.page, 10);
+    const limit = parseInt(req.query.limit, 10);
+
+    let query = Product.find(mongoQuery)
+      .select('-__v')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    let total = 0;
+    if (!isNaN(page) && !isNaN(limit) && limit > 0) {
+      total = await Product.countDocuments(mongoQuery);
+      query = query.skip((page - 1) * limit).limit(limit);
+    }
+
+    const products = await query;
+
+    // Safety fallback filter to guarantee strict business ownership & category isolation
     const filtered = products.filter(p => {
-      // 1. Business ownership isolation check
       const pVendorId = (p.vendorId || p.vendor_id || '').toString();
       const belongsToVendor = (pVendorId === activeBusinessId || pVendorId === parentId);
       if (!belongsToVendor) return false;
 
-      // 2. Strict Category / Catalog Type isolation check
       if (!targetType || targetType.toLowerCase() === 'all') return true;
 
       const pMain = normalizeCategoryType(p.mainCategory || p.subNavbarCategory);
       const pCat = normalizeCategoryType(p.category);
 
-      if (pMain) {
-        return pMain.toLowerCase() === targetType.toLowerCase();
-      }
-      if (pCat) {
-        return pCat.toLowerCase() === targetType.toLowerCase() || pCat.toLowerCase().includes(targetType.toLowerCase());
-      }
+      if (pMain) return pMain.toLowerCase() === targetType.toLowerCase();
+      if (pCat) return pCat.toLowerCase() === targetType.toLowerCase() || pCat.toLowerCase().includes(targetType.toLowerCase());
 
       return true;
     });
 
-    res.status(200).json({ success: true, data: filtered });
+    res.status(200).json({
+      success: true,
+      data: filtered,
+      total: total || filtered.length,
+      page: page || 1,
+      totalPages: limit ? Math.ceil((total || filtered.length) / limit) : 1
+    });
   } catch (error) {
     console.error('Get Products Error:', error);
     res.status(500).json({ success: false, message: 'Server error retrieving catalog items' });
@@ -455,6 +501,82 @@ const deleteProduct = async (req, res) => {
 // @desc    Get all orders / bookings of the vendor
 // @route   GET /api/vendor/orders
 // @access  Private (Vendor)
+// Reusable helper to build Customer ID canonical lookup without scanning entire collections
+const buildCustomerLookupForOrders = async (orders) => {
+  const memberIds = [...new Set(orders.map(o => o.memberId || o.customerId || o.customer_id).filter(Boolean))];
+  const emails = [...new Set(orders.map(o => o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : null)).filter(Boolean))];
+  const phones = [...new Set(orders.map(o => (o.customer_phone || o.phone || o.candidatePhone || '').toString().replace(/[^0-9]/g, '').slice(-10)).filter(p => p && p.length >= 10))];
+
+  const orCustConditions = [];
+  if (memberIds.length > 0) {
+    orCustConditions.push({ _id: { $in: memberIds } });
+    orCustConditions.push({ id: { $in: memberIds } });
+    orCustConditions.push({ customerId: { $in: memberIds } });
+    orCustConditions.push({ registrationId: { $in: memberIds } });
+  }
+  if (emails.length > 0) {
+    orCustConditions.push({ email: { $in: emails } });
+  }
+  if (phones.length > 0) {
+    orCustConditions.push({ phone: { $in: phones } });
+    orCustConditions.push({ mobileNumber: { $in: phones } });
+  }
+
+  let dbCustomers = [];
+  let memberUsers = [];
+  if (orCustConditions.length > 0) {
+    const [cResult, uResult] = await Promise.all([
+      Customer.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id address street city state pincode').lean(),
+      User.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id').lean()
+    ]);
+    dbCustomers = cResult;
+    memberUsers = uResult;
+  }
+
+  const customerLookup = { byPhone: {}, byEmail: {}, byName: {}, byId: {} };
+  const registerCustomerInLookup = (cust) => {
+    if (!cust) return;
+    const cid = cust.customerId || cust.registrationId || cust.customerDisplayId || (String(cust._id || cust.id).startsWith('FIC-CUST-') ? String(cust._id || cust.id) : null);
+    if (!cid) return;
+    if (cust._id) customerLookup.byId[String(cust._id)] = cid;
+    if (cust.id) customerLookup.byId[String(cust.id)] = cid;
+    if (cust.customerId) customerLookup.byId[String(cust.customerId)] = cid;
+    if (cust.registrationId) customerLookup.byId[String(cust.registrationId)] = cid;
+
+    const p = (cust.phone || cust.mobileNumber || '').toString().replace(/[^0-9]/g, '');
+    if (p && p.length >= 10) customerLookup.byPhone[p.slice(-10)] = cid;
+    const em = (cust.email || '').trim().toLowerCase();
+    if (em && em.includes('@')) customerLookup.byEmail[em] = cid;
+    const nm = (cust.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (nm && nm !== 'customer' && nm !== 'connectmember') customerLookup.byName[nm] = cid;
+  };
+
+  memberUsers.forEach(registerCustomerInLookup);
+  dbCustomers.forEach(registerCustomerInLookup);
+
+  return customerLookup;
+};
+
+const normalizeAddressStateForOrder = (obj) => {
+  if (obj.customer_address && typeof obj.customer_address === 'string') {
+    if (/(krishnagiri|dharmapuri|chennai|coimbatore|salem|madurai|tirupur)/i.test(obj.customer_address) || /-\s*6[0-4]\d{4}/.test(obj.customer_address)) {
+      obj.customer_address = obj.customer_address.replace(/,\s*Karnataka/gi, ', Tamil Nadu').replace(/\bKarnataka\b/gi, 'Tamil Nadu');
+    }
+  }
+  if (obj.deliveryAddress && typeof obj.deliveryAddress === 'string') {
+    if (/(krishnagiri|dharmapuri|chennai|coimbatore|salem|madurai|tirupur)/i.test(obj.deliveryAddress) || /-\s*6[0-4]\d{4}/.test(obj.deliveryAddress)) {
+      obj.deliveryAddress = obj.deliveryAddress.replace(/,\s*Karnataka/gi, ', Tamil Nadu').replace(/\bKarnataka\b/gi, 'Tamil Nadu');
+    }
+  }
+};
+
+const TRANSACTIONAL_ORDER_TYPES = ['Order', 'Daily Needs', 'Food', 'Products', 'order', 'Store', 'Grocery', 'Pharmacy', 'Restaurant'];
+const RESERVATION_BOOKING_TYPES = ['Booking', 'Appointment', 'Stay', 'Travel', 'Services', 'booking', 'Job', 'Hotel', 'Hospital', 'Travel Agency', 'Job Application'];
+
+// --- ORDERS (Transactional products / food / daily needs) ---
+// @desc    Get all orders of the vendor
+// @route   GET /api/vendor/orders
+// @access  Private (Vendor)
 const getOrders = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id;
@@ -470,102 +592,65 @@ const getOrders = async (req, res) => {
       });
     }
 
-    // Fetch all products for this vendor to map item product IDs to sub-businesses
-    const products = await Product.find({
-      $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
-      ]
-    }).lean();
+    const activeBizId = req.user._id.toString();
 
-    const productMap = {};
-    const productToBusinessMap = {};
-    products.forEach(p => {
-      productMap[p._id.toString()] = p;
-      let bizId = p.vendorId || p.vendor_id;
-      if (bizId) {
-        if (bizId.toString() === parentUserId.toString()) {
-          // Resolve correct sub-business for parent-level products using category taxonomy mapping
-          const mainCat = getProductMainCategory(p.category);
-          const matchedBiz = user.businesses?.find(b => {
-            let normalizedVendorType = b.vendorType || '';
-            if (normalizedVendorType.endsWith(' Vendor')) {
-              normalizedVendorType = normalizedVendorType.replace(' Vendor', '');
-            }
-            if (normalizedVendorType.startsWith('Restaurant')) normalizedVendorType = 'Food';
-            else if (normalizedVendorType.startsWith('Hotel')) normalizedVendorType = 'Stay';
-            else if (normalizedVendorType.startsWith('Travel Agency')) normalizedVendorType = 'Travel';
-            else if (normalizedVendorType.startsWith('Hospital') || normalizedVendorType.startsWith('Service')) normalizedVendorType = 'Services';
-            else if (normalizedVendorType.startsWith('Grocery') || normalizedVendorType.startsWith('Pharmacy')) normalizedVendorType = 'Daily Needs';
-            else if (normalizedVendorType.startsWith('Job')) normalizedVendorType = 'Jobs';
-            else if (normalizedVendorType.startsWith('Store') || normalizedVendorType.startsWith('Electronics') || normalizedVendorType.startsWith('Home & Furniture')) normalizedVendorType = 'Products';
-            
-            return mainCat.toLowerCase() === normalizedVendorType.toLowerCase();
-          });
-          if (matchedBiz) {
-            bizId = matchedBiz._id;
-          }
+    // Query strictly for transactional orders, excluding bookings
+    const baseQuery = {
+      $and: [
+        {
+          $or: [
+            { vendorId: { $in: businessIds } },
+            { vendor_id: { $in: businessIds } }
+          ]
+        },
+        {
+          type: { $nin: RESERVATION_BOOKING_TYPES }
         }
-        productToBusinessMap[p._id.toString()] = bizId.toString();
-      }
-    });
-
-    // Fetch orders matching vendor businessIds
-    const orders = await Order.find({
-      $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
       ]
-    }).sort({ createdAt: -1, created_at: -1 }).lean();
+    };
 
-    // Fetch membership cards for memberIds in orders
+    // Support search
+    if (req.query.search) {
+      const sRegex = new RegExp(String(req.query.search).trim(), 'i');
+      baseQuery.$and.push({
+        $or: [
+          { order_number: sRegex },
+          { memberName: sRegex },
+          { customer_name: sRegex },
+          { memberId: sRegex }
+        ]
+      });
+    }
+
+    // Support status filter
+    if (req.query.status && req.query.status !== 'All') {
+      baseQuery.$and.push({ status: req.query.status });
+    }
+
+    const page = parseInt(req.query.page, 10);
+    const limit = parseInt(req.query.limit, 10);
+
+    let query = Order.find(baseQuery).sort({ createdAt: -1, created_at: -1 }).lean();
+
+    let total = 0;
+    if (!isNaN(page) && !isNaN(limit) && limit > 0) {
+      total = await Order.countDocuments(baseQuery);
+      query = query.skip((page - 1) * limit).limit(limit);
+    }
+
+    const orders = await query;
+
+    // Fast targeted lookups for only the retrieved orders
     const memberIds = [...new Set(orders.map(o => o.memberId || o.customer_id).filter(Boolean))];
-    const membershipCards = await MembershipCard.find({ userId: { $in: memberIds } }).select('userId planName').lean();
-    const membershipMap = {};
-    membershipCards.forEach(c => {
-      if (c.userId && c.planName) {
-        membershipMap[c.userId.toString()] = c.planName;
-      }
-    });
-
-    // Fetch canonical customer profiles to ensure single source of truth for Customer ID
-    const [allDbCustomers, allMemberUsers] = await Promise.all([
-      Customer.find({}).lean(),
-      User.find({ role: { $in: ['Member', 'customer', 'Customer'] } }).lean()
+    const [membershipCards, customerLookup] = await Promise.all([
+      MembershipCard.find({ userId: { $in: memberIds } }).select('userId planName').lean(),
+      buildCustomerLookupForOrders(orders)
     ]);
 
-    const customerLookup = {
-      byPhone: {},
-      byEmail: {},
-      byName: {},
-      byId: {}
-    };
-
-    const registerCustomerInLookup = (cust) => {
-      if (!cust) return;
-      const cid = cust.customerId || cust.registrationId || cust.customerDisplayId || (String(cust._id || cust.id).startsWith('FIC-CUST-') ? String(cust._id || cust.id) : null);
-      if (!cid) return;
-      if (cust._id) customerLookup.byId[String(cust._id)] = cid;
-      if (cust.id) customerLookup.byId[String(cust.id)] = cid;
-      if (cust.customerId) customerLookup.byId[String(cust.customerId)] = cid;
-      if (cust.registrationId) customerLookup.byId[String(cust.registrationId)] = cid;
-
-      const p = (cust.phone || cust.mobileNumber || '').toString().replace(/[^0-9]/g, '');
-      if (p && p.length >= 10) {
-        customerLookup.byPhone[p.slice(-10)] = cid;
-      }
-      const em = (cust.email || '').trim().toLowerCase();
-      if (em && em.includes('@')) {
-        customerLookup.byEmail[em] = cid;
-      }
-      const nm = (cust.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (nm && nm !== 'customer' && nm !== 'connectmember') {
-        customerLookup.byName[nm] = cid;
-      }
-    };
-
-    allMemberUsers.forEach(registerCustomerInLookup);
-    allDbCustomers.forEach(registerCustomerInLookup);
+    const membershipMap = {};
+    membershipCards.forEach(c => {
+      if (c.userId && c.planName) membershipMap[c.userId.toString()] = c.planName;
+    });
 
     const normalizedOrders = orders.map(o => {
       const obj = o.toObject ? o.toObject() : o;
@@ -580,7 +665,152 @@ const getOrders = async (req, res) => {
         if (!obj.created_at) obj.created_at = effectiveDate;
       }
 
-      // Canonical Customer ID resolution (Database is single source of truth)
+      // Canonical Customer ID resolution
+      let resolvedCustomerId = null;
+      if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-')) {
+        resolvedCustomerId = String(obj.customerId);
+      } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-')) {
+        resolvedCustomerId = String(obj.customerDisplayId);
+      } else if (obj.memberId && String(obj.memberId).startsWith('FIC-CUST-')) {
+        resolvedCustomerId = String(obj.memberId);
+      } else {
+        const oPhone = (obj.customer_phone || obj.phone || '').toString().replace(/[^0-9]/g, '');
+        const oEmail = (obj.customer_email || (obj.memberId && obj.memberId.includes('@') ? obj.memberId : '') || '').trim().toLowerCase();
+        const oName = (obj.memberName || obj.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        if (oPhone && oPhone.length >= 10 && customerLookup.byPhone[oPhone.slice(-10)]) {
+          resolvedCustomerId = customerLookup.byPhone[oPhone.slice(-10)];
+        } else if (oEmail && customerLookup.byEmail[oEmail]) {
+          resolvedCustomerId = customerLookup.byEmail[oEmail];
+        } else if (oName && customerLookup.byName[oName]) {
+          resolvedCustomerId = customerLookup.byName[oName];
+        } else if (obj.memberId && customerLookup.byId[String(obj.memberId)]) {
+          resolvedCustomerId = customerLookup.byId[String(obj.memberId)];
+        }
+      }
+
+      if (!resolvedCustomerId) {
+        resolvedCustomerId = 'FIC-CUST-100001';
+      }
+
+      obj.customerId = resolvedCustomerId;
+      obj.customerDisplayId = resolvedCustomerId;
+
+      if (obj.memberId && membershipMap[obj.memberId.toString()]) {
+        obj.membershipPlanName = membershipMap[obj.memberId.toString()];
+      }
+
+      normalizeAddressStateForOrder(obj);
+      return obj;
+    });
+
+    res.status(200).json({
+      success: true,
+      data: normalizedOrders,
+      total: total || normalizedOrders.length,
+      page: page || 1,
+      totalPages: limit ? Math.ceil((total || normalizedOrders.length) / limit) : 1
+    });
+  } catch (error) {
+    console.error('Get Orders Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving orders' });
+  }
+};
+
+// --- BOOKINGS (Stay / Services / Appointments / Travel / Jobs) ---
+// @desc    Get all bookings and reservations of the vendor
+// @route   GET /api/vendor/bookings
+// @access  Private (Vendor)
+const getBookings = async (req, res) => {
+  try {
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const businessIds = [parentUserId.toString()];
+    if (user.businesses && user.businesses.length > 0) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+      });
+    }
+
+    // Query strictly for bookings and reservation types
+    const baseQuery = {
+      $and: [
+        {
+          $or: [
+            { vendorId: { $in: businessIds } },
+            { vendor_id: { $in: businessIds } }
+          ]
+        },
+        {
+          type: { $in: RESERVATION_BOOKING_TYPES }
+        }
+      ]
+    };
+
+    // Support search
+    if (req.query.search) {
+      const sRegex = new RegExp(String(req.query.search).trim(), 'i');
+      baseQuery.$and.push({
+        $or: [
+          { order_number: sRegex },
+          { applicationId: sRegex },
+          { memberName: sRegex },
+          { customer_name: sRegex },
+          { candidateName: sRegex },
+          { doctorName: sRegex },
+          { serviceName: sRegex }
+        ]
+      });
+    }
+
+    // Support status filter
+    if (req.query.status && req.query.status !== 'All') {
+      baseQuery.$and.push({ status: req.query.status });
+    }
+
+    const page = parseInt(req.query.page, 10);
+    const limit = parseInt(req.query.limit, 10);
+
+    let query = Order.find(baseQuery).sort({ createdAt: -1, created_at: -1 }).lean();
+
+    let total = 0;
+    if (!isNaN(page) && !isNaN(limit) && limit > 0) {
+      total = await Order.countDocuments(baseQuery);
+      query = query.skip((page - 1) * limit).limit(limit);
+    }
+
+    const bookings = await query;
+
+    // Fast targeted lookups for only the retrieved bookings
+    const memberIds = [...new Set(bookings.map(o => o.memberId || o.customer_id).filter(Boolean))];
+    const [membershipCards, customerLookup] = await Promise.all([
+      MembershipCard.find({ userId: { $in: memberIds } }).select('userId planName').lean(),
+      buildCustomerLookupForOrders(bookings)
+    ]);
+
+    const membershipMap = {};
+    membershipCards.forEach(c => {
+      if (c.userId && c.planName) membershipMap[c.userId.toString()] = c.planName;
+    });
+
+    const normalizedBookings = bookings.map(b => {
+      const obj = b.toObject ? b.toObject() : b;
+      if (!obj.vendorId && obj.vendor_id) obj.vendorId = obj.vendor_id;
+      if (!obj.memberName && obj.customer_name) obj.memberName = obj.customer_name;
+      if (!obj.memberId && obj.customer_id) obj.memberId = obj.customer_id;
+      if (obj.finalAmount === undefined && obj.amount !== undefined) obj.finalAmount = obj.amount;
+      if (obj.totalAmount === undefined && obj.amount !== undefined) obj.totalAmount = obj.amount;
+      const effectiveDate = obj.createdAt || obj.created_at || obj.orderDate || obj.date;
+      if (effectiveDate) {
+        if (!obj.createdAt) obj.createdAt = effectiveDate;
+        if (!obj.created_at) obj.created_at = effectiveDate;
+      }
+
+      // Canonical Customer ID resolution
       let resolvedCustomerId = null;
       if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-')) {
         resolvedCustomerId = String(obj.customerId);
@@ -604,43 +834,15 @@ const getOrders = async (req, res) => {
         }
       }
 
-      // Hardcoded fallback safety for known canonical profiles
       if (!resolvedCustomerId) {
-        const oNameClean = (obj.memberName || obj.customer_name || obj.candidateName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (oNameClean === 'swetha' || oNameClean === 'swethaj') {
-          resolvedCustomerId = 'FIC-CUST-774974';
-        } else if (oNameClean === 'sri' || oNameClean === 'sribhavanim') {
-          resolvedCustomerId = 'FIC-CUST-214155';
-        } else if (oNameClean === 'connectmember') {
-          resolvedCustomerId = 'FIC-CUST-462259';
-        } else {
-          resolvedCustomerId = 'FIC-CUST-100001';
-        }
+        resolvedCustomerId = 'FIC-CUST-100001';
       }
 
       obj.customerId = resolvedCustomerId;
       obj.customerDisplayId = resolvedCustomerId;
 
-      // Attach Membership Plan Name
       if (obj.memberId && membershipMap[obj.memberId.toString()]) {
         obj.membershipPlanName = membershipMap[obj.memberId.toString()];
-      }
-
-      // Populate Job Location from product if missing
-      if (!obj.jobLocation && obj.items && obj.items.length > 0 && obj.items[0].productId) {
-        const prod = productMap[obj.items[0].productId.toString()];
-        if (prod && (prod.jobLocation || prod.location || prod.pinCode || prod.address)) {
-          obj.jobLocation = prod.jobLocation || prod.location || [prod.address, prod.city, prod.pinCode].filter(Boolean).join(', ');
-        }
-      }
-
-      // Dynamically override parent vendorId with correct business ID if it's a legacy parent order
-      const orderVendorId = obj.vendorId ? obj.vendorId.toString() : '';
-      if (orderVendorId === parentUserId.toString() && obj.items && obj.items.length > 0) {
-        const firstItemId = obj.items[0].productId;
-        if (firstItemId && productToBusinessMap[firstItemId.toString()]) {
-          obj.vendorId = productToBusinessMap[firstItemId.toString()];
-        }
       }
 
       if (obj.type === 'Job') {
@@ -655,7 +857,6 @@ const getOrders = async (req, res) => {
         if (!obj.applicationDate) obj.applicationDate = obj.created_at || obj.createdAt;
       }
 
-      // Travel date normalization
       const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || obj.bookingDate || obj.appointmentDate;
       if (travelDateVal) {
         obj.travelDate = travelDateVal;
@@ -663,25 +864,20 @@ const getOrders = async (req, res) => {
         obj.travelDate = (obj.created_at || obj.createdAt).substring(0, 10);
       }
 
-      // Address state normalization for Tamil Nadu / Karnataka discrepancy
-      if (obj.customer_address && typeof obj.customer_address === 'string') {
-        if (/(krishnagiri|dharmapuri|chennai|coimbatore|salem|madurai|tirupur)/i.test(obj.customer_address) || /-\s*6[0-4]\d{4}/.test(obj.customer_address)) {
-          obj.customer_address = obj.customer_address.replace(/,\s*Karnataka/gi, ', Tamil Nadu').replace(/\bKarnataka\b/gi, 'Tamil Nadu');
-        }
-      }
-      if (obj.deliveryAddress && typeof obj.deliveryAddress === 'string') {
-        if (/(krishnagiri|dharmapuri|chennai|coimbatore|salem|madurai|tirupur)/i.test(obj.deliveryAddress) || /-\s*6[0-4]\d{4}/.test(obj.deliveryAddress)) {
-          obj.deliveryAddress = obj.deliveryAddress.replace(/,\s*Karnataka/gi, ', Tamil Nadu').replace(/\bKarnataka\b/gi, 'Tamil Nadu');
-        }
-      }
-
+      normalizeAddressStateForOrder(obj);
       return obj;
     });
 
-    res.status(200).json({ success: true, data: normalizedOrders });
+    res.status(200).json({
+      success: true,
+      data: normalizedBookings,
+      total: total || normalizedBookings.length,
+      page: page || 1,
+      totalPages: limit ? Math.ceil((total || normalizedBookings.length) / limit) : 1
+    });
   } catch (error) {
-    console.error('Get Orders Error:', error);
-    res.status(500).json({ success: false, message: 'Server error retrieving orders' });
+    console.error('Get Bookings Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving bookings' });
   }
 };
 
@@ -2042,6 +2238,7 @@ module.exports = {
   updateProduct,
   deleteProduct,
   getOrders,
+  getBookings,
   updateOrderStatus,
   getOrderResume,
   getCustomers,

@@ -3,7 +3,7 @@ import { useDashboard } from '../../context/DashboardContext';
 import { useSelector } from 'react-redux';
 import { 
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
-  LogOut, Bell, Settings, CreditCard, Store, ChevronLeft, ChevronRight, Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, IndianRupee, ShieldAlert, HelpCircle
+  LogOut, Bell, Settings, CreditCard, Store, ChevronLeft, ChevronRight, Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, IndianRupee, ShieldAlert, HelpCircle, Calendar
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -64,8 +64,9 @@ const Sidebar = () => {
       ];
     }
     const items = [
-      { id: 'orders', name: terms.ordersName, icon: ClipboardList },
-      { id: 'customers', name: terms.customersName, icon: Users }
+      { id: 'orders', name: 'Orders', icon: ClipboardList },
+      { id: 'bookings', name: 'Bookings', icon: Calendar },
+      { id: 'customers', name: terms.customersName || 'Customers', icon: Users }
     ];
     const partnerLabel = getPartnerLabel();
     if (!['Education Vendor', 'Job Vendor'].includes(vendorType)) {

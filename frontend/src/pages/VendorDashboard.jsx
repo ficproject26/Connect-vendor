@@ -584,7 +584,7 @@ const VendorDashboard = () => {
       return ['dashboard', 'discounts', 'redeem', 'payments', 'renewal', 'Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'].includes(tab);
     }
     if (role === 'Vendor') {
-      const allowed = ['dashboard', 'catalog', 'orders', 'customers', 'payments', 'profile', 'business', 'queries'];
+      const allowed = ['dashboard', 'catalog', 'orders', 'bookings', 'customers', 'payments', 'profile', 'business', 'queries'];
       if (!['Hotel Vendor', 'Education Vendor', 'Job Vendor'].includes(vType)) {
         allowed.push('delivery');
       }
@@ -631,6 +631,7 @@ const VendorDashboard = () => {
   });
   const [catalog, setCatalog] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [bookings, setBookings] = useState([]);
   const [partners, setPartners] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [commissionConfig, setCommissionConfig] = useState({
@@ -1076,6 +1077,36 @@ const VendorDashboard = () => {
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [orderTimeFilter, setOrderTimeFilter] = useState('All');
   const [orderVendorTypeFilter, setOrderVendorTypeFilter] = useState('All');
+
+  const [bookingStatusFilter, setBookingStatusFilter] = useState('All');
+  const [bookingSearchQuery, setBookingSearchQuery] = useState('');
+  const [bookingTimeFilter, setBookingTimeFilter] = useState('All');
+
+  // Debounced search states
+  const [catalogSearchInput, setCatalogSearchInput] = useState('');
+  const [orderSearchInput, setOrderSearchInput] = useState('');
+  const [bookingSearchInput, setBookingSearchInput] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCatalogSearchQuery(catalogSearchInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [catalogSearchInput]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setOrderSearchQuery(orderSearchInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [orderSearchInput]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setBookingSearchQuery(bookingSearchInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [bookingSearchInput]);
 
   const [partnerStatusFilter, setPartnerStatusFilter] = useState('All');
   const [partnerSearchQuery, setPartnerSearchQuery] = useState('');
@@ -1830,40 +1861,23 @@ const VendorDashboard = () => {
             }
           }
         } else if (activeTab === 'catalog') {
-          setCatalog([]);
           const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
           const targetCategoryType = getProductMainCategory('', activeBiz?.vendorType || user?.vendorType || '');
           const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/products?type=${encodeURIComponent(targetCategoryType)}`, getAxiosConfig());
           if (res.data.success) setCatalog(res.data.data);
-          try {
-            const ordersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
-            if (ordersRes.data.success) setOrders(ordersRes.data.data);
-          } catch (err) {
-            console.error('Failed to load orders for catalog sales analysis:', err);
-          }
         } else if (activeTab === 'orders') {
           const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
           if (res.data.success) setOrders(res.data.data);
           
-          // Also fetch delivery partners for quick assignment
-          const partnersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig());
-          if (partnersRes.data.success) setPartners(partnersRes.data.data);
-
-          // Also fetch catalog items for scheduling
-          try {
-            const productsRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/products`, getAxiosConfig());
-            if (productsRes.data.success) setCatalog(productsRes.data.data);
-          } catch (err) {
-            console.error('Failed to load products for orders tab:', err);
-          }
-
-          // Also fetch customers for real customer address lookup
-          try {
-            const customersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig());
-            if (customersRes.data.success) setCustomers(customersRes.data.data);
-          } catch (err) {
-            console.error('Failed to load customers for orders tab:', err);
-          }
+          // Fetch delivery partners non-blockingly
+          axios.get(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig())
+            .then(partnersRes => {
+              if (partnersRes.data.success) setPartners(partnersRes.data.data);
+            })
+            .catch(() => {});
+        } else if (activeTab === 'bookings') {
+          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig());
+          if (res.data.success) setBookings(res.data.data);
         } else if (activeTab === 'delivery') {
           const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig());
           if (res.data.success) setPartners(res.data.data);
@@ -1989,6 +2003,7 @@ const VendorDashboard = () => {
   // Clear stale cached data when active business or user session changes
   useEffect(() => {
     setOrders([]);
+    setBookings([]);
     setCatalog([]);
     setCustomers([]);
     setAnalytics({});
@@ -2641,7 +2656,23 @@ const VendorDashboard = () => {
           }
           return o;
         }));
-        setMessage(`Order status updated to ${status}`);
+        setBookings(prevBookings => (prevBookings || []).map(b => {
+          if (!b) return b;
+          if (String(b._id) === strId || String(b.id) === strId || String(b.order_number) === strId || String(b.applicationId) === strId) {
+            return {
+              ...b,
+              ...(updatedData || {}),
+              status: updatedData?.status || status,
+              memberName: updatedData?.memberName || updatedData?.customer_name || updatedData?.candidateName || b.memberName || b.customer_name || 'N/A',
+              memberId: updatedData?.memberId || updatedData?.customer_id || b.memberId || b.customer_id,
+              finalAmount: updatedData?.finalAmount ?? updatedData?.amount ?? b.finalAmount ?? b.amount ?? 0,
+              totalAmount: updatedData?.totalAmount ?? updatedData?.amount ?? b.totalAmount ?? b.amount ?? 0,
+              items: updatedData?.items || b.items || []
+            };
+          }
+          return b;
+        }));
+        setMessage(`Status updated to ${status}`);
         
         // If partner assigned, reload partners status
         if (partnerId) {
@@ -3076,8 +3107,9 @@ const VendorDashboard = () => {
                     ];
                   }
                   const items = [
-                    { id: 'orders', name: terms.ordersName, icon: ClipboardList },
-                    { id: 'customers', name: terms.customersName, icon: Users }
+                    { id: 'orders', name: 'Orders', icon: ClipboardList },
+                    { id: 'bookings', name: 'Bookings', icon: Calendar },
+                    { id: 'customers', name: terms.customersName || 'Customers', icon: Users }
                   ];
                   const partnerLabel = getPartnerLabel();
                   if (!['Education Vendor', 'Job Vendor'].includes(vendorType)) {
@@ -3328,8 +3360,9 @@ const VendorDashboard = () => {
                 ];
               }
               const items = [
-                { id: 'orders', name: terms.ordersName, icon: ClipboardList },
-                { id: 'customers', name: terms.customersName, icon: Users }
+                { id: 'orders', name: 'Orders', icon: ClipboardList },
+                { id: 'bookings', name: 'Bookings', icon: Calendar },
+                { id: 'customers', name: terms.customersName || 'Customers', icon: Users }
               ];
               const partnerLabel = getPartnerLabel();
               if (!['Education Vendor', 'Job Vendor'].includes(vendorType)) {
@@ -4413,8 +4446,8 @@ const VendorDashboard = () => {
                         <input
                           type="text"
                           placeholder={`Search ${terms.catalogName.toLowerCase()} by name or description...`}
-                          value={catalogSearchQuery}
-                          onChange={(e) => setCatalogSearchQuery(e.target.value)}
+                          value={catalogSearchInput}
+                          onChange={(e) => setCatalogSearchInput(e.target.value)}
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
                         />
                       </div>
@@ -4489,10 +4522,16 @@ const VendorDashboard = () => {
                         sortedCatalog.sort((a, b) => b.price - a.price);
                       }
 
-                      if (loading) {
+                      if (loading && catalog.length === 0) {
                         return (
-                          <div className="glass-card p-12 text-center rounded-3xl">
-                            <p className="text-slate-800 dark:text-slate-200 font-medium">Loading {activeCatType || 'catalog'}...</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-4 animate-pulse">
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                              <div key={i} className="glass-card rounded-xl sm:rounded-2xl p-3 h-52 border border-slate-200/50 dark:border-slate-800/50 flex flex-col justify-between">
+                                <div className="rounded-lg aspect-[16/10] bg-slate-200 dark:bg-slate-800/60 mb-2"></div>
+                                <div className="h-4 bg-slate-200 dark:bg-slate-800/60 rounded w-3/4 mb-2"></div>
+                                <div className="h-3 bg-slate-200 dark:bg-slate-800/60 rounded w-1/2"></div>
+                              </div>
+                            ))}
                           </div>
                         );
                       }
@@ -4709,100 +4748,70 @@ const VendorDashboard = () => {
           <div className="space-y-6 animate-fadeIn">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">{terms.ordersName} Management</h2>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Orders Management</h2>
                 <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">
-                  {vendorType.startsWith('Hospital') ? 'Process appointments, calendar slots, and doctor schedules' :
-                   vendorType.startsWith('Hotel') ? 'Process room bookings, guest reservations, and check-in schedules' :
-                   `Process your ${terms.ordersName.toLowerCase()} and schedules`}
+                  Process your product and store orders, dispatch schedules, and delivery details
                 </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
-                {/* Sub-view navigation */}
-                {terms.ordersName !== 'Orders' && (
-                  <div className="flex gap-1.5 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200/50 dark:border-slate-800/80 w-fit shrink-0">
-                    <button
-                      onClick={() => setAppointmentsSubView('list')}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                        appointmentsSubView === 'list'
-                          ? 'bg-white dark:bg-slate-950 text-slate-900 dark:text-white shadow-sm'
-                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      List Queue
-                    </button>
-                    {vendorType.startsWith('Hospital') && (
-                      <button
-                        onClick={() => setAppointmentsSubView('slots')}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                          appointmentsSubView === 'slots'
-                            ? 'bg-white dark:bg-slate-950 text-slate-900 dark:text-white shadow-sm'
-                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                        }`}
-                      >
-                        Manage Slots
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* LIST VIEW */}
-            {appointmentsSubView === 'list' && (
-              <>
-                {/* Filter controls */}
-                <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
-                  {/* Search input */}
-                  <div className="flex-1 w-full">
-                    <input
-                      type="text"
-                      placeholder={terms.ordersName === 'Orders' ? "Search orders by customer name or ID..." : "Search appointments by customer name or ID..."}
-                      value={orderSearchQuery}
-                      onChange={(e) => setOrderSearchQuery(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
-                    />
-                  </div>
+            {/* Filter controls */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
+              {/* Search input */}
+              <div className="flex-1 w-full">
+                <input
+                  type="text"
+                  placeholder="Search orders by customer name, order number, or ID..."
+                  value={orderSearchInput}
+                  onChange={(e) => setOrderSearchInput(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
+                />
+              </div>
 
-                  {/* Date range filter */}
-                  <div className="w-full sm:w-48 shrink-0">
-                    <select
-                      value={orderTimeFilter}
-                      onChange={(e) => setOrderTimeFilter(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
-                    >
-                      <option value="All">All Time</option>
-                      <option value="Today">Today</option>
-                      <option value="Yesterday">Yesterday</option>
-                      <option value="LastWeek">Last Week</option>
-                      <option value="LastMonth">Last Month</option>
-                      <option value="Last30Days">Last 30 Days</option>
-                      <option value="LastYear">Last Year</option>
-                    </select>
-                  </div>
+              {/* Date range filter */}
+              <div className="w-full sm:w-48 shrink-0">
+                <select
+                  value={orderTimeFilter}
+                  onChange={(e) => setOrderTimeFilter(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                >
+                  <option value="All">All Time</option>
+                  <option value="Today">Today</option>
+                  <option value="Yesterday">Yesterday</option>
+                  <option value="LastWeek">Last Week</option>
+                  <option value="LastMonth">Last Month</option>
+                  <option value="Last30Days">Last 30 Days</option>
+                  <option value="LastYear">Last Year</option>
+                </select>
+              </div>
 
-                  {/* Status filter */}
-                  <div className="w-full sm:w-48 shrink-0">
-                    <select
-                      value={orderStatusFilter}
-                      onChange={(e) => setOrderStatusFilter(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 animate-fadeIn"
-                    >
-                      <option value="All">All Statuses</option>
-                      {terms.orderStatuses.map(status => (
-                        <option key={status} value={status}>{status}</option>
-                      ))}
-                    </select>
-                  </div>
+              {/* Status filter */}
+              <div className="w-full sm:w-48 shrink-0">
+                <select
+                  value={orderStatusFilter}
+                  onChange={(e) => setOrderStatusFilter(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 animate-fadeIn"
+                >
+                  <option value="All">All Statuses</option>
+                  {['Pending', 'Accepted', 'Out for Delivery', 'Delivered', 'Cancelled'].map(status => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-
-                </div>
-
-                {loading && orders.length === 0 ? <p className="text-slate-800 dark:text-slate-200">Loading orders...</p> : orders.length === 0 ? (
-                  <div className="glass-card p-12 text-center rounded-3xl">
-                    <p className="text-slate-800 dark:text-slate-200 font-medium">No {terms.ordersName.toLowerCase()} registered in the system yet.</p>
-                  </div>
-                ) : (
+            {loading && orders.length === 0 ? (
+              <div className="glass-card p-8 rounded-3xl animate-pulse space-y-4">
+                <div className="h-6 bg-slate-200 dark:bg-slate-800/60 rounded w-1/4"></div>
+                <div className="h-10 bg-slate-200 dark:bg-slate-800/60 rounded"></div>
+                <div className="h-10 bg-slate-200 dark:bg-slate-800/60 rounded"></div>
+                <div className="h-10 bg-slate-200 dark:bg-slate-800/60 rounded"></div>
+              </div>
+            ) : orders.length === 0 ? (
+              <div className="glass-card p-12 text-center rounded-3xl">
+                <p className="text-slate-800 dark:text-slate-200 font-medium">No orders registered in the system yet.</p>
+              </div>
+            ) : (
                   (() => {
                     const hasBookingBusiness = getAvailableVendorTypes().some(type => 
                       type.startsWith('Hospital') || 
@@ -5131,327 +5140,616 @@ const VendorDashboard = () => {
                     );
                   })()
                 )}
-              </>
-            )}
+          </div>
+        )}
 
-            {/* CALENDAR VIEW */}
-            {appointmentsSubView === 'calendar' && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                  
-                  {/* Left columns: Month Calendar grid */}
-                  <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
-                    {/* Header: Prev/Next Month selection */}
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                        {(() => {
-                          const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-                          return `${monthNames[calendarMonth]} ${calendarYear}`;
-                        })()}
-                      </h3>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            if (calendarMonth === 0) {
-                              setCalendarMonth(11);
-                              setCalendarYear(y => y - 1);
-                            } else {
-                              setCalendarMonth(m => m - 1);
-                            }
-                          }}
-                          className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 p-2 rounded-xl transition-all"
+            {/* Bookings Tab */}
+            {activeTab === 'bookings' && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Bookings & Reservations</h2>
+                    <p className="text-slate-800 dark:text-slate-200 text-sm mt-1.5 font-medium">
+                      Manage appointments, room reservations, service bookings, and schedules
+                    </p>
+                  </div>
+
+                  {/* Sub-view navigation toggles */}
+                  <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
+                    <button
+                      type="button"
+                      onClick={() => setAppointmentsSubView('list')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        appointmentsSubView === 'list'
+                          ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      List Queue
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAppointmentsSubView('calendar')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        appointmentsSubView === 'calendar'
+                          ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      📅 Calendar
+                    </button>
+                    {vendorType.startsWith('Hospital') && (
+                      <button
+                        type="button"
+                        onClick={() => setAppointmentsSubView('slots')}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          appointmentsSubView === 'slots'
+                            ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        ⏰ Time Slots
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* SubView: LIST */}
+                {appointmentsSubView === 'list' && (
+                  <>
+                    {/* Filter controls */}
+                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
+                      <div className="flex-1 w-full">
+                        <input
+                          type="text"
+                          placeholder="Search bookings by customer name, booking ID, service, or room..."
+                          value={bookingSearchInput}
+                          onChange={(e) => setBookingSearchInput(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
+                        />
+                      </div>
+
+                      <div className="w-full sm:w-48 shrink-0">
+                        <select
+                          value={bookingTimeFilter}
+                          onChange={(e) => setBookingTimeFilter(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
                         >
-                          &larr; Prev
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (calendarMonth === 11) {
-                              setCalendarMonth(0);
-                              setCalendarYear(y => y + 1);
-                            } else {
-                              setCalendarMonth(m => m + 1);
-                            }
-                          }}
-                          className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 p-2 rounded-xl transition-all"
+                          <option value="All">All Time</option>
+                          <option value="Today">Today</option>
+                          <option value="Yesterday">Yesterday</option>
+                          <option value="LastWeek">Last Week</option>
+                          <option value="LastMonth">Last Month</option>
+                          <option value="Last30Days">Last 30 Days</option>
+                          <option value="LastYear">Last Year</option>
+                        </select>
+                      </div>
+
+                      <div className="w-full sm:w-48 shrink-0">
+                        <select
+                          value={bookingStatusFilter}
+                          onChange={(e) => setBookingStatusFilter(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
                         >
-                          Next &rarr;
-                        </button>
+                          <option value="All">All Statuses</option>
+                          {['Pending', 'Confirmed', 'Checked In', 'Completed', 'Cancelled'].map(status => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
-                    {/* Weekly Grid */}
-                    <div className="grid grid-cols-7 gap-2.5 text-center text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      <div>Sun</div>
-                      <div>Mon</div>
-                      <div>Tue</div>
-                      <div>Wed</div>
-                      <div>Thu</div>
-                      <div>Fri</div>
-                      <div>Sat</div>
-                    </div>
+                    {loading && bookings.length === 0 ? (
+                      <div className="glass-card p-8 rounded-3xl animate-pulse space-y-4">
+                        <div className="h-6 bg-slate-200 dark:bg-slate-800/60 rounded w-1/4"></div>
+                        <div className="h-10 bg-slate-200 dark:bg-slate-800/60 rounded"></div>
+                        <div className="h-10 bg-slate-200 dark:bg-slate-800/60 rounded"></div>
+                        <div className="h-10 bg-slate-200 dark:bg-slate-800/60 rounded"></div>
+                      </div>
+                    ) : bookings.length === 0 ? (
+                      <div className="glass-card p-12 text-center rounded-3xl">
+                        <p className="text-slate-800 dark:text-slate-200 font-medium">No bookings or reservations recorded yet.</p>
+                      </div>
+                    ) : (
+                      (() => {
+                        const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
 
-                    {/* Days Grid */}
-                    <div className="grid grid-cols-7 gap-2">
-                      {(() => {
-                        const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
-                        const firstDayIdx = new Date(calendarYear, calendarMonth, 1).getDay();
-                        
-                        const cells = [];
-                        // Offset padding
-                        for (let i = 0; i < firstDayIdx; i++) {
-                          cells.push(<div key={`empty-${i}`} className="aspect-square bg-transparent"></div>);
-                        }
-                        
-                        // Active days
-                        for (let day = 1; day <= daysInMonth; day++) {
-                          const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                          const dayAppts = orders.filter(o => o.appointmentDate === dateStr && o.status !== 'Cancelled');
-                          const isSelected = calendarSelectedDate === dateStr;
-                          
-                          cells.push(
-                            <button
-                              key={`day-${day}`}
-                              type="button"
-                              onClick={() => setCalendarSelectedDate(dateStr)}
-                              className={`aspect-square rounded-2xl flex flex-col items-center justify-between p-2.5 border transition-all relative ${
-                                isSelected
-                                  ? 'bg-[#faed26]/20 border-[#faed26] text-slate-900 dark:text-white font-black shadow-md'
-                                  : 'bg-slate-50/50 dark:bg-slate-950/20 border-slate-200/50 dark:border-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                              }`}
-                            >
-                              <span className="text-sm font-bold block">{day}</span>
-                              {dayAppts.length > 0 && (
-                                <span className="bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 font-extrabold text-[9px] px-1.5 py-0.5 rounded-md border border-indigo-500/10">
-                                  {dayAppts.length} {vendorType.startsWith('Hotel') ? (dayAppts.length === 1 ? 'Booking' : 'Bookings') : (dayAppts.length === 1 ? 'Appt' : 'Appts')}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        }
-                        return cells;
-                      })()}
-                    </div>
-                  </div>
+                        const filteredBookings = bookings.filter(b => {
+                          const matchesBusiness = !savedActiveId ||
+                            String(b.vendorId) === String(savedActiveId) ||
+                            String(b.vendor_id) === String(savedActiveId) ||
+                            String(b.vendorId) === String(user?._id) ||
+                            String(b.vendorId) === String(user?.registrationId) ||
+                            (user?.businesses || []).some(bus => String(bus._id || bus.id) === String(b.vendorId || b.vendor_id));
 
-                  {/* Right Column: Selected day's Appointments Queue */}
-                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
-                    <div>
-                      <h4 className="text-base font-extrabold text-slate-900 dark:text-white">Day Queue Details</h4>
-                      <p className="text-slate-500 text-xs font-semibold mt-1">{vendorType.startsWith('Hotel') ? 'Reservations' : 'Appointments'} booked for {calendarSelectedDate}</p>
-                    </div>
+                          const matchesStatus = (() => {
+                            if (bookingStatusFilter === 'All') return true;
+                            const s = (b.status || '').toLowerCase().trim();
+                            const f = bookingStatusFilter.toLowerCase().trim();
+                            if (s === f) return true;
+                            const pendingAliases = ['pending', 'order_pending', 'payment_pending', 'order received', 'application received', 'new', 'applied', 'under review'];
+                            if (f === 'pending' && pendingAliases.includes(s)) return true;
+                            const confirmedAliases = ['confirmed', 'accepted', 'approved', 'in progress', 'processing'];
+                            if (f === 'confirmed' && confirmedAliases.includes(s)) return true;
+                            return false;
+                          })();
 
-                    <div className="space-y-3.5 max-h-[420px] overflow-y-auto pr-1">
-                      {(() => {
-                        const dayAppts = orders.filter(o => o.appointmentDate === calendarSelectedDate);
-                        
-                        if (dayAppts.length === 0) {
+                          const q = bookingSearchQuery.toLowerCase();
+                          const matchesSearch = !q ||
+                            (b.memberName || b.customer_name || '').toLowerCase().includes(q) ||
+                            (b.memberId || b.id || b.order_number || b._id || '').toLowerCase().includes(q) ||
+                            (b.doctorName || b.roomNumber || b.product_details || '').toLowerCase().includes(q) ||
+                            (b.items && b.items.some(it => (it.name || '').toLowerCase().includes(q)));
+
+                          let matchesTime = true;
+                          if (bookingTimeFilter !== 'All') {
+                            const rawDateStr = b.appointmentDate || b.checkInDate || b.bookingDate || b.createdAt || b.created_at;
+                            if (!rawDateStr) {
+                              matchesTime = false;
+                            } else {
+                              const bDate = new Date(rawDateStr);
+                              if (isNaN(bDate.getTime())) {
+                                matchesTime = false;
+                              } else {
+                                const bTime = bDate.getTime();
+                                const now = new Date();
+                                const nowTime = now.getTime();
+
+                                if (bookingTimeFilter === 'Today') {
+                                  matchesTime = bDate.toDateString() === now.toDateString();
+                                } else if (bookingTimeFilter === 'Yesterday') {
+                                  const y = new Date();
+                                  y.setDate(y.getDate() - 1);
+                                  matchesTime = bDate.toDateString() === y.toDateString();
+                                } else if (bookingTimeFilter === 'LastWeek') {
+                                  matchesTime = (nowTime - bTime) <= 7 * 24 * 60 * 60 * 1000;
+                                } else if (bookingTimeFilter === 'LastMonth') {
+                                  const curMonth = now.getMonth();
+                                  const targetMonth = curMonth === 0 ? 11 : curMonth - 1;
+                                  const targetYear = curMonth === 0 ? now.getFullYear() - 1 : now.getFullYear();
+                                  matchesTime = bDate.getFullYear() === targetYear && bDate.getMonth() === targetMonth;
+                                } else if (bookingTimeFilter === 'Last30Days') {
+                                  matchesTime = (nowTime - bTime) <= 30 * 24 * 60 * 60 * 1000;
+                                } else if (bookingTimeFilter === 'LastYear') {
+                                  matchesTime = bDate.getFullYear() === now.getFullYear() - 1;
+                                }
+                              }
+                            }
+                          }
+
+                          return matchesBusiness && matchesStatus && matchesSearch && matchesTime;
+                        });
+
+                        if (filteredBookings.length === 0) {
                           return (
-                            <div className="text-center py-10 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                              <p className="text-xs text-slate-500 font-medium">No {vendorType.startsWith('Hotel') ? 'bookings' : 'appointments'} scheduled for this date.</p>
+                            <div className="glass-card p-12 text-center rounded-3xl">
+                              <p className="text-slate-800 dark:text-slate-200 font-medium">No bookings match your filter criteria.</p>
                             </div>
                           );
                         }
 
-                        return dayAppts.map(order => (
-                          <div key={order._id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-900 space-y-3.5 shadow-inner">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h5 className="font-bold text-sm text-slate-900 dark:text-white">{order.memberName || order.customer_name || 'N/A'}</h5>
-                                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">
-                                  {vendorType.startsWith('Hotel') 
-                                    ? `🏨 ${order.appointmentTimeSlot || '1'} Night${Number(order.appointmentTimeSlot) !== 1 ? 's' : ''}` 
-                                    : `⌚ ${order.appointmentTimeSlot || 'Standard Slot'}`}
-                                  {vendorType.startsWith('Hotel') && order.roomNumber && ` (Room: ${order.roomNumber})`}
-                                </p>
-                              </div>
-                              <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full ${
-                                order.status === 'Completed' || order.status === 'Delivered' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-455' :
-                                order.status === 'Pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-455' :
-                                order.status === 'Cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-455' :
-                                'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-455'
-                              }`}>
-                                {order.status}
-                              </span>
-                            </div>
-                            
-                            <div className="flex justify-between items-center text-xs pt-2.5 border-t border-slate-200/50 dark:border-slate-900/60">
-                              <div className="text-slate-500 font-medium">
-                                {vendorType.startsWith('Hospital') ? 'Doctor:' : vendorType.startsWith('Hotel') ? 'Room Type:' : 'Service:'} <span className="font-semibold text-slate-800 dark:text-slate-200">{order.doctorName || order.items[0]?.name}</span>
-                              </div>
-                              <select
-                                value={order.status}
-                                onChange={(e) => handleUpdateOrderStatus(order._id, e.target.value)}
-                                className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:border-primary-500 font-bold"
-                              >
-                                {terms.orderStatuses.map(status => (
-                                  <option key={status} value={status}>{status}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+                        return (
+                          <div className="glass-card rounded-3xl overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[850px]">
+                              <thead>
+                                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/30 text-slate-600 dark:text-slate-400 text-xs uppercase font-bold">
+                                  <th className="px-6 py-4">Guest / Customer</th>
+                                  <th className="px-6 py-4">Booking Type / Detail</th>
+                                  <th className="px-6 py-4">Schedule & Timing</th>
+                                  <th className="px-6 py-4">Guests / Persons</th>
+                                  <th className="px-6 py-4">Amount & Status</th>
+                                  <th className="px-6 py-4 text-right">Actions / View</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filteredBookings.map(b => (
+                                  <tr key={b._id || b.id || b.order_number} className="border-b border-slate-150/70 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                                    {/* Customer Name & ID */}
+                                    <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
+                                      <div>{b.memberName || b.customer_name || 'Customer'}</div>
+                                      <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {getCustomerDisplayId(b)}</div>
+                                    </td>
 
-            {/* TIME SLOTS MANAGER */}
-            {appointmentsSubView === 'slots' && vendorType.startsWith('Hospital') && (
-              <div className="space-y-6 animate-fadeIn">
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
-                  <div>
-                    <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">Doctor-wise Time Slot Schedules</h3>
-                    <p className="text-slate-500 text-xs font-semibold mt-1">Configure available consulting time slots for each doctor on your staff</p>
-                  </div>
+                                    {/* Booking Type / Detail */}
+                                    <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                      <div>
+                                        {b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` :
+                                         b.roomNumber ? `🏨 Room: ${b.roomNumber}` :
+                                         b.serviceName || (b.items && b.items[0]?.name) || b.product_details || b.type || 'Reservation'}
+                                      </div>
+                                      {b.type && <span className="inline-block text-[9px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">{b.type}</span>}
+                                    </td>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {catalog.map(doc => {
-                      const isEditing = editingDoctorSlotsId === doc._id;
-                      const activeSlots = doc.availableTimeSlots?.length > 0 ? doc.availableTimeSlots : DEFAULT_TIME_SLOTS;
+                                    {/* Schedule & Timing */}
+                                    <td className="px-6 py-4 text-xs font-semibold text-slate-750 dark:text-slate-300">
+                                      <div>📅 {b.appointmentDate || b.checkInDate || (b.createdAt ? b.createdAt.substring(0, 10) : 'N/A')}</div>
+                                      <div className="text-[10px] text-indigo-650 dark:text-indigo-400 font-bold mt-0.5">
+                                        ⌚ {b.appointmentTimeSlot || getBookingTimeSlot(b)}
+                                      </div>
+                                    </td>
 
-                      return (
-                        <div key={doc._id} className="border border-slate-200 dark:border-slate-800/80 rounded-2xl p-5 bg-slate-50/50 dark:bg-slate-950/20 space-y-4 hover:border-slate-300 transition-all flex flex-col justify-between">
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h4 className="font-extrabold text-base text-slate-900 dark:text-white">{doc.name}</h4>
-                                <span className="text-[10px] uppercase tracking-wider font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-500/10">
-                                  {doc.category || 'Specialist'}
-                                </span>
-                              </div>
-                              <span className="bg-slate-200/50 dark:bg-slate-800 text-slate-650 dark:text-slate-350 text-[10px] font-bold px-2 py-0.5 rounded-md">
-                                {activeSlots.length} Slots
-                              </span>
-                            </div>
-                            
-                            {!isEditing && (
-                              <div className="flex flex-wrap gap-1.5 pt-2">
-                                {activeSlots.map(s => (
-                                  <span key={s} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold px-2 py-1 rounded-lg">
-                                    {s}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
+                                    {/* Guests / Persons */}
+                                    <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
+                                      {(() => {
+                                        const guestCount = b.guests || b.numberOfGuests || b.guestCount || b.noOfGuests || (b.items && b.items[0]?.guests);
+                                        return (
+                                          <div>
+                                            {guestCount ? `👥 ${guestCount} Guests` : `1 Person`}
+                                            {b.address && <div className="text-[10px] text-slate-400 truncate max-w-[140px] mt-0.5">{getCustomerAddress(b)}</div>}
+                                          </div>
+                                        );
+                                      })()}
+                                    </td>
 
-                            {isEditing && (
-                              <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800/80">
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Select Active Slots</label>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {DEFAULT_TIME_SLOTS.map(slot => {
-                                      const isChecked = tempSlots.includes(slot);
-                                      return (
-                                        <label key={slot} className="flex items-center gap-2 cursor-pointer bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-2 rounded-xl text-xs hover:bg-slate-100 dark:hover:bg-slate-800/50">
-                                          <input
-                                            type="checkbox"
-                                            checked={isChecked}
-                                            onChange={() => {
-                                              if (isChecked) {
-                                                setTempSlots(prev => prev.filter(s => s !== slot));
-                                              } else {
-                                                setTempSlots(prev => [...prev, slot]);
-                                              }
-                                            }}
-                                            className="accent-emerald-500 cursor-pointer"
-                                          />
-                                          <span className="font-semibold text-slate-700 dark:text-slate-350">{slot}</span>
-                                        </label>
-                                      );
-                                    })}
-                                    
-                                    {/* Render custom slots */}
-                                    {tempSlots.filter(s => !DEFAULT_TIME_SLOTS.includes(s)).map(slot => (
-                                      <div key={slot} className="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-2 rounded-xl text-xs">
-                                        <span className="font-semibold text-slate-700 dark:text-slate-350 truncate">{slot}</span>
-                                        <button
-                                          type="button"
-                                          onClick={() => setTempSlots(prev => prev.filter(s => s !== slot))}
-                                          className="text-red-500 hover:text-red-650 font-bold px-1"
+                                    {/* Amount & Status */}
+                                    <td className="px-6 py-4 text-xs">
+                                      <div className="font-semibold text-slate-850 dark:text-slate-350">₹{b.finalAmount || b.amount || 0}</div>
+                                      <div className="mt-1">
+                                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                                          b.status === 'Completed' || b.status === 'Delivered' || b.status === 'Checked Out' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200/30' :
+                                          b.status === 'Pending' ? 'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/30' :
+                                          b.status === 'Cancelled' ? 'bg-red-100/80 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/30' :
+                                          'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30'
+                                        }`}>
+                                          {b.status}
+                                        </span>
+                                      </div>
+                                    </td>
+
+                                    {/* Actions & View Details */}
+                                    <td className="px-6 py-4 text-right">
+                                      <div className="flex flex-col items-end gap-2">
+                                        <select
+                                          value={b.status}
+                                          disabled={updatingStatusIds.has(String(b._id || b.id || b.order_number))}
+                                          onChange={(e) => handleUpdateOrderStatus(b._id || b.id || b.order_number, e.target.value)}
+                                          className={`bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs px-2.5 py-1.5 w-36 focus:outline-none focus:border-primary-500 font-semibold ${updatingStatusIds.has(String(b._id || b.id || b.order_number)) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                         >
-                                          ✕
+                                          {['Pending', 'Confirmed', 'Accepted', 'Checked In', 'Completed', 'Cancelled'].map(status => (
+                                            <option key={status} value={status}>{status}</option>
+                                          ))}
+                                        </select>
+
+                                        <button
+                                          onClick={() => {
+                                            setSelectedBillOrder(b);
+                                            setIsBillModalOpen(true);
+                                          }}
+                                          className="text-[10px] font-extrabold uppercase bg-[#faed26]/80 text-[#0b3c7b] hover:bg-[#faed26] px-3 py-1 rounded-lg border border-yellow-500/10 transition-all active:scale-[0.97]"
+                                        >
+                                          View
                                         </button>
                                       </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })()
+                    )}
+                  </>
+                )}
+
+                {/* CALENDAR VIEW */}
+                {appointmentsSubView === 'calendar' && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                      
+                      {/* Left columns: Month Calendar grid */}
+                      <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
+                        {/* Header: Prev/Next Month selection */}
+                        <div className="flex justify-between items-center">
+                          <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
+                            {(() => {
+                              const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+                              return `${monthNames[calendarMonth]} ${calendarYear}`;
+                            })()}
+                          </h3>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                if (calendarMonth === 0) {
+                                  setCalendarMonth(11);
+                                  setCalendarYear(y => y - 1);
+                                } else {
+                                  setCalendarMonth(m => m - 1);
+                                }
+                              }}
+                              className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 p-2 rounded-xl transition-all"
+                            >
+                              &larr; Prev
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (calendarMonth === 11) {
+                                  setCalendarMonth(0);
+                                  setCalendarYear(y => y + 1);
+                                } else {
+                                  setCalendarMonth(m => m + 1);
+                                }
+                              }}
+                              className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 p-2 rounded-xl transition-all"
+                            >
+                              Next &rarr;
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Weekly Grid */}
+                        <div className="grid grid-cols-7 gap-2.5 text-center text-xs font-bold text-slate-400 uppercase tracking-wider">
+                          <div>Sun</div>
+                          <div>Mon</div>
+                          <div>Tue</div>
+                          <div>Wed</div>
+                          <div>Thu</div>
+                          <div>Fri</div>
+                          <div>Sat</div>
+                        </div>
+
+                        {/* Days Grid */}
+                        <div className="grid grid-cols-7 gap-2">
+                          {(() => {
+                            const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+                            const firstDayIdx = new Date(calendarYear, calendarMonth, 1).getDay();
+                            
+                            const cells = [];
+                            // Offset padding
+                            for (let i = 0; i < firstDayIdx; i++) {
+                              cells.push(<div key={`empty-${i}`} className="aspect-square bg-transparent"></div>);
+                            }
+                            
+                            // Active days
+                            for (let day = 1; day <= daysInMonth; day++) {
+                              const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                              const dayAppts = bookings.filter(b => (b.appointmentDate === dateStr || (b.checkInDate && b.checkInDate.substring(0, 10) === dateStr)) && b.status !== 'Cancelled');
+                              const isSelected = calendarSelectedDate === dateStr;
+                              
+                              cells.push(
+                                <button
+                                  key={`day-${day}`}
+                                  type="button"
+                                  onClick={() => setCalendarSelectedDate(dateStr)}
+                                  className={`aspect-square rounded-2xl flex flex-col items-center justify-between p-2.5 border transition-all relative ${
+                                    isSelected
+                                      ? 'bg-[#faed26]/20 border-[#faed26] text-slate-900 dark:text-white font-black shadow-md'
+                                      : 'bg-slate-50/50 dark:bg-slate-950/20 border-slate-200/50 dark:border-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                  }`}
+                                >
+                                  <span className="text-sm font-bold block">{day}</span>
+                                  {dayAppts.length > 0 && (
+                                    <span className="bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 font-extrabold text-[9px] px-1.5 py-0.5 rounded-md border border-indigo-500/10">
+                                      {dayAppts.length} {vendorType.startsWith('Hotel') ? (dayAppts.length === 1 ? 'Booking' : 'Bookings') : (dayAppts.length === 1 ? 'Appt' : 'Appts')}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            }
+                            return cells;
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Right Column: Selected day's Bookings Queue */}
+                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
+                        <div>
+                          <h4 className="text-base font-extrabold text-slate-900 dark:text-white">Day Queue Details</h4>
+                          <p className="text-slate-500 text-xs font-semibold mt-1">{vendorType.startsWith('Hotel') ? 'Reservations' : 'Appointments'} booked for {calendarSelectedDate}</p>
+                        </div>
+
+                        <div className="space-y-3.5 max-h-[420px] overflow-y-auto pr-1">
+                          {(() => {
+                            const dayAppts = bookings.filter(b => b.appointmentDate === calendarSelectedDate || (b.checkInDate && b.checkInDate.substring(0, 10) === calendarSelectedDate));
+                            
+                            if (dayAppts.length === 0) {
+                              return (
+                                <div className="text-center py-10 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                                  <p className="text-xs text-slate-500 font-medium">No {vendorType.startsWith('Hotel') ? 'bookings' : 'appointments'} scheduled for this date.</p>
+                                </div>
+                              );
+                            }
+
+                            return dayAppts.map(b => (
+                              <div key={b._id || b.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-900 space-y-3.5 shadow-inner">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <h5 className="font-bold text-sm text-slate-900 dark:text-white">{b.memberName || b.customer_name || 'N/A'}</h5>
+                                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">
+                                      {vendorType.startsWith('Hotel') 
+                                        ? `🏨 ${b.appointmentTimeSlot || '1'} Night${Number(b.appointmentTimeSlot) !== 1 ? 's' : ''}` 
+                                        : `⌚ ${b.appointmentTimeSlot || 'Standard Slot'}`}
+                                      {vendorType.startsWith('Hotel') && b.roomNumber && ` (Room: ${b.roomNumber})`}
+                                    </p>
+                                  </div>
+                                  <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full ${
+                                    b.status === 'Completed' || b.status === 'Delivered' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-455' :
+                                    b.status === 'Pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-455' :
+                                    b.status === 'Cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-455' :
+                                    'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-455'
+                                  }`}>
+                                    {b.status}
+                                  </span>
+                                </div>
+                                
+                                <div className="flex justify-between items-center text-xs pt-2.5 border-t border-slate-200/50 dark:border-slate-900/60">
+                                  <div className="text-slate-500 font-medium">
+                                    {vendorType.startsWith('Hospital') ? 'Doctor:' : vendorType.startsWith('Hotel') ? 'Room Type:' : 'Service:'} <span className="font-semibold text-slate-800 dark:text-slate-200">{b.doctorName || (b.items && b.items[0]?.name) || b.product_details || 'N/A'}</span>
+                                  </div>
+                                  <select
+                                    value={b.status}
+                                    onChange={(e) => handleUpdateOrderStatus(b._id || b.id, e.target.value)}
+                                    className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:border-primary-500 font-bold"
+                                  >
+                                    {['Pending', 'Confirmed', 'Checked In', 'Completed', 'Cancelled'].map(status => (
+                                      <option key={status} value={status}>{status}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TIME SLOTS MANAGER */}
+                {appointmentsSubView === 'slots' && vendorType.startsWith('Hospital') && (
+                  <div className="space-y-6 animate-fadeIn">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
+                      <div>
+                        <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">Doctor-wise Time Slot Schedules</h3>
+                        <p className="text-slate-500 text-xs font-semibold mt-1">Configure available consulting time slots for each doctor on your staff</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {(doctorsList || catalog).map(doc => {
+                          const isEditing = editingDoctorSlotsId === doc._id;
+                          const activeSlots = doc.availableTimeSlots?.length > 0 ? doc.availableTimeSlots : DEFAULT_TIME_SLOTS;
+
+                          return (
+                            <div key={doc._id} className="border border-slate-200 dark:border-slate-800/80 rounded-2xl p-5 bg-slate-50/50 dark:bg-slate-950/20 space-y-4 hover:border-slate-300 transition-all flex flex-col justify-between">
+                              <div className="space-y-2">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <h4 className="font-extrabold text-base text-slate-900 dark:text-white">{doc.name}</h4>
+                                    <span className="text-[10px] uppercase tracking-wider font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-500/10">
+                                      {doc.category || doc.specialization || 'Specialist'}
+                                    </span>
+                                  </div>
+                                  <span className="bg-slate-200/50 dark:bg-slate-800 text-slate-650 dark:text-slate-350 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                    {activeSlots.length} Slots
+                                  </span>
+                                </div>
+                                
+                                {!isEditing && (
+                                  <div className="flex flex-wrap gap-1.5 pt-2">
+                                    {activeSlots.map(s => (
+                                      <span key={s} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold px-2 py-1 rounded-lg">
+                                        {s}
+                                      </span>
                                     ))}
                                   </div>
-                                </div>
+                                )}
 
-                                {/* Custom time slot input */}
-                                <div className="space-y-1.5">
-                                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Add Custom Slot</label>
-                                  <div className="flex gap-2">
-                                    <input
-                                      type="text"
-                                      placeholder="e.g. 08:30 AM - 09:30 AM"
-                                      value={customSlotInput}
-                                      onChange={(e) => setCustomSlotInput(e.target.value)}
-                                      className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500"
-                                    />
+                                {isEditing && (
+                                  <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800/80">
+                                    <div className="space-y-2">
+                                      <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Select Active Slots</label>
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {DEFAULT_TIME_SLOTS.map(slot => {
+                                          const isChecked = tempSlots.includes(slot);
+                                          return (
+                                            <label key={slot} className="flex items-center gap-2 cursor-pointer bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-2 rounded-xl text-xs hover:bg-slate-100 dark:hover:bg-slate-800/50">
+                                              <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={() => {
+                                                  if (isChecked) {
+                                                    setTempSlots(prev => prev.filter(s => s !== slot));
+                                                  } else {
+                                                    setTempSlots(prev => [...prev, slot]);
+                                                  }
+                                                }}
+                                                className="accent-emerald-500 cursor-pointer"
+                                              />
+                                              <span className="font-semibold text-slate-700 dark:text-slate-350">{slot}</span>
+                                            </label>
+                                          );
+                                        })}
+                                        
+                                        {/* Render custom slots */}
+                                        {tempSlots.filter(s => !DEFAULT_TIME_SLOTS.includes(s)).map(slot => (
+                                          <div key={slot} className="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-2 rounded-xl text-xs">
+                                            <span className="font-semibold text-slate-700 dark:text-slate-350 truncate">{slot}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => setTempSlots(prev => prev.filter(s => s !== slot))}
+                                              className="text-red-500 hover:text-red-650 font-bold px-1"
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+
+                                    {/* Custom time slot input */}
+                                    <div className="space-y-1.5">
+                                      <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Add Custom Slot</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          placeholder="e.g. 08:30 AM - 09:30 AM"
+                                          value={customSlotInput}
+                                          onChange={(e) => setCustomSlotInput(e.target.value)}
+                                          className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (customSlotInput.trim() && !tempSlots.includes(customSlotInput.trim())) {
+                                              setTempSlots(prev => [...prev, customSlotInput.trim()]);
+                                              setCustomSlotInput('');
+                                            }
+                                          }}
+                                          className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-3 py-2 rounded-xl text-xs transition-all active:scale-[0.98]"
+                                        >
+                                          + Add
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200/50 dark:border-slate-800/80 mt-2">
+                                {isEditing ? (
+                                  <>
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        if (customSlotInput.trim() && !tempSlots.includes(customSlotInput.trim())) {
-                                          setTempSlots(prev => [...prev, customSlotInput.trim()]);
-                                          setCustomSlotInput('');
-                                        }
+                                        setEditingDoctorSlotsId(null);
+                                        setTempSlots([]);
+                                        setCustomSlotInput('');
                                       }}
-                                      className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-3 py-2 rounded-xl text-xs transition-all active:scale-[0.98]"
+                                      className="text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-200/50 dark:bg-slate-800 dark:text-slate-350 px-4 py-2 rounded-xl transition-all"
                                     >
-                                      + Add
+                                      Cancel
                                     </button>
-                                  </div>
-                                </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveDoctorSlots(doc, tempSlots)}
+                                      className="text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-550 hover:to-teal-550 text-white px-4 py-2 rounded-xl transition-all active:scale-[0.98] shadow-md"
+                                    >
+                                      Save Slots
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingDoctorSlotsId(doc._id);
+                                      setTempSlots(doc.availableTimeSlots?.length > 0 ? doc.availableTimeSlots : DEFAULT_TIME_SLOTS);
+                                      setCustomSlotInput('');
+                                    }}
+                                    className="text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-350 border border-slate-200 dark:border-slate-700/50 px-4 py-2 rounded-xl transition-all"
+                                  >
+                                    Configure Slots
+                                  </button>
+                                )}
                               </div>
-                            )}
-                          </div>
-
-                          <div className="flex justify-end gap-2 pt-3 border-t border-slate-200/50 dark:border-slate-800/80 mt-2">
-                            {isEditing ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingDoctorSlotsId(null);
-                                    setTempSlots([]);
-                                    setCustomSlotInput('');
-                                  }}
-                                  className="text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-200/50 dark:bg-slate-800 dark:text-slate-350 px-4 py-2 rounded-xl transition-all"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleSaveDoctorSlots(doc, tempSlots)}
-                                  className="text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-550 hover:to-teal-550 text-white px-4 py-2 rounded-xl transition-all active:scale-[0.98] shadow-md"
-                                >
-                                  Save Slots
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingDoctorSlotsId(doc._id);
-                                  setTempSlots(doc.availableTimeSlots?.length > 0 ? doc.availableTimeSlots : DEFAULT_TIME_SLOTS);
-                                  setCustomSlotInput('');
-                                }}
-                                className="text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-350 border border-slate-200 dark:border-slate-700/50 px-4 py-2 rounded-xl transition-all"
-                              >
-                                Configure Slots
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
         {/* Customers Tab */}
         {activeTab === 'customers' && (
