@@ -5825,13 +5825,14 @@ const VendorDashboard = () => {
             {/* Filter controls */}
             <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
               {/* Search input */}
-              <div className="flex-1 w-full">
+              <div className="flex-1 w-full relative">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Search candidate by name, email, phone, or job position..."
+                  placeholder="Search candidate by name, email, phone, job position, education, ID..."
                   value={applicationSearchInput}
                   onChange={(e) => setApplicationSearchInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-900 dark:text-white"
                 />
               </div>
 
@@ -5842,10 +5843,11 @@ const VendorDashboard = () => {
                   onChange={(e) => setApplicationTimeFilter(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
                 >
-                  <option value="all">All Time</option>
-                  <option value="today">Today</option>
-                  <option value="week">Last Week</option>
-                  <option value="month">Last Month</option>
+                  <option value="All">All Time</option>
+                  <option value="Today">Today</option>
+                  <option value="Yesterday">Yesterday</option>
+                  <option value="LastWeek">Last Week</option>
+                  <option value="LastMonth">Last Month</option>
                 </select>
               </div>
 
@@ -5856,7 +5858,7 @@ const VendorDashboard = () => {
                   onChange={(e) => setApplicationStatusFilter(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
                 >
-                  <option value="all">All Statuses</option>
+                  <option value="All">All Statuses</option>
                   <option value="APPLICATION RECEIVED">Application Received</option>
                   <option value="UNDER REVIEW">Under Review</option>
                   <option value="SHORTLISTED">Shortlisted</option>
@@ -5879,43 +5881,76 @@ const VendorDashboard = () => {
               </div>
             ) : (
               (() => {
+                const normStatusFilter = (applicationStatusFilter || 'All').trim().toLowerCase();
+                const normTimeFilter = (applicationTimeFilter || 'All').trim().toLowerCase();
+                const query = (applicationSearchQuery || '').trim().toLowerCase();
+
                 const filteredApps = applications.filter(app => {
-                  if (applicationStatusFilter !== 'all') {
-                    const st = (app.status || '').toUpperCase();
-                    const targetSt = applicationStatusFilter.toUpperCase();
-                    if (st !== targetSt) {
-                      if (targetSt === 'APPLICATION RECEIVED' && ['PENDING', 'ORDER RECEIVED', 'APPLIED'].includes(st)) {
-                        // match
-                      } else {
+                  // Status filter: handle case-insensitivity and standard status aliases
+                  if (normStatusFilter !== 'all') {
+                    const st = (app.status || '').trim().toLowerCase();
+                    if (normStatusFilter === 'application received') {
+                      if (!['application received', 'pending', 'order received', 'applied', 'new'].includes(st)) {
                         return false;
                       }
-                    }
-                  }
-
-                  if (applicationSearchQuery && applicationSearchQuery.trim() !== '') {
-                    const q = applicationSearchQuery.toLowerCase().trim();
-                    const cName = (app.candidateName || app.memberName || app.customer_name || '').toLowerCase();
-                    const cEmail = (app.candidateEmail || '').toLowerCase();
-                    const cPhone = (app.candidatePhone || '').toLowerCase();
-                    const jTitle = (app.jobTitle || app.product_details || (app.items && app.items[0]?.name) || '').toLowerCase();
-                    const appId = (app.applicationId || app.order_number || app.id || '').toLowerCase();
-                    if (!cName.includes(q) && !cEmail.includes(q) && !cPhone.includes(q) && !jTitle.includes(q) && !appId.includes(q)) {
+                    } else if (normStatusFilter === 'under review') {
+                      if (!['under review', 'reviewing', 'interviewing', 'in review', 'screening'].includes(st)) {
+                        return false;
+                      }
+                    } else if (normStatusFilter === 'shortlisted') {
+                      if (!['shortlisted', 'shortlist'].includes(st)) {
+                        return false;
+                      }
+                    } else if (normStatusFilter === 'selected') {
+                      if (!['selected', 'hired', 'accepted', 'approved'].includes(st)) {
+                        return false;
+                      }
+                    } else if (normStatusFilter === 'rejected') {
+                      if (!['rejected', 'declined', 'cancelled'].includes(st)) {
+                        return false;
+                      }
+                    } else if (st !== normStatusFilter) {
                       return false;
                     }
                   }
 
-                  if (applicationTimeFilter !== 'all') {
-                    const rawDate = app.applicationDate || app.createdAt || app.created_at;
+                  // Search query filter: match against candidate name, email, phone, job title, IDs, education, experience
+                  if (query !== '') {
+                    const cName = (app.candidateName || app.memberName || app.customer_name || app.name || '').toLowerCase();
+                    const cEmail = (app.candidateEmail || app.customer_email || app.email || '').toLowerCase();
+                    const cPhone = (app.candidatePhone || app.customer_phone || app.phone || '').toLowerCase();
+                    const jTitle = (app.jobTitle || app.product_details || (app.items && app.items[0]?.name) || '').toLowerCase();
+                    const appId = (app.applicationId || app.order_number || app.id || app._id || '').toString().toLowerCase();
+                    const jId = (app.jobId || (app.items && app.items[0]?.productId) || app.productId || '').toString().toLowerCase();
+                    const edu = (app.candidateEducation || app.education || '').toLowerCase();
+                    const exp = (app.experience || app.candidateExperience || '').toLowerCase();
+
+                    const matches = cName.includes(query) || cEmail.includes(query) || cPhone.includes(query) ||
+                                    jTitle.includes(query) || appId.includes(query) || jId.includes(query) ||
+                                    edu.includes(query) || exp.includes(query);
+                    if (!matches) {
+                      return false;
+                    }
+                  }
+
+                  // Time filter: All Time, Today, Yesterday, Last Week, Last Month
+                  if (normTimeFilter !== 'all') {
+                    const rawDate = app.applicationDate || app.createdAt || app.created_at || app.date;
                     if (!rawDate) return false;
                     const d = new Date(rawDate);
                     if (isNaN(d.getTime())) return false;
                     const now = new Date();
-                    if (applicationTimeFilter === 'today') {
-                      if (d.toDateString() !== now.toDateString()) return false;
-                    } else if (applicationTimeFilter === 'week') {
-                      if ((now.getTime() - d.getTime()) > 7 * 24 * 60 * 60 * 1000) return false;
-                    } else if (applicationTimeFilter === 'month') {
-                      if ((now.getTime() - d.getTime()) > 30 * 24 * 60 * 60 * 1000) return false;
+                    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                    const oneDayMs = 24 * 60 * 60 * 1000;
+
+                    if (normTimeFilter === 'today') {
+                      if (d.getTime() < startOfToday) return false;
+                    } else if (normTimeFilter === 'yesterday') {
+                      if (d.getTime() < startOfToday - oneDayMs || d.getTime() >= startOfToday) return false;
+                    } else if (normTimeFilter === 'week' || normTimeFilter === 'lastweek') {
+                      if ((now.getTime() - d.getTime()) > 7 * oneDayMs) return false;
+                    } else if (normTimeFilter === 'month' || normTimeFilter === 'lastmonth') {
+                      if ((now.getTime() - d.getTime()) > 30 * oneDayMs) return false;
                     }
                   }
 
@@ -5926,6 +5961,7 @@ const VendorDashboard = () => {
                   return (
                     <div className="glass-card p-12 text-center rounded-3xl">
                       <p className="text-slate-800 dark:text-slate-200 font-medium">No applications match your filter criteria.</p>
+                      <p className="text-slate-500 text-xs mt-1">Try clearing search keywords or switching filters to "All Time" and "All Statuses".</p>
                     </div>
                   );
                 }
@@ -5948,30 +5984,37 @@ const VendorDashboard = () => {
                         {filteredApps.map(app => {
                           const appIdStr = String(app._id || app.id || app.order_number);
                           const isUpdating = updatingStatusIds.has(appIdStr);
+                          const resumeVal = app.candidateResume || app.resume || app.resumeUrl || app.cv;
+                          const resumeFileName = resumeVal ? (typeof resumeVal === 'string' ? resumeVal : 'Resume.pdf').replace(/\\/g, '/').split('/').pop() || 'Resume.pdf' : '';
+                          const resumeDownloadUrl = resumeVal
+                            ? (typeof resumeVal === 'string' && resumeVal.startsWith('http')
+                                ? resumeVal
+                                : `${getVendorBackendUrl()}/api/vendor/orders/${app._id || app.id || app.order_number}/resume?download=true`)
+                            : '';
 
                           return (
                             <tr key={app._id || app.id || app.order_number} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 text-slate-700 dark:text-slate-200 transition-colors">
                               {/* Candidate Name, Email, Phone */}
                               <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
-                                <div>{app.candidateName || app.memberName || app.customer_name || 'Candidate'}</div>
-                                {app.candidateEmail && (
-                                  <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">{app.candidateEmail}</div>
+                                <div>{app.candidateName || app.memberName || app.customer_name || app.name || 'Candidate'}</div>
+                                {(app.candidateEmail || app.customer_email || app.email) && (
+                                  <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">{app.candidateEmail || app.customer_email || app.email}</div>
                                 )}
-                                {app.candidatePhone && (
-                                  <div className="text-[10px] text-slate-400 font-medium">{app.candidatePhone}</div>
+                                {(app.candidatePhone || app.customer_phone || app.phone) && (
+                                  <div className="text-[10px] text-slate-400 font-medium">{app.candidatePhone || app.customer_phone || app.phone}</div>
                                 )}
                               </td>
 
                               {/* Application & Job ID */}
                               <td className="px-6 py-4 text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
-                                <div className="text-primary-600 dark:text-primary-400">App ID: #{app.applicationId || app.order_number || app.id || 'N/A'}</div>
-                                <div className="text-[10px] text-slate-400 font-normal mt-0.5">Job ID: #{app.jobId || (app.items && app.items[0]?.productId) || 'N/A'}</div>
+                                <div className="text-primary-600 dark:text-primary-400">App ID: #{app.applicationId || app.order_number || app.id || app._id || 'N/A'}</div>
+                                <div className="text-[10px] text-slate-400 font-normal mt-0.5">Job ID: #{app.jobId || (app.items && app.items[0]?.productId) || app.productId || 'N/A'}</div>
                               </td>
 
                               {/* Education / Exp */}
                               <td className="px-6 py-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                <div>{app.candidateEducation || 'Graduate'}</div>
-                                <div className="text-[10px] text-slate-400 font-normal mt-0.5">Exp: {app.experience || 'Fresher'}</div>
+                                <div>{app.candidateEducation || app.education || 'Graduate'}</div>
+                                <div className="text-[10px] text-slate-400 font-normal mt-0.5">Exp: {app.experience || app.candidateExperience || 'Fresher'}</div>
                               </td>
 
                               {/* Applied Position */}
@@ -5981,7 +6024,7 @@ const VendorDashboard = () => {
 
                               {/* CV / Resume */}
                               <td className="px-6 py-4 text-xs">
-                                {app.candidateResume ? (
+                                {resumeVal ? (
                                   <div className="flex gap-2 items-center">
                                     <button
                                       type="button"
@@ -5989,10 +6032,10 @@ const VendorDashboard = () => {
                                       className="text-[10px] text-slate-500 font-medium bg-slate-50/70 hover:bg-slate-100 dark:bg-slate-950/60 dark:hover:bg-slate-900 p-2 rounded-lg border border-slate-200/50 dark:border-slate-800 max-w-xs break-words text-left transition-colors cursor-pointer"
                                       title="View Resume"
                                     >
-                                      📄 {app.candidateResume.split('/').pop().substring(0, 18)}...
+                                      📄 {resumeFileName.length > 18 ? resumeFileName.substring(0, 18) + '...' : resumeFileName}
                                     </button>
                                     <a
-                                      href={app.candidateResume.startsWith('http') ? app.candidateResume : `${getVendorBackendUrl()}/api/vendor/orders/${app._id || app.id || app.order_number}/resume?download=true`}
+                                      href={resumeDownloadUrl}
                                       download
                                       target="_blank"
                                       rel="noopener noreferrer"
@@ -6011,7 +6054,7 @@ const VendorDashboard = () => {
                               {/* Application Date */}
                               <td className="px-6 py-4 text-xs text-slate-600 dark:text-slate-400 font-medium">
                                 {(() => {
-                                  const rawDate = app.applicationDate || app.createdAt || app.created_at;
+                                  const rawDate = app.applicationDate || app.createdAt || app.created_at || app.date;
                                   if (!rawDate) return 'N/A';
                                   const d = new Date(rawDate);
                                   return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -6022,7 +6065,15 @@ const VendorDashboard = () => {
                               <td className="px-6 py-4 text-right">
                                 <div className="flex flex-col items-end gap-2">
                                   <select
-                                    value={app.status || 'APPLICATION RECEIVED'}
+                                    value={(() => {
+                                      const rawStatus = (app.status || 'APPLICATION RECEIVED').toUpperCase();
+                                      if (['APPLICATION RECEIVED', 'PENDING', 'ORDER RECEIVED', 'APPLIED'].includes(rawStatus)) return 'APPLICATION RECEIVED';
+                                      if (['UNDER REVIEW', 'REVIEWING', 'INTERVIEWING', 'IN REVIEW', 'SCREENING'].includes(rawStatus)) return 'UNDER REVIEW';
+                                      if (['SHORTLISTED', 'SHORTLIST'].includes(rawStatus)) return 'SHORTLISTED';
+                                      if (['SELECTED', 'HIRED', 'ACCEPTED', 'APPROVED'].includes(rawStatus)) return 'SELECTED';
+                                      if (['REJECTED', 'DECLINED', 'CANCELLED'].includes(rawStatus)) return 'REJECTED';
+                                      return rawStatus;
+                                    })()}
                                     disabled={isUpdating}
                                     onChange={(e) => handleUpdateOrderStatus(app._id || app.id || app.order_number, e.target.value)}
                                     className={`bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs px-2.5 py-1.5 w-44 focus:outline-none focus:border-primary-500 font-semibold ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -12071,7 +12122,7 @@ required
         onClose={() => setIsBillModalOpen(false)} 
         title={(() => {
           const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
-          if (rawCat === 'JOB' || rawCat === 'JOBS') return "Candidate Job Application Details";
+          if (rawCat === 'JOB' || rawCat === 'JOBS' || Boolean(selectedBillOrder?.applicationId) || Boolean(selectedBillOrder?.candidateResume) || Boolean(selectedBillOrder?.candidateEducation)) return "Candidate Job Application Details";
           if (rawCat === 'TRAVEL') return "Travel Booking Details";
           if (rawCat === 'STAY' || rawCat === 'HOTEL') return "Stay Booking Details";
           if (rawCat === 'FOOD' || rawCat === 'RESTAURANT') return "Food Order Details";
@@ -12081,7 +12132,7 @@ required
       >
         {Boolean(selectedBillOrder) && (() => {
           const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
-          const isJobOrder = rawCat === 'JOB' || rawCat === 'JOBS';
+          const isJobOrder = rawCat === 'JOB' || rawCat === 'JOBS' || Boolean(selectedBillOrder?.applicationId) || Boolean(selectedBillOrder?.candidateResume) || Boolean(selectedBillOrder?.candidateEducation);
           const isTravelOrder = rawCat === 'TRAVEL';
           const isStayOrder = rawCat === 'STAY' || rawCat === 'HOTEL';
           const isFoodOrder = rawCat === 'FOOD' || rawCat === 'RESTAURANT';
