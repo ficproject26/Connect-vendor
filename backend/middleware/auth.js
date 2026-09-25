@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const { User } = require('../models/Schemas');
 
@@ -13,8 +14,17 @@ const protect = async (req, res, next) => {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_key_9999');
 
-      // Find user from database
-      const user = await User.findById(decoded.id);
+      // Find user from database (supporting both String and ObjectId _id, with email fallback)
+      let user = null;
+      if (decoded.id) {
+        user = await User.findById(decoded.id);
+        if (!user && mongoose.Types.ObjectId.isValid(decoded.id)) {
+          user = await User.findById(new mongoose.Types.ObjectId(decoded.id));
+        }
+      }
+      if (!user && decoded.email) {
+        user = await User.findOne({ email: String(decoded.email).toLowerCase().trim() });
+      }
 
       if (!user) {
         return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
@@ -24,9 +34,16 @@ const protect = async (req, res, next) => {
       const statusLower = (user.status || '').toLowerCase().trim();
       const userRoleLower = (user.role || user.userType || '').toLowerCase().trim();
       const isVendorRole = userRoleLower.includes('vendor') || userRoleLower.includes('merchant');
-      const isNotActive = !['approved', 'active', 'assigned'].includes(statusLower) || user.isActive === false || user.isApproved === false || user.isLocked === true;
+      const isApprovedStatus = ['approved', 'active', 'assigned'].includes(statusLower);
+      const isNotActive = !isApprovedStatus || ['pending', 'suspended', 'inactive', 'rejected'].includes(statusLower) || user.isActive === false || user.isApproved === false || user.isLocked === true;
 
       if (isVendorRole && isNotActive) {
+        if (statusLower === 'pending') {
+          return res.status(403).json({
+            success: false,
+            message: 'Your account is pending approval by the Admin. Please try again later.'
+          });
+        }
         return res.status(403).json({ 
           success: false, 
           isTerminated: true,
@@ -35,27 +52,31 @@ const protect = async (req, res, next) => {
       }
 
       req.user = user;
+      if (!req.user.parentUserId) {
+        req.user.parentUserId = user._id ? user._id.toString() : '';
+      }
 
       // Legacy vendor migration: initialize businesses array if empty
-      if (user.role === 'Vendor' && (!user.businesses || user.businesses.length === 0)) {
-        const primaryId = user.primaryBusinessId || user._id.toString();
+      if (isVendorRole && (!user.businesses || user.businesses.length === 0)) {
+        const primaryId = user.primaryBusinessId || (user._id ? user._id.toString() : '');
+        const computedBaseType = user.baseVendorType || (user.vendorType ? (user.vendorType.includes(':') ? user.vendorType.split(':')[0].trim() : user.vendorType) : 'Store Vendor');
         user.businesses = [{
           _id: primaryId,
-          vendorType: user.vendorType || '',
-          category: user.category || '',
-          subcategory: user.subcategory || '',
-          baseVendorType: user.baseVendorType || '',
-          businessName: user.businessName || '',
+          vendorType: user.vendorType || 'Products',
+          category: user.category || 'Products',
+          subcategory: user.subcategory || 'Products',
+          baseVendorType: computedBaseType,
+          businessName: user.businessName || user.name || 'Vendor Store',
           logo: user.logo || '',
           businessLicense: user.businessLicense || '',
           businessImages: user.businessImages || []
         }];
         user.primaryBusinessId = primaryId;
-        await user.save();
+        await user.save().catch(() => {});
       }
 
       // Handle multi-business session override for Vendor role
-      if (user.role === 'Vendor' && user.businesses && user.businesses.length > 0) {
+      if (isVendorRole && user.businesses && user.businesses.length > 0) {
         const activeBusinessId = req.headers['x-business-id'];
         let activeBusiness = null;
 

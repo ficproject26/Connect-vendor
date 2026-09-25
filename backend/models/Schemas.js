@@ -3,7 +3,7 @@ const { getModel } = require('../config/db');
 
 // --- USER & VENDOR SCHEMA ---
 const UserSchema = new mongoose.Schema({
-  _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+  _id: { type: mongoose.Schema.Types.Mixed, default: () => new mongoose.Types.ObjectId() },
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
@@ -77,6 +77,46 @@ const UserSchema = new mongoose.Schema({
 
 UserSchema.index({ role: 1, status: 1 });
 UserSchema.index({ createdAt: -1 });
+
+// Helper to normalize _id queries so both String and ObjectId match seamlessly
+const formatIdQuery = (val) => {
+  if (!val) return val;
+  if (typeof val === 'string') {
+    if (mongoose.Types.ObjectId.isValid(val) && val.length === 24) {
+      return { $in: [val, new mongoose.Types.ObjectId(val)] };
+    }
+    return val;
+  }
+  if (val instanceof mongoose.Types.ObjectId) {
+    return { $in: [val.toString(), val] };
+  }
+  return val;
+};
+
+const normalizeIdFilter = function(next) {
+  const filter = this.getFilter ? this.getFilter() : null;
+  if (filter) {
+    if (filter._id && !(filter._id.$in)) {
+      filter._id = formatIdQuery(filter._id);
+    }
+    if (Array.isArray(filter.$or)) {
+      filter.$or = filter.$or.map(cond => {
+        if (cond && cond._id && !(cond._id.$in)) {
+          return { ...cond, _id: formatIdQuery(cond._id) };
+        }
+        return cond;
+      });
+    }
+  }
+  if (typeof next === 'function') next();
+};
+
+UserSchema.pre('find', normalizeIdFilter);
+UserSchema.pre('findOne', normalizeIdFilter);
+UserSchema.pre('findOneAndUpdate', normalizeIdFilter);
+UserSchema.pre('findOneAndDelete', normalizeIdFilter);
+UserSchema.pre('findOneAndReplace', normalizeIdFilter);
+UserSchema.pre('countDocuments', normalizeIdFilter);
 
 // --- MEMBERSHIP PLAN SCHEMA ---
 const MembershipPlanSchema = new mongoose.Schema({

@@ -5,10 +5,15 @@ const { User, MembershipPlan, MembershipCard } = require('../models/Schemas');
 const { uploadToCloudinary } = require('../config/cloudinary');
 
 // Helper function to generate JWT
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'super_secret_jwt_key_9999', {
-    expiresIn: '30d',
-  });
+const generateToken = (id, email) => {
+  return jwt.sign(
+    { 
+      id: id ? id.toString() : id,
+      ...(email ? { email: String(email).toLowerCase().trim() } : {})
+    },
+    process.env.JWT_SECRET || 'super_secret_jwt_key_9999',
+    { expiresIn: '30d' }
+  );
 };
 
 const getBaseVendorType = (vendorType, category, subcategory) => {
@@ -412,29 +417,24 @@ const loginVendor = async (req, res) => {
 
     // Check Vendor status
     const vendorStatus = (user.status || '').toLowerCase().trim();
-    const isApprovedStatus = ['approved', 'active', 'assigned'].includes(vendorStatus) || user.isApproved === true || user.isActive === true;
-    const isNotActive = !isApprovedStatus || user.isActive === false || user.isLocked === true;
+    const isApprovedStatus = ['approved', 'active', 'assigned'].includes(vendorStatus);
+    const isExplicitlyDisapproved = ['pending', 'suspended', 'inactive', 'rejected'].includes(vendorStatus) || user.isApproved === false || user.isActive === false || user.isLocked === true;
 
-    if (isNotActive && userRole !== 'admin') {
-      if (vendorStatus === 'suspended' || user.isActive === false || user.isLocked === true) {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Your vendor account has been suspended. Please contact the administrator.' 
-        });
-      } else if (vendorStatus === 'pending') {
+    if ((!isApprovedStatus || isExplicitlyDisapproved) && userRole !== 'admin') {
+      if (vendorStatus === 'pending') {
         return res.status(403).json({ 
           success: false, 
           message: 'Your account is pending approval by the Admin. Please try again later.' 
-        });
-      } else if (vendorStatus === 'inactive') {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Your vendor account has been deactivated by the Admin. Access denied.' 
         });
       } else if (vendorStatus === 'rejected') {
         return res.status(403).json({ 
           success: false, 
           message: 'Your account application has been rejected by the Admin.' 
+        });
+      } else if (vendorStatus === 'inactive') {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Your vendor account has been deactivated by the Admin. Access denied.' 
         });
       } else {
         return res.status(403).json({ 
@@ -464,11 +464,12 @@ const loginVendor = async (req, res) => {
 
     const userResponse = user.toObject ? user.toObject() : { ...user };
     delete userResponse.password;
-    userResponse.id = user._id;
+    userResponse.id = user._id ? user._id.toString() : user._id;
+    userResponse._id = userResponse.id;
     if (!userResponse.vendorId || !/^ven-fic-/i.test(userResponse.vendorId)) {
       try {
         const currentYear = new Date().getFullYear();
-        const count = await User.countDocuments({ role: 'Vendor' }).catch(() => 1);
+        const count = await User.countDocuments({ role: { $regex: 'vendor', $options: 'i' } }).catch(() => 1);
         const formatted = `ven-fic-${currentYear}-v${String(count || 1).padStart(3, '0')}`;
         userResponse.vendorId = (user.vendorId && /^ven-fic-/i.test(user.vendorId)) ? user.vendorId : formatted;
         userResponse.registrationId = (user.registrationId && /^ven-fic-/i.test(user.registrationId)) ? user.registrationId : formatted;
@@ -480,7 +481,7 @@ const loginVendor = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      token: generateToken(user._id),
+      token: generateToken(user._id, user.email),
       user: userResponse
     });
   } catch (error) {
