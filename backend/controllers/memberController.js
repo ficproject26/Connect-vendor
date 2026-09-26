@@ -4,6 +4,7 @@ const path = require('path');
 const mongoose = require('mongoose');
 const { MembershipCard, MembershipPlan, User, Order, Product, MembershipHistory } = require('../models/Schemas');
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
+const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES } = require('../realtime/realtimeManager');
 
 const getProductMainCategory = (category) => {
   if (!category) return '';
@@ -393,7 +394,30 @@ const redeemDiscount = async (req, res) => {
         product.status = 'Unavailable';
       }
       await product.save();
+
+      // Real-Time Event Generation: Stock / Product Update
+      publishRealtimeEvent({
+        event: EVENT_TYPES.PRODUCT_UPDATED,
+        entity: ENTITY_NAMES.PRODUCT,
+        entityId: product._id.toString(),
+        action: 'updated',
+        target: { vendorId: product.vendorId },
+        data: product
+      }).catch(err => console.warn('[Realtime] Product stock update publish warning:', err.message));
     }
+
+    // Real-Time Event Generation: Order Created
+    publishRealtimeEvent({
+      event: EVENT_TYPES.ORDER_CREATED,
+      entity: ENTITY_NAMES.ORDER,
+      entityId: order._id ? order._id.toString() : order.id,
+      action: 'created',
+      target: {
+        vendorId: order.vendorId,
+        userId: order.memberId
+      },
+      data: order
+    }).catch(err => console.warn('[Realtime] Order create publish warning:', err.message));
 
     // Send email notification alert to vendor
     try {

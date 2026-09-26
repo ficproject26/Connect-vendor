@@ -1,0 +1,87 @@
+/**
+ * Centralized Event Types and Payload Standards
+ * Global real-time event definitions across the interconnected ecosystem.
+ */
+
+const EVENT_TYPES = {
+  // Generic Entity Actions
+  ENTITY_CREATED: 'ENTITY_CREATED',
+  ENTITY_UPDATED: 'ENTITY_UPDATED',
+  ENTITY_DELETED: 'ENTITY_DELETED',
+
+  // Order & Transaction Domain
+  ORDER_CREATED: 'ORDER_CREATED',
+  ORDER_UPDATED: 'ORDER_UPDATED',
+  ORDER_STATUS_CHANGED: 'ORDER_STATUS_CHANGED',
+  ORDER_CANCELLED: 'ORDER_CANCELLED',
+
+  // Catalog & Product Domain
+  PRODUCT_CREATED: 'PRODUCT_CREATED',
+  PRODUCT_UPDATED: 'PRODUCT_UPDATED',
+  PRODUCT_DELETED: 'PRODUCT_DELETED',
+  STOCK_UPDATED: 'STOCK_UPDATED',
+
+  // Delivery Partner Domain
+  PARTNER_CREATED: 'PARTNER_CREATED',
+  PARTNER_UPDATED: 'PARTNER_UPDATED',
+  PARTNER_DELETED: 'PARTNER_DELETED',
+  PARTNER_STATUS_CHANGED: 'PARTNER_STATUS_CHANGED',
+
+  // Customer & Patient Domain
+  CUSTOMER_CREATED: 'CUSTOMER_CREATED',
+  CUSTOMER_UPDATED: 'CUSTOMER_UPDATED',
+  PATIENT_UPDATED: 'PATIENT_UPDATED',
+  APPOINTMENT_CREATED: 'APPOINTMENT_CREATED',
+  APPOINTMENT_UPDATED: 'APPOINTMENT_UPDATED',
+
+  // Vendor & Outlets Domain
+  VENDOR_UPDATED: 'VENDOR_UPDATED',
+  VENDOR_STATUS_CHANGED: 'VENDOR_STATUS_CHANGED',
+  BUSINESS_OUTLET_CREATED: 'BUSINESS_OUTLET_CREATED',
+  BUSINESS_OUTLET_UPDATED: 'BUSINESS_OUTLET_UPDATED',
+  PROFILE_UPDATED: 'PROFILE_UPDATED',
+
+  // Financials & Settlements
+  SETTLEMENT_CREATED: 'SETTLEMENT_CREATED',
+  SETTLEMENT_UPDATED: 'SETTLEMENT_UPDATED',
+
+  // Platform & Membership
+  MEMBERSHIP_UPDATED: 'MEMBERSHIP_UPDATED',
+  CATEGORY_UPDATED: 'CATEGORY_UPDATED',
+
+  // System & Connection Heartbeat
+  SYSTEM_PING: 'SYSTEM_PING',
+  SYSTEM_PONG: 'SYSTEM_PONG',
+  SYNC_REQUEST: 'SYNC_REQUEST',
+  SYNC_RESPONSE: 'SYNC_RESPONSE'
+};
+
+const ENTITY_NAMES = {
+  ORDER: 'order',
+  PRODUCT: 'product',
+  PARTNER: 'deliveryPartner',
+  CUSTOMER: 'customer',
+  PATIENT: 'patient',
+  USER: 'user',
+  VENDOR: 'vendor',
+  BUSINESS: 'business',
+  SETTLEMENT: 'settlement',
+  MEMBERSHIP: 'membership',
+  CATEGORY: 'category',
+  SYSTEM: 'system'
+};
+
+const REDIS_CHANNELS = {
+  GLOBAL: 'connect:events:global',
+  ORDERS: 'connect:events:orders',
+  PRODUCTS: 'connect:events:products',
+  PARTNERS: 'connect:events:partners',
+  USERS: 'connect:events:users',
+  SETTLEMENTS: 'connect:events:settlements'
+};
+
+module.exports = {
+  EVENT_TYPES,
+  ENTITY_NAMES,
+  REDIS_CHANNELS
+};

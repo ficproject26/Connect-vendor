@@ -77,6 +77,8 @@ const UserSchema = new mongoose.Schema({
 
 UserSchema.index({ role: 1, status: 1 });
 UserSchema.index({ createdAt: -1 });
+UserSchema.index({ vendorId: 1 });
+UserSchema.index({ "businesses._id": 1 });
 
 // Helper to normalize _id queries so both String and ObjectId match seamlessly
 const formatIdQuery = (val) => {
@@ -141,6 +143,8 @@ const MembershipCardSchema = new mongoose.Schema({
   expiresAt: { type: Date, required: true },
   expiryWarningSent: { type: Boolean, default: false }
 }, { timestamps: true });
+
+MembershipCardSchema.index({ userId: 1 });
 
 // --- MEMBERSHIP HISTORY SCHEMA ---
 const MembershipHistorySchema = new mongoose.Schema({
@@ -334,6 +338,8 @@ const DeliveryPartnerSchema = new mongoose.Schema({
   imageUrl: { type: String }
 }, { timestamps: true, strict: false });
 
+DeliveryPartnerSchema.index({ vendorId: 1, status: 1 });
+
 // --- VENDOR CUSTOMERS SCHEMA ---
 const CustomerSchema = new mongoose.Schema({
   _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
@@ -344,6 +350,10 @@ const CustomerSchema = new mongoose.Schema({
   ordersCount: { type: Number, default: 1 },
   totalSpent: { type: Number, default: 0 }
 }, { timestamps: true });
+
+CustomerSchema.index({ vendorId: 1, createdAt: -1 });
+CustomerSchema.index({ vendorId: 1, email: 1 });
+CustomerSchema.index({ vendorId: 1, phone: 1 });
 
 // --- PLATFORM CONFIG SCHEMA ---
 const PlatformConfigSchema = new mongoose.Schema({
@@ -367,6 +377,8 @@ const SettlementSchema = new mongoose.Schema({
   netAmount: { type: Number, required: true },
   status: { type: String, enum: ['Pending', 'Processing', 'Completed'], default: 'Pending' }
 }, { timestamps: true });
+
+SettlementSchema.index({ vendorId: 1, settlementDate: -1 });
 
 // --- PATIENT SCHEMA ---
 const PatientSchema = new mongoose.Schema({
@@ -437,6 +449,8 @@ const PatientSchema = new mongoose.Schema({
   upcomingAppointment: { type: String }, // e.g. "2026-06-25 10:00 AM"
   assignedDoctor: { type: String }
 }, { timestamps: true });
+
+PatientSchema.index({ vendorId: 1, createdAt: -1 });
 
 // --- CATEGORY SCHEMA (Admin Category Management) ---
 const CategorySchema = new mongoose.Schema({

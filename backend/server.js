@@ -113,6 +113,9 @@ const adminRoutes = require('./routes/adminRoutes');
 const vendorRoutes = require('./routes/vendorRoutes');
 const memberRoutes = require('./routes/memberRoutes');
 const publicRoutes = require('./routes/publicRoutes');
+const realtimeRoutes = require('./routes/realtimeRoutes');
+const { realtimeManager } = require('./realtime/realtimeManager');
+const http = require('http');
 
 // Mount Routes
 app.use('/api/auth', authRoutes);
@@ -120,6 +123,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/vendor', vendorRoutes);
 app.use('/api/member', memberRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/realtime', realtimeRoutes);
 
 // Base API route
 app.get('/', (req, res) => {
@@ -141,8 +145,12 @@ const PORT = process.env.PORT || 8002;
 const startServer = async () => {
   try {
     await connectDB();
-    const server = app.listen(PORT, () => {
+    const server = http.createServer(app);
+    realtimeManager.init(server);
+
+    server.listen(PORT, () => {
       console.log(`📡 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+      console.log(`⚡ Real-Time WebSocket & Event-Driven Engine active on port ${PORT}`);
     });
 
     server.on('error', (err) => {
@@ -161,3 +169,4 @@ const startServer = async () => {
 };
 
 startServer();
+

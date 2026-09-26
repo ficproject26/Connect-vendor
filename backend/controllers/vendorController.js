@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { Product, Order, Customer, DeliveryPartner, User, MembershipCard, PlatformConfig, Patient } = require('../models/Schemas');
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
+const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES, cacheManager } = require('../realtime/realtimeManager');
 
 const getProductMainCategory = (category) => {
   if (!category) return '';
@@ -58,9 +59,15 @@ const vendorHasJobCategories = (user) => {
 const getVendorAnalytics = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(parentUserId);
+    const user = await User.findById(parentUserId).lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    // Check fast cache first for low latency
+    const cachedAnalytics = await cacheManager.get('analytics', parentUserId.toString());
+    if (cachedAnalytics) {
+      return res.status(200).json({ success: true, data: cachedAnalytics, _cached: true });
     }
 
     const businessIds = [parentUserId.toString()];
@@ -70,13 +77,13 @@ const getVendorAnalytics = async (req, res) => {
       });
     }
 
-    // Fetch vendor orders
+    // Fetch vendor orders with lean() for fast query execution
     const rawOrders = await Order.find({
       $or: [
         { vendorId: { $in: businessIds } },
         { vendor_id: { $in: businessIds } }
       ]
-    });
+    }).lean();
 
     const orders = rawOrders.map(o => {
       const obj = o.toObject ? o.toObject() : o;
@@ -206,23 +213,28 @@ const getVendorAnalytics = async (req, res) => {
       { name: 'Cancelled', value: cancelledCount }
     ];
 
+    const analyticsData = {
+      totalRevenue,
+      ordersCount: totalOrdersCount,
+      bookingsCount: totalBookingsCount,
+      applicationsCount: totalApplicationsCount,
+      pendingOrdersCount,
+      customersCount: uniqueCustomersCount,
+      itemsCount: totalItemsCount,
+      availableItemsCount,
+      todayRevenue,
+      activeMembershipsCount,
+      recentRevenue: revenueTrend,
+      monthlyRevenue,
+      orderStatusDistribution
+    };
+
+    // Store in cache with 120s TTL (automatically invalidated upon any order/item mutation)
+    await cacheManager.set('analytics', parentUserId.toString(), analyticsData, 120);
+
     res.status(200).json({
       success: true,
-      data: {
-        totalRevenue,
-        ordersCount: totalOrdersCount,
-        bookingsCount: totalBookingsCount,
-        applicationsCount: totalApplicationsCount,
-        pendingOrdersCount,
-        customersCount: uniqueCustomersCount,
-        itemsCount: totalItemsCount,
-        availableItemsCount,
-        todayRevenue,
-        activeMembershipsCount,
-        recentRevenue: revenueTrend,
-        monthlyRevenue,
-        orderStatusDistribution
-      }
+      data: analyticsData
     });
   } catch (error) {
     console.error('Get Vendor Analytics Error:', error);
@@ -313,6 +325,16 @@ const createProduct = async (req, res) => {
       specifications: specifications || customFields || {},
       customFields: customFields || specifications || {}
     });
+
+    // Real-Time Event Generation (AFTER DB success)
+    publishRealtimeEvent({
+      event: EVENT_TYPES.PRODUCT_CREATED,
+      entity: ENTITY_NAMES.PRODUCT,
+      entityId: product._id ? product._id.toString() : product.id,
+      action: 'created',
+      target: { vendorId: product.vendorId },
+      data: product
+    }).catch(err => console.warn('[Realtime] Product create publish warning:', err.message));
 
     res.status(201).json({ success: true, message: 'Item created successfully', data: product });
   } catch (error) {
@@ -509,6 +531,16 @@ const updateProduct = async (req, res) => {
       }
     }, { new: true });
 
+    // Real-Time Event Generation (AFTER DB success)
+    publishRealtimeEvent({
+      event: EVENT_TYPES.PRODUCT_UPDATED,
+      entity: ENTITY_NAMES.PRODUCT,
+      entityId: updated._id ? updated._id.toString() : updated.id,
+      action: 'updated',
+      target: { vendorId: updated.vendorId },
+      data: updated
+    }).catch(err => console.warn('[Realtime] Product update publish warning:', err.message));
+
     res.status(200).json({ success: true, message: 'Item updated successfully', data: updated });
   } catch (error) {
     console.error('Update Product Error:', error);
@@ -532,6 +564,17 @@ const deleteProduct = async (req, res) => {
     }
 
     await Product.findByIdAndDelete(req.params.id);
+
+    // Real-Time Event Generation (AFTER DB success)
+    publishRealtimeEvent({
+      event: EVENT_TYPES.PRODUCT_DELETED,
+      entity: ENTITY_NAMES.PRODUCT,
+      entityId: req.params.id,
+      action: 'deleted',
+      target: { vendorId: product.vendorId },
+      data: { _id: req.params.id, id: req.params.id, name: product.name }
+    }).catch(err => console.warn('[Realtime] Product delete publish warning:', err.message));
+
     res.status(200).json({ success: true, message: 'Item deleted successfully' });
   } catch (error) {
     console.error('Delete Product Error:', error);
@@ -1297,6 +1340,19 @@ const updateOrderStatus = async (req, res) => {
       console.warn('Direct MongoDB collection status update warning:', dbErr.message);
     }
 
+    // Real-Time Event Generation (AFTER DB success)
+    publishRealtimeEvent({
+      event: EVENT_TYPES.ORDER_STATUS_CHANGED,
+      entity: ENTITY_NAMES.ORDER,
+      entityId: order._id ? order._id.toString() : order.id,
+      action: 'status_changed',
+      target: {
+        vendorId: order.vendorId || order.vendor_id,
+        userId: order.memberId || order.customer_id
+      },
+      data: order
+    }).catch(err => console.warn('[Realtime] Order status publish warning:', err.message));
+
     // Sync order status back to customer backend (Connect App)
     if (order.status !== oldStatus) {
       try {
@@ -1689,6 +1745,16 @@ const createDeliveryPartner = async (req, res) => {
       status: req.body.status || 'Available'
     });
 
+    // Real-Time Event Generation (AFTER DB success)
+    publishRealtimeEvent({
+      event: EVENT_TYPES.PARTNER_CREATED,
+      entity: ENTITY_NAMES.PARTNER,
+      entityId: partner._id ? partner._id.toString() : partner.id,
+      action: 'created',
+      target: { vendorId: partner.vendorId },
+      data: partner
+    }).catch(err => console.warn('[Realtime] Partner create publish warning:', err.message));
+
     res.status(201).json({ success: true, message: 'Delivery partner added successfully', data: partner });
   } catch (error) {
     console.error('Create Delivery Partner Error:', error);
@@ -1742,6 +1808,16 @@ const updateDeliveryPartner = async (req, res) => {
       }
     }, { new: true });
 
+    // Real-Time Event Generation (AFTER DB success)
+    publishRealtimeEvent({
+      event: EVENT_TYPES.PARTNER_UPDATED,
+      entity: ENTITY_NAMES.PARTNER,
+      entityId: updated._id ? updated._id.toString() : updated.id,
+      action: 'updated',
+      target: { vendorId: updated.vendorId },
+      data: updated
+    }).catch(err => console.warn('[Realtime] Partner update publish warning:', err.message));
+
     res.status(200).json({ success: true, message: 'Delivery partner updated successfully', data: updated });
   } catch (error) {
     console.error('Update Delivery Partner Error:', error);
@@ -1761,6 +1837,17 @@ const deleteDeliveryPartner = async (req, res) => {
     }
 
     await DeliveryPartner.findByIdAndDelete(req.params.id);
+
+    // Real-Time Event Generation (AFTER DB success)
+    publishRealtimeEvent({
+      event: EVENT_TYPES.PARTNER_DELETED,
+      entity: ENTITY_NAMES.PARTNER,
+      entityId: req.params.id,
+      action: 'deleted',
+      target: { vendorId: partner.vendorId },
+      data: { _id: req.params.id, id: req.params.id }
+    }).catch(err => console.warn('[Realtime] Partner delete publish warning:', err.message));
+
     res.status(200).json({ success: true, message: 'Delivery partner deleted successfully' });
   } catch (error) {
     console.error('Delete Delivery Partner Error:', error);

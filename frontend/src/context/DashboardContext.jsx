@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { useSelector, useDispatch } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
+import { useGlobalStateSync } from '../realtime/useGlobalStateSync';
+import wsClient from '../realtime/wsClient';
 import { 
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
@@ -564,7 +566,122 @@ export const DashboardProvider = ({ children }) => {
   const notificationDropdownRef = useRef(null);
   const prevOrdersRef = useRef([]);
 
-  // Notifications and statuses
+  // ─── Axios config helper ────────────────────────────────────────────────────
+  const getAxiosConfig = useCallback(() => {
+    const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    if (savedActiveId) config.headers['x-business-id'] = savedActiveId;
+    return config;
+  }, [token, activeBusinessId, user?.activeBusinessId]);
+
+  // ─── Missing data states ─────────────────────────────────────────────────────
+  const [catalog, setCatalog] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [partners, setPartners] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [analytics, setAnalytics] = useState({
+    totalRevenue: 0, ordersCount: 0, pendingOrdersCount: 0,
+    customersCount: 0, itemsCount: 0, recentRevenue: []
+  });
+  const [settlements, setSettlements] = useState([]);
+  const [commissionConfig, setCommissionConfig] = useState({
+    commissionRate: 0,
+    collectionMethod: 'Admin Receives Full Payment',
+    deductionMethod: 'No Commission Deducted',
+    vendorPayout: 'Remaining Balance Transferred to Vendor',
+    settlementCycle: 'Weekly'
+  });
+  const [imageUploading, setImageUploading] = useState(false);
+
+  // ─── Catalog / Item form states ──────────────────────────────────────────────
+  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  const [isEditItem, setIsEditItem] = useState(false);
+  const [itemForm, setItemForm] = useState({
+    name: '', description: '', price: '', category: '', stock: '0', unit: 'count',
+    warranty: '', specialization: '', pinCode: '', duration: '', roomType: '',
+    guests: '2', amenities: [], imageUrl: '', imageUrls: [], status: 'Available',
+    cardTypes: ['Silver', 'Gold', 'Diamond'],
+    boardingPoint: '', boardingTime: '', dropPoint: '', arrivalTime: '',
+    distance: '', busTiming: '', stoppings: [], specifications: {}
+  });
+  const [selectedItemId, setSelectedItemId] = useState(null);
+  const [selectedMainCat, setSelectedMainCat] = useState('');
+  const [selectedSubcat, setSelectedSubcat] = useState('');
+
+  // ─── Transaction / Settlement states ─────────────────────────────────────────
+  const [txSearchQuery, setTxSearchQuery] = useState('');
+  const [txSortConfig, setTxSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
+  const [txCurrentPage, setTxCurrentPage] = useState(1);
+  const [txDateRange, setTxDateRange] = useState({ start: '', end: '' });
+  const [txFilterPeriod, setTxFilterPeriod] = useState('All');
+  const txItemsPerPage = 10;
+  const [selectedSettlementStatus, setSelectedSettlementStatus] = useState({});
+
+  // ─── shouldShowStock (computed) ───────────────────────────────────────────────
+  const shouldShowStock = ['Products', 'Daily Needs', 'Jobs', 'Education'].includes(
+    selectedMainCat || ''
+  );
+
+  // ─── Data Fetching ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!token || !user) return;
+    const role = user?.role;
+    const base = getVendorBackendUrl();
+    const cfg = getAxiosConfig();
+
+    const fetchVendorData = async () => {
+      try {
+        const [ordersRes, productsRes, partnersRes, customersRes] = await Promise.allSettled([
+          axios.get(`${base}/api/vendor/orders`, cfg),
+          axios.get(`${base}/api/vendor/products`, cfg),
+          axios.get(`${base}/api/vendor/delivery-partners`, cfg),
+          axios.get(`${base}/api/vendor/customers`, cfg)
+        ]);
+        if (ordersRes.status === 'fulfilled' && ordersRes.value.data?.success)
+          setOrders(ordersRes.value.data.data);
+        if (productsRes.status === 'fulfilled' && productsRes.value.data?.success)
+          setCatalog(productsRes.value.data.data);
+        if (partnersRes.status === 'fulfilled' && partnersRes.value.data?.success)
+          setPartners(partnersRes.value.data.data);
+        if (customersRes.status === 'fulfilled' && customersRes.value.data?.success)
+          setCustomers(customersRes.value.data.data);
+      } catch (err) {
+        console.error('[DashboardContext] Initial data fetch error:', err);
+      }
+    };
+
+    if (role === 'Vendor') fetchVendorData();
+  }, [token, user?.role, activeBusinessId]);
+
+  // ─── Real-Time WebSocket Sync (replaces polling) ──────────────────────────────
+  useGlobalStateSync({
+    orders,
+    setOrders,
+    catalog,
+    setCatalog,
+    partners,
+    setPartners,
+    user,
+    vendorId: user?._id?.toString() || '',
+    activeBusinessId
+  });
+
+  // ─── Real-time order notifications ───────────────────────────────────────────
+  useEffect(() => {
+    if (!token || user?.role !== 'Vendor') return;
+    wsClient.connect(token);
+    const unsub = wsClient.on('ORDER_CREATED', (event) => {
+      if (!event?.data) return;
+      const order = event.data;
+      const text = `New ${order.doctorName ? 'Appointment' : 'Order'} from ${order.memberName || 'Customer'}${
+        order.finalAmount ? ` (₹${order.finalAmount})` : ''
+      }`;
+      setNotifications(prev => [{ id: Date.now() + Math.random(), text }, ...prev.slice(0, 49)]);
+    });
+    return () => unsub();
+  }, [token, user?.role]);
+
+  // ─── Notifications and statuses ───────────────────────────────────────────────
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
