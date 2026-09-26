@@ -107,7 +107,13 @@ class RedisManager {
   }
 
   initClients() {
-    const redisUrl = process.env.REDIS_URL || process.env.REDIS_CACHE_URL;
+    let rawUrl = process.env.REDIS_URL || process.env.REDIS_CACHE_URL;
+    let redisUrl = null;
+    if (rawUrl) {
+      // Auto-extract URL if CLI command prefix (e.g. `redis-cli -u `) or quotes were provided
+      const match = rawUrl.match(/(rediss?:\/\/[^\s'"]+)/);
+      redisUrl = match ? match[1] : rawUrl.trim();
+    }
     const redisHost = process.env.REDIS_HOST || '127.0.0.1';
     const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
     const redisPassword = process.env.REDIS_PASSWORD || undefined;
@@ -115,8 +121,8 @@ class RedisManager {
     const redisOptions = {
       lazyConnect: true,
       maxRetriesPerRequest: 1,
-      enableOfflineQueue: false,
-      connectTimeout: 2000,
+      enableOfflineQueue: true,
+      connectTimeout: 8000,
       retryStrategy: (times) => {
         // Exponential backoff capped at 15s to keep trying without overwhelming logs
         const delay = Math.min(times * 1000, 15000);
@@ -157,16 +163,15 @@ class RedisManager {
 
     client.on('connect', () => {
       console.log(`🚀 [Redis] ${name} connected successfully.`);
+    });
+
+    client.on('ready', () => {
       this.isRedisConnected = true;
       this.stats.mode = 'redis-distributed';
       this.stats.lastConnectedAt = new Date().toISOString();
       if (name === 'Subscriber') {
         this.resubscribeAll();
       }
-    });
-
-    client.on('ready', () => {
-      this.isRedisConnected = true;
     });
 
     client.on('error', (err) => {
