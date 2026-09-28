@@ -6628,7 +6628,7 @@ const VendorDashboard = () => {
 
         {/* Subscription Tab (Vendor) */}
         {activeTab === 'subscription' && (
-          <SubscriptionManagement />
+          <SubscriptionManagement user={user} setMessage={setMessage} />
         )}
 
         {/* Queries Tab (Vendor) */}

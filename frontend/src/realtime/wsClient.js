@@ -160,6 +160,13 @@ class WebSocketClient {
     };
   }
 
+  subscribe(eventTypeOrHandler, maybeHandler) {
+    if (typeof eventTypeOrHandler === 'function') {
+      return this.on('*', eventTypeOrHandler);
+    }
+    return this.on(eventTypeOrHandler, maybeHandler);
+  }
+
   _dispatch(eventType, data) {
     const handlers = this.eventHandlers.get(eventType);
     if (handlers) {

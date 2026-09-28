@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Component } from 'react';
 import axios from 'axios';
+import { useSelector } from 'react-redux';
 import { 
   Sparkles, CheckCircle2, AlertCircle, RefreshCw, Calendar, 
   CreditCard, ArrowRight, ShieldCheck, DollarSign, Clock, 
   Filter, FileText, Check, X, ChevronRight, Eye, Download,
   ExternalLink, Layers, Building2, Store, Briefcase, Utensils, Hotel, Truck, HeartHandshake
 } from 'lucide-react';
-import { useDashboard } from '../../context/DashboardContext';
 import wsClient from '../../realtime/wsClient';
 
 // Helper to dynamically load official Razorpay script
@@ -56,8 +56,16 @@ const getBusinessIcon = (type = '') => {
   return Building2;
 };
 
-const SubscriptionManagement = () => {
-  const { user, setMessage } = useDashboard();
+const SubscriptionManagementContent = ({ user: propUser, setMessage: propSetMessage }) => {
+  const authUser = useSelector((state) => state?.auth?.user);
+  const user = propUser || authUser || (() => {
+    try {
+      return JSON.parse(localStorage.getItem('vendor_user')) || {};
+    } catch (e) {
+      return {};
+    }
+  })();
+  const setMessage = propSetMessage || (() => {});
 
   // Primary Data States
   const [loading, setLoading] = useState(true);
@@ -167,15 +175,28 @@ const SubscriptionManagement = () => {
 
   // Real-time Event Subscription for Live Sync (<500ms)
   useEffect(() => {
-    const unsubscribe = wsClient.subscribe((event) => {
-      if (event?.eventType === 'SUBSCRIPTION_UPDATED') {
-        // Refresh silently from authoritative database
-        fetchSubscriptions(true);
-        fetchHistory();
+    let unsubscribe = null;
+    try {
+      if (wsClient && typeof wsClient.on === 'function') {
+        unsubscribe = wsClient.on('SUBSCRIPTION_UPDATED', () => {
+          fetchSubscriptions(true);
+          fetchHistory();
+        });
+      } else if (wsClient && typeof wsClient.subscribe === 'function') {
+        unsubscribe = wsClient.subscribe((event) => {
+          if (event?.event === 'SUBSCRIPTION_UPDATED' || event?.eventType === 'SUBSCRIPTION_UPDATED') {
+            fetchSubscriptions(true);
+            fetchHistory();
+          }
+        });
       }
-    });
+    } catch (wsErr) {
+      console.warn('Realtime subscription notice in SubscriptionManagement:', wsErr);
+    }
     return () => {
-      if (typeof unsubscribe === 'function') unsubscribe();
+      if (typeof unsubscribe === 'function') {
+        try { unsubscribe(); } catch (e) {}
+      }
     };
   }, [fetchSubscriptions, fetchHistory]);
 
@@ -1162,5 +1183,49 @@ const SubscriptionManagement = () => {
     </div>
   );
 };
+
+class SubscriptionErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('SubscriptionManagement Error Boundary caught an error:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-rose-500/30 m-4 space-y-4 animate-fadeIn">
+          <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+            <AlertCircle size={28} />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Unable to display Subscription page</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+            {this.state.error?.message || 'A temporary rendering error occurred.'}
+          </p>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              window.location.reload();
+            }}
+            className="px-5 py-2.5 rounded-xl font-bold text-xs bg-[#0b3c7b] text-white dark:bg-yellow-400 dark:text-slate-950 transition-all"
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const SubscriptionManagement = (props) => (
+  <SubscriptionErrorBoundary>
+    <SubscriptionManagementContent {...props} />
+  </SubscriptionErrorBoundary>
+);
 
 export default SubscriptionManagement;
