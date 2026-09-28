@@ -535,6 +535,8 @@ const SubscriptionConfigSchema = new mongoose.Schema({
   periodMonths: { type: Number, default: 1 },
   categoryPricing: { type: Map, of: Number, default: {} },
   taxPercentage: { type: Number, default: 0 },
+  razorpayKeyId: { type: String, default: '' },
+  razorpayKeySecret: { type: String, default: '' },
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 

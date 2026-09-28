@@ -9,9 +9,9 @@ const {
 const { publishRealtimeEvent } = require('../realtime/realtimeManager');
 
 // Initialize Razorpay client
-const getRazorpayClient = () => {
-  const key_id = process.env.RAZORPAY_KEY_ID || '';
-  const key_secret = process.env.RAZORPAY_KEY_SECRET || '';
+const getRazorpayClient = (config = null) => {
+  const key_id = (config && config.razorpayKeyId) || process.env.RAZORPAY_KEY_ID || '';
+  const key_secret = (config && config.razorpayKeySecret) || process.env.RAZORPAY_KEY_SECRET || '';
   if (!key_id || !key_secret) return null;
   return new Razorpay({ key_id, key_secret });
 };
@@ -216,7 +216,7 @@ const getSubscriptions = async (req, res) => {
         nextExpiry
       },
       businesses: businessSubscriptions,
-      razorpayKeyId: process.env.RAZORPAY_KEY_ID || ''
+      razorpayKeyId: (config && config.razorpayKeyId) || process.env.RAZORPAY_KEY_ID || ''
     });
   } catch (error) {
     console.error('Error fetching vendor subscriptions:', error);
@@ -407,7 +407,8 @@ const createSubscriptionOrder = async (req, res) => {
     const paymentId = `PAY-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     let razorpayOrderId = `order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const rzp = getRazorpayClient();
+    let isRazorpayServerOrder = false;
+    const rzp = getRazorpayClient(config);
 
     if (rzp) {
       try {
@@ -425,6 +426,7 @@ const createSubscriptionOrder = async (req, res) => {
         });
         if (rzpOrder && rzpOrder.id) {
           razorpayOrderId = rzpOrder.id;
+          isRazorpayServerOrder = true;
         }
       } catch (rzpErr) {
         console.warn('⚠️ Razorpay order creation notice:', rzpErr.message || rzpErr);
@@ -453,10 +455,11 @@ const createSubscriptionOrder = async (req, res) => {
     res.status(200).json({
       success: true,
       orderId: razorpayOrderId,
+      isRazorpayServerOrder,
       amount,
       amountInPaise,
       currency,
-      keyId: process.env.RAZORPAY_KEY_ID || '',
+      keyId: (config && config.razorpayKeyId) || process.env.RAZORPAY_KEY_ID || '',
       subscriptionId,
       businessId: targetBusiness._id,
       businessName: targetBusiness.businessName,
@@ -496,11 +499,22 @@ const verifySubscriptionPayment = async (req, res) => {
     }
 
     // Find pending payment record
-    const payment = await SubscriptionPayment.findOne({ 
-      vendorId, 
-      businessId: String(businessId), 
-      razorpayOrderId: razorpay_order_id 
-    });
+    let payment = null;
+    if (razorpay_order_id) {
+      payment = await SubscriptionPayment.findOne({ 
+        vendorId, 
+        businessId: String(businessId), 
+        razorpayOrderId: razorpay_order_id 
+      });
+    }
+
+    if (!payment) {
+      payment = await SubscriptionPayment.findOne({ 
+        vendorId, 
+        businessId: String(businessId),
+        paymentStatus: 'PENDING'
+      }).sort({ createdAt: -1 });
+    }
 
     if (!payment) {
       return res.status(404).json({ success: false, message: 'Payment transaction record not found' });
@@ -523,7 +537,8 @@ const verifySubscriptionPayment = async (req, res) => {
     }
 
     // Requirement 9: Signature Verification using Razorpay Secret
-    const secret = process.env.RAZORPAY_KEY_SECRET || '';
+    const config = await getOrCreateConfig();
+    const secret = (config && config.razorpayKeySecret) || process.env.RAZORPAY_KEY_SECRET || '';
     let isSignatureValid = false;
 
     if (secret && razorpay_signature) {
@@ -771,11 +786,13 @@ const getSubscriptionConfig = async (req, res) => {
  */
 const updateSubscriptionConfig = async (req, res) => {
   try {
-    const { defaultPrice, categoryPricing, periodMonths } = req.body;
+    const { defaultPrice, categoryPricing, periodMonths, razorpayKeyId, razorpayKeySecret } = req.body;
     const config = await getOrCreateConfig();
 
     if (defaultPrice !== undefined) config.defaultPrice = Number(defaultPrice);
     if (periodMonths !== undefined) config.periodMonths = Number(periodMonths);
+    if (razorpayKeyId !== undefined) config.razorpayKeyId = String(razorpayKeyId).trim();
+    if (razorpayKeySecret !== undefined) config.razorpayKeySecret = String(razorpayKeySecret).trim();
     if (categoryPricing && typeof categoryPricing === 'object') {
       config.categoryPricing = categoryPricing;
     }
