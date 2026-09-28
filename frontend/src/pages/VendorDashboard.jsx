@@ -8,7 +8,7 @@ import {
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
   Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink, Activity, Search,
-  LayoutGrid, List, Camera, Image as ImageIcon, Menu, X
+  LayoutGrid, List, Camera, Image as ImageIcon, Menu, X, Sparkles
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
@@ -611,7 +611,7 @@ const VendorDashboard = () => {
       return ['dashboard', 'discounts', 'redeem', 'payments', 'renewal', 'Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'].includes(tab);
     }
     if (role === 'Vendor') {
-      const allowed = ['dashboard', 'catalog', 'customers', 'payments', 'profile', 'business', 'queries'];
+      const allowed = ['dashboard', 'catalog', 'customers', 'payments', 'profile', 'business', 'subscription', 'queries'];
       if (hasOrderCategory()) allowed.push('orders');
       if (hasBookingCategory()) allowed.push('bookings');
       if (hasJobCategory()) allowed.push('applications');
@@ -3183,6 +3183,7 @@ const VendorDashboard = () => {
                   }
                   items.push({ id: 'payments', name: 'Payments', icon: IndianRupee });
                   items.push({ id: 'business', name: 'Business', icon: Store });
+                  items.push({ id: 'subscription', name: 'Subscription', icon: Sparkles });
                   items.push({ id: 'queries', name: 'Queries', icon: HelpCircle });
                   items.push({ id: 'profile', name: 'Business Settings', icon: User });
                   return items;
@@ -3442,6 +3443,7 @@ const VendorDashboard = () => {
               }
               items.push({ id: 'payments', name: 'Payments', icon: IndianRupee });
               items.push({ id: 'business', name: 'Business', icon: Store });
+              items.push({ id: 'subscription', name: 'Subscription', icon: Sparkles });
               items.push({ id: 'queries', name: 'Queries', icon: HelpCircle });
               items.push({ id: 'profile', name: 'Business Settings', icon: User });
               return items;
