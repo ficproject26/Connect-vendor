@@ -470,6 +470,7 @@ const SubscriptionSchema = new mongoose.Schema({
   _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
   subscriptionId: { type: String, required: true, unique: true, index: true },
   vendorId: { type: String, required: true, index: true },
+  vendorName: { type: String },
   businessId: { type: String, required: true, index: true },
   businessType: { type: String, required: true },
   businessName: { type: String, required: true },
@@ -481,13 +482,31 @@ const SubscriptionSchema = new mongoose.Schema({
     default: 'Pending',
     index: true 
   },
+  paymentStatus: { type: String, default: 'PENDING' },
+  billingCycle: { type: String, default: 'Monthly' },
   startDate: { type: Date },
   endDate: { type: Date, index: true },
-  razorpayOrderId: { type: String, index: true },
+  nextDueDate: { type: Date },
+  paymentDate: { type: Date },
+  lastPaymentDate: { type: Date },
+  paymentId: { type: String },
   latestPaymentId: { type: String },
+  razorpayOrderId: { type: String, index: true },
+  razorpayPaymentId: { type: String },
   renewalCount: { type: Number, default: 0 },
+  state: { type: String, index: true },
+  district: { type: String, index: true },
+  division: { type: String, index: true },
+  pincode: { type: String, index: true },
+  stateId: { type: String },
+  districtId: { type: String },
+  divisionId: { type: String },
+  pincodeId: { type: String },
+  approvedBy: { type: String },
+  approvedByName: { type: String },
+  approvedByRole: { type: String },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
-}, { timestamps: true });
+}, { timestamps: true, strict: false });
 
 SubscriptionSchema.index({ vendorId: 1, businessId: 1 });
 SubscriptionSchema.index({ vendorId: 1, status: 1 });
@@ -498,6 +517,7 @@ const SubscriptionPaymentSchema = new mongoose.Schema({
   _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
   paymentId: { type: String, required: true, unique: true, index: true },
   vendorId: { type: String, required: true, index: true },
+  vendorName: { type: String },
   businessId: { type: String, required: true, index: true },
   businessType: { type: String, required: true },
   businessName: { type: String, required: true },
@@ -518,9 +538,14 @@ const SubscriptionPaymentSchema = new mongoose.Schema({
   paymentDate: { type: Date, default: Date.now, index: true },
   validFrom: { type: Date },
   validUntil: { type: Date },
+  state: { type: String },
+  district: { type: String },
+  division: { type: String },
+  pincode: { type: String },
+  approvedBy: { type: String },
   failureReason: { type: String },
   rawResponse: { type: mongoose.Schema.Types.Mixed, default: {} }
-}, { timestamps: true });
+}, { timestamps: true, strict: false });
 
 SubscriptionPaymentSchema.index({ vendorId: 1, paymentDate: -1 });
 SubscriptionPaymentSchema.index({ vendorId: 1, businessId: 1, paymentDate: -1 });

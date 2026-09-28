@@ -490,10 +490,30 @@ const Orders = () => {
                                       {/* Payment & Status */}
                                       <td className="px-6 py-4 text-xs">
                                         <div className="font-semibold text-slate-850 dark:text-slate-355">Amt: ₹{order.finalAmount || order.amount || 0}</div>
+                                        {order.paymentMethod && (
+                                          <div className="mt-1">
+                                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                              order.paymentMethod === 'Cash on Delivery' ? 'bg-orange-100/80 dark:bg-orange-950/80 text-orange-700 dark:text-orange-400 border-orange-200/30' :
+                                              order.paymentMethod === 'Wallet' ? 'bg-purple-100/80 dark:bg-purple-950/80 text-purple-700 dark:text-purple-400 border-purple-200/30' :
+                                              'bg-sky-100/80 dark:bg-sky-950/80 text-sky-700 dark:text-sky-400 border-sky-200/30'
+                                            }`}>
+                                              {order.paymentMethod === 'Cash on Delivery' ? '💵' : order.paymentMethod === 'Wallet' ? '👛' : '💳'} {order.paymentMethod}
+                                            </span>
+                                          </div>
+                                        )}
+                                        <div className="mt-1">
+                                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                            order.paymentStatus === 'Paid' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border-emerald-200/30' :
+                                            order.paymentMethod === 'Cash on Delivery' ? 'bg-orange-100/80 dark:bg-orange-950/80 text-orange-700 dark:text-orange-400 border-orange-200/30' :
+                                            'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border-amber-200/30'
+                                          }`}>
+                                            {order.paymentStatus === 'Paid' ? '✓ Paid' : order.paymentMethod === 'Cash on Delivery' ? 'COD' : 'Payment Pending'}
+                                          </span>
+                                        </div>
                                         <div className="mt-1">
                                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                                             order.status === 'Completed' || order.status === 'Delivered' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200/30' :
-                                            order.status === 'Pending' ? 'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/30' :
+                                            order.status === 'Pending' || order.status === 'Order Received' ? 'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/30' :
                                             order.status === 'Cancelled' ? 'bg-red-100/80 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/30' :
                                             'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30'
                                           }`}>
@@ -524,10 +544,30 @@ const Orders = () => {
                                       {/* Payment & Status */}
                                       <td className="px-6 py-4 text-xs">
                                         <div className="font-semibold text-slate-850 dark:text-slate-355">Amt: ₹{order.finalAmount || order.amount || 0}</div>
+                                        {order.paymentMethod && (
+                                          <div className="mt-1">
+                                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                              order.paymentMethod === 'Cash on Delivery' ? 'bg-orange-100/80 dark:bg-orange-950/80 text-orange-700 dark:text-orange-400 border-orange-200/30' :
+                                              order.paymentMethod === 'Wallet' ? 'bg-purple-100/80 dark:bg-purple-950/80 text-purple-700 dark:text-purple-400 border-purple-200/30' :
+                                              'bg-sky-100/80 dark:bg-sky-950/80 text-sky-700 dark:text-sky-400 border-sky-200/30'
+                                            }`}>
+                                              {order.paymentMethod === 'Cash on Delivery' ? '💵' : order.paymentMethod === 'Wallet' ? '👛' : '💳'} {order.paymentMethod}
+                                            </span>
+                                          </div>
+                                        )}
+                                        <div className="mt-1">
+                                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                            order.paymentStatus === 'Paid' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border-emerald-200/30' :
+                                            order.paymentMethod === 'Cash on Delivery' ? 'bg-orange-100/80 dark:bg-orange-950/80 text-orange-700 dark:text-orange-400 border-orange-200/30' :
+                                            'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border-amber-200/30'
+                                          }`}>
+                                            {order.paymentStatus === 'Paid' ? '✓ Paid' : order.paymentMethod === 'Cash on Delivery' ? 'COD' : 'Payment Pending'}
+                                          </span>
+                                        </div>
                                         <div className="mt-1">
                                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                                             order.status === 'Completed' || order.status === 'Delivered' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200/30' :
-                                            order.status === 'Pending' ? 'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/30' :
+                                            order.status === 'Pending' || order.status === 'Order Received' ? 'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/30' :
                                             order.status === 'Cancelled' ? 'bg-red-100/80 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/30' :
                                             'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30'
                                           }`}>

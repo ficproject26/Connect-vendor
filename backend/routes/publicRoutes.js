@@ -417,7 +417,16 @@ router.post('/orders', async (req, res) => {
     tableNumber,
     roomNumber,
     prescriptionUrl,
-    customerDisplayId
+    customerDisplayId,
+    // Payment fields from customer backend
+    paymentMethod,
+    paymentStatus,
+    razorpayPaymentId,
+    razorpayOrderId,
+    transactionId,
+    paidAt,
+    paymentProvider,
+    paymentReference
   } = req.body;
 
   if (!vendorId || !memberName || finalAmount === undefined || finalAmount === null) {
@@ -497,6 +506,21 @@ router.post('/orders', async (req, res) => {
       else resolvedCustId = 'FIC-CUST-100001';
     }
 
+    // Normalize payment method label for vendor display
+    const normalizePaymentMethod = (method, provider) => {
+      const m = (method || provider || '').toString().toUpperCase();
+      if (m === 'COD' || m === 'CASH_ON_DELIVERY' || m === 'CASH ON DELIVERY') return 'Cash on Delivery';
+      if (m === 'WALLET') return 'Wallet';
+      if (m === 'RAZORPAY' || m === 'ONLINE' || m === 'UPI' || m === 'CARD' || m === 'NETBANKING' || m === 'NET_BANKING') return 'Online (Razorpay)';
+      if (method) return method;
+      return null;
+    };
+
+    const resolvedPaymentMethod = normalizePaymentMethod(paymentMethod, paymentProvider);
+    const resolvedPaymentStatus = paymentStatus
+      ? (paymentStatus.toString().toUpperCase() === 'SUCCESS' || paymentStatus.toString().toUpperCase() === 'PAID' || paymentStatus.toString().toUpperCase() === 'COMPLETED' ? 'Paid' : paymentStatus)
+      : null;
+
     const orderData = {
       id: appId,
       order_number: appId,
@@ -512,7 +536,7 @@ router.post('/orders', async (req, res) => {
       totalAmount: totalAmount ?? finalAmount,
       discountApplied: discountApplied || 0,
       finalAmount: finalAmount,
-      status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : 'APPLICATION RECEIVED') : (req.body.status || 'Pending'),
+      status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : 'APPLICATION RECEIVED') : (req.body.status || 'Order Received'),
       candidateEmail: candidateEmail || req.body.customer_email,
       candidatePhone: req.body.customer_phone || req.body.candidatePhone || req.body.phone,
       candidateResume,
@@ -533,7 +557,16 @@ router.post('/orders', async (req, res) => {
       children: req.body.children || (items && items[0]?.children),
       customer_address: req.body.customer_address || req.body.address || req.body.deliveryAddress,
       deliveryAddress: req.body.deliveryAddress || req.body.customer_address || req.body.address,
-      customer_phone: req.body.customer_phone || req.body.phone
+      customer_phone: req.body.customer_phone || req.body.phone,
+      // Payment fields
+      ...(resolvedPaymentMethod && { paymentMethod: resolvedPaymentMethod }),
+      ...(resolvedPaymentStatus && { paymentStatus: resolvedPaymentStatus }),
+      ...(razorpayPaymentId && { razorpayPaymentId }),
+      ...(razorpayOrderId && { razorpayOrderId }),
+      ...(transactionId && { transactionId }),
+      ...(paidAt && { paidAt }),
+      ...(paymentReference && { paymentReference }),
+      ...(paymentProvider && { paymentProvider: resolvedPaymentMethod || paymentProvider })
     };
 
     // Helper function for atomic stock reduction
@@ -596,7 +629,7 @@ router.post('/orders', async (req, res) => {
             totalAmount: totalAmount ?? finalAmount,
             finalAmount: finalAmount,
             type: orderType,
-            status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : (existing.status && existing.status !== 'Pending' && existing.status !== 'Order Received' ? existing.status : 'APPLICATION RECEIVED')) : (req.body.status || existing.status || 'Pending'),
+            status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : (existing.status && existing.status !== 'Pending' && existing.status !== 'Order Received' ? existing.status : 'APPLICATION RECEIVED')) : (req.body.status || existing.status || 'Order Received'),
             appointmentDate: appointmentDate || existing.appointmentDate,
             appointmentTimeSlot: appointmentTimeSlot || existing.appointmentTimeSlot,
             doctorName: doctorName || existing.doctorName,
@@ -610,7 +643,16 @@ router.post('/orders', async (req, res) => {
             deliveryAddress: req.body.deliveryAddress || req.body.customer_address || req.body.address || existing.deliveryAddress,
             customer_phone: req.body.customer_phone || req.body.phone || existing.customer_phone,
             customerId: resolvedCustId,
-            customerDisplayId: resolvedCustId
+            customerDisplayId: resolvedCustId,
+            // Payment fields - always update if provided, preserving existing if not
+            ...(resolvedPaymentMethod && { paymentMethod: resolvedPaymentMethod }),
+            ...(resolvedPaymentStatus && { paymentStatus: resolvedPaymentStatus }),
+            ...(razorpayPaymentId && { razorpayPaymentId }),
+            ...(razorpayOrderId && { razorpayOrderId }),
+            ...(transactionId && { transactionId }),
+            ...(paidAt && { paidAt }),
+            ...(paymentReference && { paymentReference }),
+            ...(paymentProvider && { paymentProvider: resolvedPaymentMethod || paymentProvider })
           }
         }
       );
@@ -625,6 +667,90 @@ router.post('/orders', async (req, res) => {
   } catch (error) {
     console.error('Create Public Order Error:', error);
     res.status(500).json({ success: false, message: 'Server error creating order in vendor dashboard' });
+  }
+});
+
+// POST /api/public/orders/payment-sync
+// @desc  Sync payment details from customer backend to vendor order after payment completion
+router.post('/orders/payment-sync', async (req, res) => {
+  try {
+    const {
+      orderId,
+      order_number,
+      paymentMethod,
+      paymentStatus,
+      razorpayPaymentId,
+      razorpayOrderId,
+      transactionId,
+      paidAt,
+      paymentProvider,
+      paymentReference,
+      status
+    } = req.body;
+
+    if (!orderId && !order_number) {
+      return res.status(400).json({ success: false, message: 'orderId or order_number is required' });
+    }
+
+    // Build query to find order
+    const orConditions = [];
+    if (orderId) {
+      orConditions.push({ id: orderId }, { order_number: orderId });
+      if (mongoose.Types.ObjectId.isValid(orderId)) {
+        orConditions.push({ _id: new mongoose.Types.ObjectId(orderId) });
+      }
+    }
+    if (order_number) {
+      orConditions.push({ id: order_number }, { order_number: order_number });
+    }
+
+    const existingOrder = await Order.findOne({ $or: orConditions });
+    if (!existingOrder) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    // Normalize payment method
+    const normalizePaymentMethod = (method, provider) => {
+      const m = (method || provider || '').toString().toUpperCase();
+      if (m === 'COD' || m === 'CASH_ON_DELIVERY' || m === 'CASH ON DELIVERY') return 'Cash on Delivery';
+      if (m === 'WALLET') return 'Wallet';
+      if (m === 'RAZORPAY' || m === 'ONLINE' || m === 'UPI' || m === 'CARD' || m === 'NETBANKING' || m === 'NET_BANKING') return 'Online (Razorpay)';
+      if (method) return method;
+      return null;
+    };
+
+    const resolvedPaymentMethod = normalizePaymentMethod(paymentMethod, paymentProvider);
+    const resolvedPaymentStatus = paymentStatus
+      ? (paymentStatus.toString().toUpperCase() === 'SUCCESS' || paymentStatus.toString().toUpperCase() === 'PAID' || paymentStatus.toString().toUpperCase() === 'COMPLETED' ? 'Paid' : paymentStatus)
+      : null;
+
+    const updateFields = {};
+    if (resolvedPaymentMethod) updateFields.paymentMethod = resolvedPaymentMethod;
+    if (resolvedPaymentStatus) updateFields.paymentStatus = resolvedPaymentStatus;
+    if (razorpayPaymentId) updateFields.razorpayPaymentId = razorpayPaymentId;
+    if (razorpayOrderId) updateFields.razorpayOrderId = razorpayOrderId;
+    if (transactionId) updateFields.transactionId = transactionId;
+    if (paidAt) updateFields.paidAt = paidAt;
+    if (paymentReference) updateFields.paymentReference = paymentReference;
+    if (paymentProvider) updateFields.paymentProvider = resolvedPaymentMethod || paymentProvider;
+    // Update order status if provided
+    if (status && !['Pending', 'Order Received'].includes(existingOrder.status)) {
+      // Only update if order hasn't already been processed
+    } else if (status) {
+      updateFields.status = status;
+    }
+
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ success: false, message: 'No payment fields to update' });
+    }
+
+    await Order.updateOne({ _id: existingOrder._id }, { $set: updateFields });
+
+    console.log(`[Payment Sync] Order ${existingOrder.order_number || existingOrder.id} updated:`, updateFields);
+    res.status(200).json({ success: true, message: 'Payment details synced successfully', data: { orderId: existingOrder._id, ...updateFields } });
+  } catch (error) {
+    console.error('Payment Sync Error:', error);
+    res.status(500).json({ success: false, message: 'Server error syncing payment details' });
   }
 });
 

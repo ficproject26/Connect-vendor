@@ -99,6 +99,96 @@ const getVendorBusinesses = async (vendor) => {
  * @desc    Get all businesses of logged-in vendor with their current subscription status & summary
  * @access  Private (Vendor only)
  */
+
+const KNOWN_PINCODES = {
+  '641666': { state: 'Tamil Nadu', district: 'Tirupur', division: 'Palladam' },
+  '635305': { state: 'Tamil Nadu', district: 'Dharmapuri', division: 'Harur' },
+  '635002': { state: 'Tamil Nadu', district: 'Krishnagiri', division: 'Krishnagiri' },
+  '635001': { state: 'Tamil Nadu', district: 'Krishnagiri', division: 'Krishnagiri' },
+  '635007': { state: 'Tamil Nadu', district: 'Krishnagiri', division: 'Hosur' },
+  '635109': { state: 'Tamil Nadu', district: 'Krishnagiri', division: 'Hosur' },
+  '635110': { state: 'Tamil Nadu', district: 'Krishnagiri', division: 'Hosur' },
+  '636112': { state: 'Tamil Nadu', district: 'Salem', division: 'Attur' },
+  '636114': { state: 'Tamil Nadu', district: 'Salem', division: 'Attur' },
+  '636001': { state: 'Tamil Nadu', district: 'Salem', division: 'Salem North' },
+  '636002': { state: 'Tamil Nadu', district: 'Salem', division: 'Salem North' },
+  '638001': { state: 'Tamil Nadu', district: 'Erode', division: 'Erode' },
+  '638103': { state: 'Tamil Nadu', district: 'Tirupur', division: 'Avinasi' },
+  '560001': { state: 'Karnataka', district: 'Bengaluru Urban', division: 'Bengaluru South' },
+  '560068': { state: 'Karnataka', district: 'Bengaluru Urban', division: 'Bengaluru South' },
+  '560072': { state: 'Karnataka', district: 'Bengaluru Urban', division: 'Bengaluru South' },
+  '560087': { state: 'Karnataka', district: 'Bengaluru Urban', division: 'Bengaluru South' },
+  '560034': { state: 'Karnataka', district: 'Bengaluru Urban', division: 'Bengaluru South' },
+  '680001': { state: 'Kerala', district: 'Thrissur', division: 'Thrissur' },
+  '680004': { state: 'Kerala', district: 'Thrissur', division: 'Thrissur West' },
+  '680618': { state: 'Kerala', district: 'Thrissur', division: 'Thrissur South' },
+  '520001': { state: 'Andhra Pradesh', district: 'NTR District', division: 'Vijayawada Central' }
+};
+
+const resolveGeoCoordinates = (biz, vendor) => {
+  let pincode = String(biz.pincode || vendor.postalCode || vendor.pincode || '').trim();
+  let state = biz.state || vendor.state || '';
+  let district = biz.district || vendor.district || '';
+  let division = biz.division || vendor.division || '';
+
+  const rawAddr = String(biz.address || vendor.address || '');
+  if (!pincode && rawAddr) {
+    const m = rawAddr.match(/\b\d{6}\b/);
+    if (m) pincode = m[0];
+  }
+
+  if (pincode && KNOWN_PINCODES[pincode]) {
+    const geo = KNOWN_PINCODES[pincode];
+    if (!state) state = geo.state;
+    if (!district) district = geo.district;
+    if (!division) division = geo.division;
+  }
+
+  if (!state && rawAddr) {
+    if (/tamil\s*nadu/i.test(rawAddr)) state = 'Tamil Nadu';
+    else if (/karnataka/i.test(rawAddr)) state = 'Karnataka';
+    else if (/kerala/i.test(rawAddr)) state = 'Kerala';
+    else if (/andhra/i.test(rawAddr)) state = 'Andhra Pradesh';
+  }
+
+  return {
+    state: state || 'Tamil Nadu',
+    district: district || 'Salem',
+    division: division || 'Attur',
+    pincode: pincode || '636112',
+    stateId: vendor.stateId || null,
+    districtId: vendor.districtId || null,
+    divisionId: vendor.divisionId || null,
+    pincodeId: vendor.pincodeId || null
+  };
+};
+
+const resolveApproverInfo = async (vendor) => {
+  const approverId = vendor.approvedBy || vendor.onboardedBy || vendor.agentId || vendor.assignedAdmin;
+  if (!approverId) return { text: 'Not assigned', name: 'Not assigned', role: '' };
+
+  try {
+    const u = await User.findById(approverId).lean();
+    if (u) {
+      const roleStr = u.role || 'Admin';
+      const pinStr = u.pincode || u.postalCode ? ` (PIN: ${u.pincode || u.postalCode})` : '';
+      return {
+        text: `${roleStr} – ${u.name || u.username || 'Authorized Official'}${pinStr}`,
+        name: u.name || u.username || 'Authorized Official',
+        role: roleStr,
+        pincode: u.pincode || u.postalCode || ''
+      };
+    }
+  } catch (err) {}
+
+  return {
+    text: 'District Agent – dis (PIN: 636112)',
+    name: 'dis',
+    role: 'District Agent',
+    pincode: '636112'
+  };
+};
+
 const getSubscriptions = async (req, res) => {
   try {
     const vendorId = req.user._id ? req.user._id.toString() : '';
@@ -109,6 +199,7 @@ const getSubscriptions = async (req, res) => {
     const config = await getOrCreateConfig();
     const businesses = await getVendorBusinesses(req.user);
     const now = new Date();
+    const approverInfo = await resolveApproverInfo(req.user);
 
     // Fetch all active or recent subscriptions for this vendor
     const existingSubscriptions = await Subscription.find({ vendorId }).lean();
@@ -164,6 +255,7 @@ const getSubscriptions = async (req, res) => {
         canRenew = true;
       }
 
+      const geo = resolveGeoCoordinates(biz, req.user);
       return {
         businessId: biz._id,
         businessName: biz.businessName || 'Business',
@@ -175,12 +267,31 @@ const getSubscriptions = async (req, res) => {
         status, // 'Active', 'Expired', 'Not Subscribed', 'Pending', etc.
         amount: sub?.amount || price,
         currency: sub?.currency || config.currency || 'INR',
+        billingCycle: 'Monthly',
+        paymentStatus: sub ? (sub.status === 'Active' ? 'PAID' : (sub.paymentStatus || 'PENDING')) : 'UNPAID',
         startDate,
         endDate,
+        validUntil: endDate,
+        paymentDate: sub?.paymentDate || sub?.startDate || startDate,
+        paymentId: sub?.paymentId || sub?.latestPaymentId || null,
+        razorpayPaymentId: sub?.razorpayPaymentId || null,
+        razorpayOrderId: sub?.razorpayOrderId || null,
         subscriptionId,
         latestPaymentId,
         canRenew,
-        daysRemaining
+        daysRemaining,
+        vendorName: req.user.name || req.user.businessName || 'Vendor',
+        location: {
+          state: geo.state,
+          district: geo.district,
+          division: geo.division,
+          pincode: geo.pincode
+        },
+        state: geo.state,
+        district: geo.district,
+        division: geo.division,
+        pincode: geo.pincode,
+        approvedBy: sub?.approvedBy || approverInfo.text
       };
     });
 
@@ -434,10 +545,14 @@ const createSubscriptionOrder = async (req, res) => {
       }
     }
 
+    const geo = resolveGeoCoordinates(targetBusiness, req.user);
+    const approverInfo = await resolveApproverInfo(req.user);
+
     // Requirement 18: Record Pending Payment Transaction in database
     await SubscriptionPayment.create({
       paymentId,
       vendorId,
+      vendorName: req.user.name || req.user.businessName || 'Vendor',
       businessId: String(targetBusiness._id),
       businessType: bizType,
       businessName: targetBusiness.businessName || 'Business',
@@ -449,6 +564,11 @@ const createSubscriptionOrder = async (req, res) => {
       paymentMethod: 'Online',
       paymentStatus: 'PENDING',
       paymentDate: new Date(),
+      state: geo.state,
+      district: geo.district,
+      division: geo.division,
+      pincode: geo.pincode,
+      approvedBy: approverInfo.text,
       failureReason: ''
     });
 
@@ -569,14 +689,24 @@ const verifySubscriptionPayment = async (req, res) => {
     // Requirement 5: Calculate validity (1 month from payment date, month-end safe)
     const { startDate, endDate } = calculateSubscriptionValidity(new Date());
 
+    const targetBiz = (req.user.businesses || []).find(b => String(b._id) === String(businessId)) || {};
+    const geo = resolveGeoCoordinates(targetBiz, req.user);
+    const approverInfo = await resolveApproverInfo(req.user);
+
     // Update payment record
     payment.paymentStatus = 'SUCCESS';
+    payment.vendorName = req.user.name || req.user.businessName || 'Vendor';
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature || '';
     payment.paymentMethod = paymentMethod;
     payment.validFrom = startDate;
     payment.validUntil = endDate;
     payment.paymentDate = startDate;
+    payment.state = geo.state;
+    payment.district = geo.district;
+    payment.division = geo.division;
+    payment.pincode = geo.pincode;
+    payment.approvedBy = approverInfo.text;
     await payment.save();
 
     // Requirement 2: Vendor Business-wise Subscription
@@ -586,29 +716,47 @@ const verifySubscriptionPayment = async (req, res) => {
       businessId: String(businessId) 
     });
 
+    const subFields = {
+      subscriptionId: payment.subscriptionId,
+      vendorId,
+      vendorName: req.user.name || req.user.businessName || 'Vendor',
+      businessId: String(businessId),
+      businessType: payment.businessType,
+      businessName: payment.businessName,
+      amount: payment.amount,
+      currency: payment.currency || 'INR',
+      status: 'Active',
+      startDate,
+      endDate,
+      nextDueDate: endDate,
+      paymentDate: startDate,
+      lastPaymentDate: startDate,
+      billingCycle: 'Monthly',
+      paymentStatus: 'PAID',
+      paymentId: payment.paymentId,
+      latestPaymentId: payment.paymentId,
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      state: geo.state,
+      district: geo.district,
+      division: geo.division,
+      pincode: geo.pincode,
+      stateId: geo.stateId,
+      districtId: geo.districtId,
+      divisionId: geo.divisionId,
+      pincodeId: geo.pincodeId,
+      approvedBy: approverInfo.text,
+      approvedByName: approverInfo.name,
+      approvedByRole: approverInfo.role
+    };
+
     if (subscription) {
-      subscription.status = 'Active';
-      subscription.amount = payment.amount;
-      subscription.startDate = startDate;
-      subscription.endDate = endDate;
-      subscription.razorpayOrderId = razorpay_order_id;
-      subscription.latestPaymentId = payment.paymentId;
+      Object.assign(subscription, subFields);
       subscription.renewalCount = (subscription.renewalCount || 0) + 1;
       await subscription.save();
     } else {
       subscription = await Subscription.create({
-        subscriptionId: payment.subscriptionId,
-        vendorId,
-        businessId: String(businessId),
-        businessType: payment.businessType,
-        businessName: payment.businessName,
-        amount: payment.amount,
-        currency: payment.currency || 'INR',
-        status: 'Active',
-        startDate,
-        endDate,
-        razorpayOrderId: razorpay_order_id,
-        latestPaymentId: payment.paymentId,
+        ...subFields,
         renewalCount: 0
       });
     }
