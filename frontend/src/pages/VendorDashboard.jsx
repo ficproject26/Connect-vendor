@@ -17,6 +17,7 @@ import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl, formatImageUrl 
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 import { compressImage } from '../utils/imageCompressor';
+import SubscriptionManagement from './business/SubscriptionManagement';
 
 const formatCustomerId = (c, customersList = null) => {
   if (!c) return 'FIC-CUST-100001';
@@ -6621,6 +6622,11 @@ const VendorDashboard = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Subscription Tab (Vendor) */}
+        {activeTab === 'subscription' && (
+          <SubscriptionManagement />
         )}
 
         {/* Queries Tab (Vendor) */}

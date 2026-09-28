@@ -45,8 +45,10 @@ const EVENT_TYPES = {
   SETTLEMENT_CREATED: 'SETTLEMENT_CREATED',
   SETTLEMENT_UPDATED: 'SETTLEMENT_UPDATED',
 
-  // Platform & Membership
+  // Platform & Membership & Subscription
   MEMBERSHIP_UPDATED: 'MEMBERSHIP_UPDATED',
+  SUBSCRIPTION_CREATED: 'SUBSCRIPTION_CREATED',
+  SUBSCRIPTION_UPDATED: 'SUBSCRIPTION_UPDATED',
   CATEGORY_UPDATED: 'CATEGORY_UPDATED',
 
   // System & Connection Heartbeat
@@ -65,6 +67,7 @@ const ENTITY_NAMES = {
   USER: 'user',
   VENDOR: 'vendor',
   BUSINESS: 'business',
+  SUBSCRIPTION: 'subscription',
   SETTLEMENT: 'settlement',
   MEMBERSHIP: 'membership',
   CATEGORY: 'category',

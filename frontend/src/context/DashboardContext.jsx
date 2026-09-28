@@ -362,7 +362,7 @@ export const DashboardProvider = ({ children }) => {
       return ['dashboard', 'discounts', 'redeem', 'payments', 'renewal', 'Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'].includes(tab);
     }
     if (role === 'Vendor') {
-      const allowed = ['dashboard', 'catalog', 'customers', 'payments', 'profile', 'business', 'queries'];
+      const allowed = ['dashboard', 'catalog', 'customers', 'payments', 'profile', 'business', 'subscription', 'queries'];
       if (hasOrderCategory()) allowed.push('orders');
       if (hasBookingCategory()) allowed.push('bookings');
       if (hasJobCategory()) allowed.push('applications');

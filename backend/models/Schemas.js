@@ -465,6 +465,79 @@ const CategorySchema = new mongoose.Schema({
   children: [{ type: mongoose.Schema.Types.Mixed }]
 }, { timestamps: true, strict: false });
 
+// --- VENDOR SUBSCRIPTION SCHEMA ---
+const SubscriptionSchema = new mongoose.Schema({
+  _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+  subscriptionId: { type: String, required: true, unique: true, index: true },
+  vendorId: { type: String, required: true, index: true },
+  businessId: { type: String, required: true, index: true },
+  businessType: { type: String, required: true },
+  businessName: { type: String, required: true },
+  amount: { type: Number, required: true },
+  currency: { type: String, default: 'INR' },
+  status: { 
+    type: String, 
+    enum: ['Active', 'Expired', 'Pending', 'Payment Failed', 'Cancelled'], 
+    default: 'Pending',
+    index: true 
+  },
+  startDate: { type: Date },
+  endDate: { type: Date, index: true },
+  razorpayOrderId: { type: String, index: true },
+  latestPaymentId: { type: String },
+  renewalCount: { type: Number, default: 0 },
+  metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
+}, { timestamps: true });
+
+SubscriptionSchema.index({ vendorId: 1, businessId: 1 });
+SubscriptionSchema.index({ vendorId: 1, status: 1 });
+SubscriptionSchema.index({ vendorId: 1, endDate: 1 });
+
+// --- VENDOR SUBSCRIPTION PAYMENT TRANSACTION SCHEMA ---
+const SubscriptionPaymentSchema = new mongoose.Schema({
+  _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+  paymentId: { type: String, required: true, unique: true, index: true },
+  vendorId: { type: String, required: true, index: true },
+  businessId: { type: String, required: true, index: true },
+  businessType: { type: String, required: true },
+  businessName: { type: String, required: true },
+  subscriptionId: { type: String, required: true, index: true },
+  subscriptionType: { type: String, default: 'Monthly Subscription' },
+  razorpayOrderId: { type: String, index: true },
+  razorpayPaymentId: { type: String, index: true },
+  razorpaySignature: { type: String },
+  amount: { type: Number, required: true },
+  currency: { type: String, default: 'INR' },
+  paymentMethod: { type: String, default: 'Online' },
+  paymentStatus: { 
+    type: String, 
+    enum: ['SUCCESS', 'FAILED', 'PENDING'], 
+    default: 'PENDING',
+    index: true 
+  },
+  paymentDate: { type: Date, default: Date.now, index: true },
+  validFrom: { type: Date },
+  validUntil: { type: Date },
+  failureReason: { type: String },
+  rawResponse: { type: mongoose.Schema.Types.Mixed, default: {} }
+}, { timestamps: true });
+
+SubscriptionPaymentSchema.index({ vendorId: 1, paymentDate: -1 });
+SubscriptionPaymentSchema.index({ vendorId: 1, businessId: 1, paymentDate: -1 });
+SubscriptionPaymentSchema.index({ vendorId: 1, paymentStatus: 1 });
+SubscriptionPaymentSchema.index({ razorpayOrderId: 1, paymentStatus: 1 });
+
+// --- VENDOR SUBSCRIPTION CONFIG SCHEMA ---
+const SubscriptionConfigSchema = new mongoose.Schema({
+  _id: { type: String, default: 'default_subscription_config' },
+  defaultPrice: { type: Number, default: 1000 },
+  currency: { type: String, default: 'INR' },
+  periodMonths: { type: Number, default: 1 },
+  categoryPricing: { type: Map, of: Number, default: {} },
+  taxPercentage: { type: Number, default: 0 },
+  isActive: { type: Boolean, default: true }
+}, { timestamps: true });
+
 // Compile and export models using the getModel wrapper
 module.exports = {
   User: getModel('User', UserSchema),
@@ -478,6 +551,9 @@ module.exports = {
   PlatformConfig: getModel('PlatformConfig', PlatformConfigSchema),
   Settlement: getModel('Settlement', SettlementSchema),
   Patient: getModel('Patient', PatientSchema),
-  Category: getModel('Category', CategorySchema)
+  Category: getModel('Category', CategorySchema),
+  Subscription: getModel('Subscription', SubscriptionSchema),
+  SubscriptionPayment: getModel('SubscriptionPayment', SubscriptionPaymentSchema),
+  SubscriptionConfig: getModel('SubscriptionConfig', SubscriptionConfigSchema)
 };
 

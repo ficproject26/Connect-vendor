@@ -114,13 +114,16 @@ const vendorRoutes = require('./routes/vendorRoutes');
 const memberRoutes = require('./routes/memberRoutes');
 const publicRoutes = require('./routes/publicRoutes');
 const realtimeRoutes = require('./routes/realtimeRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const { realtimeManager } = require('./realtime/realtimeManager');
 const http = require('http');
 
 // Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/vendor/subscriptions', subscriptionRoutes);
 app.use('/api/vendor', vendorRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/member', memberRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/realtime', realtimeRoutes);

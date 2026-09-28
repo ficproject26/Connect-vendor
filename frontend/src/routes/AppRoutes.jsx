@@ -13,6 +13,7 @@ import ProductList from '../pages/marketplace/products/ProductList';
 import Orders from '../pages/orders/Orders';
 import Customers from '../pages/customers/Customers';
 import BusinessList from '../pages/business/BusinessList';
+import SubscriptionManagement from '../pages/business/SubscriptionManagement';
 import Profile from '../pages/settings/Profile';
 import Membership from '../pages/settings/Membership';
 import Wallet from '../pages/wallet/Wallet';
@@ -31,6 +32,7 @@ const DashboardContentGate = () => {
     case 'orders': return <Orders />;
     case 'customers': return <Customers />;
     case 'business': return <BusinessList />;
+    case 'subscription': return <SubscriptionManagement />;
     case 'profile': return <Profile />;
     case 'card': return <Membership />;
     case 'payments': return <Wallet />;
