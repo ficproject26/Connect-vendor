@@ -5128,24 +5128,83 @@ const VendorDashboard = () => {
 
                               {/* 6. Payment Method */}
                               <td className="px-5 py-4 whitespace-nowrap">
-                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                                  {order.paymentMethod || order.payment_method || order.paymentMode || order.paymentType || 'N/A'}
-                                </span>
+                                {(() => {
+                                  const rawMethod = order.paymentMethod || order.payment_method || order.paymentMode || order.paymentType || (order.walletTxnId ? 'Connect Wallet' : order.razorpayPaymentId ? 'Online (Razorpay)' : 'Connect Wallet');
+                                  const lower = String(rawMethod).toLowerCase();
+                                  const isCod = lower.includes('cod') || lower.includes('cash');
+                                  const isWallet = lower.includes('wallet');
+                                  const isUPI = lower.includes('upi');
+                                  const isCard = lower.includes('card');
+                                  const isNetbanking = lower.includes('bank');
+
+                                  let badgeClass = "bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/60";
+                                  let icon = "💳";
+                                  let label = rawMethod;
+
+                                  if (isCod) {
+                                    badgeClass = "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/60";
+                                    icon = "💵";
+                                    label = "Cash on Delivery";
+                                  } else if (isWallet) {
+                                    badgeClass = "bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800/60";
+                                    icon = "👛";
+                                    label = "Connect Wallet";
+                                  } else if (isUPI) {
+                                    icon = "📱";
+                                    label = "UPI";
+                                  } else if (isCard) {
+                                    icon = "💳";
+                                    label = "Card";
+                                  } else if (isNetbanking) {
+                                    icon = "🏦";
+                                    label = "Net Banking";
+                                  } else if (lower.includes('razorpay') || lower.includes('online')) {
+                                    icon = "💳";
+                                    label = "Online (Razorpay)";
+                                  }
+
+                                  const txnId = order.transactionId || order.razorpayPaymentId || order.walletTxnId;
+
+                                  return (
+                                    <div className="space-y-1">
+                                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${badgeClass}`}>
+                                        <span>{icon}</span>
+                                        <span>{label}</span>
+                                      </span>
+                                      {txnId && (
+                                        <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 truncate max-w-[150px]" title={txnId}>
+                                          ID: {txnId}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </td>
 
                               {/* 7. Status */}
                               <td className="px-5 py-4">
                                 <div className="space-y-1">
-                                  <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                                    Payment:{' '}
-                                    <span className={`font-bold ${
-                                      (order.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(order.status))
-                                        ? 'text-emerald-600 dark:text-emerald-400'
-                                        : 'text-amber-600 dark:text-amber-400'
-                                    }`}>
-                                      {order.paymentStatus || (['Completed', 'Delivered'].includes(order.status) ? 'Paid' : 'Pending')}
-                                    </span>
-                                  </div>
+                                  {(() => {
+                                    const rawMethod = String(order.paymentMethod || order.payment_method || '').toLowerCase();
+                                    const isCod = rawMethod.includes('cash') || rawMethod.includes('cod');
+                                    const isDelivered = ['Delivered', 'Completed'].includes(order.status);
+                                    const isPaid = order.paymentStatus === 'Paid' || order.payment_status === 'Paid' || isDelivered || (!isCod && order.paymentStatus !== 'Failed' && order.paymentStatus !== 'Pending');
+
+                                    return (
+                                      <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                        Payment:{' '}
+                                        <span className={`font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border ${
+                                          isPaid
+                                            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                                            : isCod
+                                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                                            : 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
+                                        }`}>
+                                          {isPaid ? '✓ Paid' : isCod ? 'COD Pending' : (order.paymentStatus || 'Payment Pending')}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
                                   <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
                                     Order:{' '}
                                     <span className={`font-bold ${
@@ -5155,7 +5214,7 @@ const VendorDashboard = () => {
                                         ? 'text-red-600 dark:text-red-400'
                                         : 'text-blue-600 dark:text-blue-400'
                                     }`}>
-                                      {order.status || 'Pending'}
+                                      {order.status || 'Order Received'}
                                     </span>
                                   </div>
                                   <div className="pt-1">
@@ -12428,7 +12487,7 @@ required
               </div>
 
               {/* Billing Identifiers & Timing details */}
-              <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-850 p-4 rounded-2xl grid grid-cols-2 gap-3 text-xs font-mono">
+              <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-850 p-4 rounded-2xl grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs font-mono">
                 <div>
                   <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">INVOICE ID:</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">{(selectedBillOrder._id || selectedBillOrder.id || '').toUpperCase()}</span>
@@ -12440,12 +12499,30 @@ required
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">ORDER TYPE:</span>
-                  <span className="font-bold text-slate-850 dark:text-slate-255 uppercase">{selectedBillOrder.type || 'Order'}</span>
+                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">ORDER STATUS:</span>
+                  <span className="font-extrabold text-emerald-600 dark:text-emerald-400 uppercase">{selectedBillOrder.status || 'Order Received'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">STATUS:</span>
-                  <span className="font-extrabold text-emerald-600 dark:text-emerald-450 uppercase">{selectedBillOrder.status}</span>
+                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">PAYMENT METHOD:</span>
+                  <span className="font-bold text-primary-600 dark:text-primary-400">
+                    {selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || 'Connect Wallet'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">PAYMENT STATUS:</span>
+                  <span className={`font-bold ${
+                    (selectedBillOrder.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(selectedBillOrder.status) || (!String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cash') && !String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cod')))
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-amber-600 dark:text-amber-400'
+                  }`}>
+                    {(selectedBillOrder.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(selectedBillOrder.status) || (!String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cash') && !String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cod'))) ? 'PAID' : 'PENDING'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">TRANSACTION ID:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 truncate block" title={selectedBillOrder.transactionId || selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId || ('TXN_' + (selectedBillOrder.order_number || selectedBillOrder.id || '').toUpperCase())}>
+                    {selectedBillOrder.transactionId || selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId || ('TXN_' + (selectedBillOrder.order_number || selectedBillOrder.id || '').toUpperCase())}
+                  </span>
                 </div>
               </div>
 

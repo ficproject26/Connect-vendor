@@ -508,18 +508,25 @@ router.post('/orders', async (req, res) => {
 
     // Normalize payment method label for vendor display
     const normalizePaymentMethod = (method, provider) => {
-      const m = (method || provider || '').toString().toUpperCase();
-      if (m === 'COD' || m === 'CASH_ON_DELIVERY' || m === 'CASH ON DELIVERY') return 'Cash on Delivery';
-      if (m === 'WALLET') return 'Wallet';
-      if (m === 'RAZORPAY' || m === 'ONLINE' || m === 'UPI' || m === 'CARD' || m === 'NETBANKING' || m === 'NET_BANKING') return 'Online (Razorpay)';
-      if (method) return method;
-      return null;
+      const m = (method || req.body.payment_method || provider || '').toString().toUpperCase();
+      if (m.includes('COD') || m.includes('CASH')) return 'Cash on Delivery';
+      if (m.includes('WALLET')) return 'Connect Wallet';
+      if (m === 'UPI') return 'UPI';
+      if (m === 'CARD') return 'Card';
+      if (m.includes('BANK')) return 'Net Banking';
+      if (m.includes('RAZORPAY') || m.includes('ONLINE')) return 'Online (Razorpay)';
+      if (method || req.body.payment_method) return method || req.body.payment_method;
+      return 'Connect Wallet';
     };
 
     const resolvedPaymentMethod = normalizePaymentMethod(paymentMethod, paymentProvider);
+    const isCod = resolvedPaymentMethod === 'Cash on Delivery';
     const resolvedPaymentStatus = paymentStatus
-      ? (paymentStatus.toString().toUpperCase() === 'SUCCESS' || paymentStatus.toString().toUpperCase() === 'PAID' || paymentStatus.toString().toUpperCase() === 'COMPLETED' ? 'Paid' : paymentStatus)
-      : null;
+      ? (['SUCCESS', 'PAID', 'COMPLETED'].includes(paymentStatus.toString().toUpperCase()) ? 'Paid' : paymentStatus)
+      : (req.body.payment_status ? (['SUCCESS', 'PAID', 'COMPLETED'].includes(req.body.payment_status.toString().toUpperCase()) ? 'Paid' : req.body.payment_status) : (isCod ? 'Pending' : 'Paid'));
+
+    const resolvedTxnId = transactionId || req.body.paymentId || razorpayPaymentId || (!isCod ? ('TXN_' + appId) : undefined);
+    const resolvedPaidAt = resolvedPaymentStatus === 'Paid' ? (paidAt || new Date()) : undefined;
 
     const orderData = {
       id: appId,
@@ -559,12 +566,14 @@ router.post('/orders', async (req, res) => {
       deliveryAddress: req.body.deliveryAddress || req.body.customer_address || req.body.address,
       customer_phone: req.body.customer_phone || req.body.phone,
       // Payment fields
-      ...(resolvedPaymentMethod && { paymentMethod: resolvedPaymentMethod }),
-      ...(resolvedPaymentStatus && { paymentStatus: resolvedPaymentStatus }),
+      paymentMethod: resolvedPaymentMethod,
+      payment_method: resolvedPaymentMethod,
+      paymentStatus: resolvedPaymentStatus,
+      payment_status: resolvedPaymentStatus,
+      ...(resolvedTxnId && { transactionId: resolvedTxnId }),
+      ...(resolvedPaidAt && { paidAt: resolvedPaidAt }),
       ...(razorpayPaymentId && { razorpayPaymentId }),
       ...(razorpayOrderId && { razorpayOrderId }),
-      ...(transactionId && { transactionId }),
-      ...(paidAt && { paidAt }),
       ...(paymentReference && { paymentReference }),
       ...(paymentProvider && { paymentProvider: resolvedPaymentMethod || paymentProvider })
     };
@@ -644,13 +653,15 @@ router.post('/orders', async (req, res) => {
             customer_phone: req.body.customer_phone || req.body.phone || existing.customer_phone,
             customerId: resolvedCustId,
             customerDisplayId: resolvedCustId,
-            // Payment fields - always update if provided, preserving existing if not
-            ...(resolvedPaymentMethod && { paymentMethod: resolvedPaymentMethod }),
-            ...(resolvedPaymentStatus && { paymentStatus: resolvedPaymentStatus }),
+            // Payment fields - always set resolved or preserved values
+            paymentMethod: resolvedPaymentMethod || existing.paymentMethod || existing.payment_method || 'Connect Wallet',
+            payment_method: resolvedPaymentMethod || existing.payment_method || existing.paymentMethod || 'Connect Wallet',
+            paymentStatus: resolvedPaymentStatus || existing.paymentStatus || existing.payment_status || 'Paid',
+            payment_status: resolvedPaymentStatus || existing.payment_status || existing.paymentStatus || 'Paid',
+            ...(resolvedTxnId && { transactionId: resolvedTxnId }),
+            ...(resolvedPaidAt && { paidAt: resolvedPaidAt }),
             ...(razorpayPaymentId && { razorpayPaymentId }),
             ...(razorpayOrderId && { razorpayOrderId }),
-            ...(transactionId && { transactionId }),
-            ...(paidAt && { paidAt }),
             ...(paymentReference && { paymentReference }),
             ...(paymentProvider && { paymentProvider: resolvedPaymentMethod || paymentProvider })
           }

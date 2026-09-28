@@ -849,6 +849,53 @@ const getOrders = async (req, res) => {
       }
 
       normalizeAddressStateForOrder(obj);
+
+      // Payment Method & Status Normalization
+      let pMethod = obj.paymentMethod || obj.payment_method || obj.paymentMode || obj.paymentType || '';
+      let pStatus = obj.paymentStatus || obj.payment_status || '';
+
+      const isCodOrder = pMethod.toLowerCase().includes('cash') || pMethod.toLowerCase().includes('cod');
+
+      if (!pMethod || pMethod === 'N/A') {
+        if (obj.walletTxnId || (obj.transactionId && String(obj.transactionId).startsWith('TXN_'))) {
+          pMethod = 'Connect Wallet';
+        } else if (obj.razorpayPaymentId || obj.razorpayOrderId) {
+          pMethod = 'Online (Razorpay)';
+        } else {
+          pMethod = 'Connect Wallet';
+        }
+      } else {
+        const lowerM = pMethod.toLowerCase().trim();
+        if (lowerM === 'wallet' || lowerM === 'connect wallet') pMethod = 'Connect Wallet';
+        else if (lowerM === 'cod' || lowerM === 'cash on delivery') pMethod = 'Cash on Delivery';
+        else if (lowerM === 'upi') pMethod = 'UPI';
+        else if (lowerM === 'card') pMethod = 'Card';
+        else if (lowerM === 'netbanking' || lowerM === 'net banking') pMethod = 'Net Banking';
+        else if (lowerM === 'razorpay' || lowerM === 'online') pMethod = 'Online (Razorpay)';
+      }
+
+      if (!pStatus || pStatus === 'N/A') {
+        if (isCodOrder) {
+          pStatus = ['Delivered', 'Completed'].includes(obj.status) ? 'Paid' : 'Pending';
+        } else {
+          pStatus = 'Paid';
+        }
+      } else if (isCodOrder && ['Delivered', 'Completed'].includes(obj.status)) {
+        pStatus = 'Paid';
+      }
+
+      obj.paymentMethod = pMethod;
+      obj.payment_method = pMethod;
+      obj.paymentStatus = pStatus;
+      obj.payment_status = pStatus;
+
+      if (!obj.transactionId) {
+        obj.transactionId = obj.razorpayPaymentId || obj.walletTxnId || ('TXN_' + (obj.order_number || obj.id || (obj._id ? String(obj._id).slice(-6) : '')).toUpperCase());
+      }
+      if (!obj.paidAt && pStatus === 'Paid') {
+        obj.paidAt = obj.paymentDate || obj.created_at || obj.createdAt || new Date();
+      }
+
       return obj;
     });
 
@@ -1322,6 +1369,17 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
+    // Auto-mark payment as Paid when order is Delivered or Completed
+    if (['Delivered', 'Completed'].includes(order.status)) {
+      const isCod = String(order.paymentMethod || order.payment_method || '').toLowerCase().includes('cash') ||
+                    String(order.paymentMethod || order.payment_method || '').toLowerCase().includes('cod');
+      if (isCod || order.paymentStatus !== 'Paid') {
+        order.paymentStatus = 'Paid';
+        order.payment_status = 'Paid';
+        if (!order.paidAt) order.paidAt = new Date();
+      }
+    }
+
     try {
       await order.save();
     } catch (saveErr) {
@@ -1332,6 +1390,12 @@ const updateOrderStatus = async (req, res) => {
     try {
       const dbUpdate = { status: order.status };
       if (order.deliveryPartnerId !== undefined) dbUpdate.deliveryPartnerId = order.deliveryPartnerId;
+      if (order.paymentStatus) {
+        dbUpdate.paymentStatus = order.paymentStatus;
+        dbUpdate.payment_status = order.paymentStatus;
+      }
+      if (order.paidAt) dbUpdate.paidAt = order.paidAt;
+
       await mongoose.connection.db.collection('orders').updateOne(
         { $or: [{ _id: order._id }, { id: order.id }, { order_number: order.order_number }] },
         { $set: dbUpdate }
