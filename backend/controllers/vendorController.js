@@ -674,29 +674,60 @@ const buildCustomerLookupForOrders = async (orders) => {
   let memberUsers = [];
   if (orCustConditions.length > 0) {
     const [cResult, uResult] = await Promise.all([
-      Customer.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id address street city state pincode').lean(),
-      User.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id').lean()
+      Customer.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id address street city state pincode aadhaar pan role status addresses').lean(),
+      User.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id aadhaar pan role').lean()
     ]);
     dbCustomers = cResult;
     memberUsers = uResult;
   }
 
-  const customerLookup = { byPhone: {}, byEmail: {}, byName: {}, byId: {} };
+  const customerLookup = {
+    byPhone: {},
+    byEmail: {},
+    byName: {},
+    byId: {},
+    entitiesById: {},
+    entitiesByPhone: {},
+    entitiesByEmail: {},
+    entitiesByName: {}
+  };
+
   const registerCustomerInLookup = (cust) => {
     if (!cust) return;
     const cid = cust.customerId || cust.registrationId || cust.customerDisplayId || (String(cust._id || cust.id).startsWith('FIC-CUST-') ? String(cust._id || cust.id) : null);
-    if (!cid) return;
-    if (cust._id) customerLookup.byId[String(cust._id)] = cid;
-    if (cust.id) customerLookup.byId[String(cust.id)] = cid;
-    if (cust.customerId) customerLookup.byId[String(cust.customerId)] = cid;
-    if (cust.registrationId) customerLookup.byId[String(cust.registrationId)] = cid;
+    
+    if (cust._id) {
+      if (cid) customerLookup.byId[String(cust._id)] = cid;
+      customerLookup.entitiesById[String(cust._id)] = cust;
+    }
+    if (cust.id) {
+      if (cid) customerLookup.byId[String(cust.id)] = cid;
+      customerLookup.entitiesById[String(cust.id)] = cust;
+    }
+    if (cust.customerId) {
+      if (cid) customerLookup.byId[String(cust.customerId)] = cid;
+      customerLookup.entitiesById[String(cust.customerId)] = cust;
+    }
+    if (cust.registrationId) {
+      if (cid) customerLookup.byId[String(cust.registrationId)] = cid;
+      customerLookup.entitiesById[String(cust.registrationId)] = cust;
+    }
 
     const p = (cust.phone || cust.mobileNumber || '').toString().replace(/[^0-9]/g, '');
-    if (p && p.length >= 10) customerLookup.byPhone[p.slice(-10)] = cid;
+    if (p && p.length >= 10) {
+      if (cid) customerLookup.byPhone[p.slice(-10)] = cid;
+      customerLookup.entitiesByPhone[p.slice(-10)] = cust;
+    }
     const em = (cust.email || '').trim().toLowerCase();
-    if (em && em.includes('@')) customerLookup.byEmail[em] = cid;
+    if (em && em.includes('@')) {
+      if (cid) customerLookup.byEmail[em] = cid;
+      customerLookup.entitiesByEmail[em] = cust;
+    }
     const nm = (cust.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (nm && nm !== 'customer' && nm !== 'connectmember') customerLookup.byName[nm] = cid;
+    if (nm && nm !== 'customer' && nm !== 'connectmember') {
+      if (cid) customerLookup.byName[nm] = cid;
+      customerLookup.entitiesByName[nm] = cust;
+    }
   };
 
   memberUsers.forEach(registerCustomerInLookup);
@@ -1052,11 +1083,266 @@ const getBookings = async (req, res) => {
 
     const bookings = await query;
 
+// Helper to enrich a booking with real-time customer, stay, guest, and property details
+const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {}, membershipMap = {}) => {
+  const obj = b.toObject ? b.toObject() : { ...b };
+  if (!obj.vendorId && obj.vendor_id) obj.vendorId = obj.vendor_id;
+  if (!obj.memberName && obj.customer_name) obj.memberName = obj.customer_name;
+  if (!obj.memberId && obj.customer_id) obj.memberId = obj.customer_id;
+  if (obj.finalAmount === undefined && obj.amount !== undefined) obj.finalAmount = obj.amount;
+  if (obj.totalAmount === undefined && obj.amount !== undefined) obj.totalAmount = obj.amount;
+
+  const effectiveDate = obj.createdAt || obj.created_at || obj.orderDate || obj.date;
+  if (effectiveDate) {
+    if (!obj.createdAt) obj.createdAt = effectiveDate;
+    if (!obj.created_at) obj.created_at = effectiveDate;
+  }
+
+  // Canonical Customer ID resolution
+  let resolvedCustomerId = null;
+  if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-')) {
+    resolvedCustomerId = String(obj.customerId);
+  } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-')) {
+    resolvedCustomerId = String(obj.customerDisplayId);
+  } else if (obj.memberId && String(obj.memberId).startsWith('FIC-CUST-')) {
+    resolvedCustomerId = String(obj.memberId);
+  }
+
+  const oPhone = (obj.customer_phone || obj.phone || '').toString().replace(/[^0-9]/g, '');
+  const oEmail = (obj.customer_email || (obj.memberId && String(obj.memberId).includes('@') ? obj.memberId : '') || '').trim().toLowerCase();
+  const oName = (obj.memberName || obj.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  let matchedCustomer = null;
+  if (customerLookup && customerLookup.entitiesById) {
+    matchedCustomer = (obj.memberId && customerLookup.entitiesById[String(obj.memberId)]) ||
+                      (obj.customer_id && customerLookup.entitiesById[String(obj.customer_id)]) ||
+                      (obj.customerId && customerLookup.entitiesById[String(obj.customerId)]) ||
+                      (oPhone && oPhone.length >= 10 && customerLookup.entitiesByPhone[oPhone.slice(-10)]) ||
+                      (oEmail && customerLookup.entitiesByEmail[oEmail]) ||
+                      (oName && customerLookup.entitiesByName[oName]) || null;
+  }
+
+  if (!resolvedCustomerId && matchedCustomer) {
+    resolvedCustomerId = matchedCustomer.customerId || matchedCustomer.registrationId;
+  }
+  if (!resolvedCustomerId) {
+    resolvedCustomerId = 'FIC-CUST-100001';
+  }
+
+  obj.customerId = resolvedCustomerId;
+  obj.customerDisplayId = resolvedCustomerId;
+
+  if (obj.memberId && membershipMap[obj.memberId.toString()]) {
+    obj.membershipPlanName = membershipMap[obj.memberId.toString()];
+  }
+
+  // Booking Holder / Primary Customer Details
+  const customerAddress = matchedCustomer?.address
+    ? `${matchedCustomer.address}${matchedCustomer.city ? `, ${matchedCustomer.city}` : ''}${matchedCustomer.state ? `, ${matchedCustomer.state}` : ''}${matchedCustomer.pincode ? ` - ${matchedCustomer.pincode}` : ''}`
+    : (obj.customer_address || obj.deliveryAddress || 'Not provided');
+
+  obj.bookingHolder = {
+    name: matchedCustomer?.name || obj.memberName || obj.customer_name || 'Customer',
+    customerId: resolvedCustomerId,
+    phone: matchedCustomer?.phone || obj.customer_phone || obj.phone || 'Not provided',
+    email: matchedCustomer?.email || obj.customer_email || 'Not provided',
+    address: customerAddress,
+    aadhaar: matchedCustomer?.aadhaar || obj.aadhaar || null,
+    pan: matchedCustomer?.pan || obj.pan || null,
+    role: matchedCustomer?.role || 'customer'
+  };
+  obj.customerDetails = obj.bookingHolder;
+
+  // Property Details
+  const currentBiz = (user?.businesses && user.businesses.find(biz => String(biz._id || biz.id) === String(obj.vendorId || obj.vendor_id))) || null;
+  obj.propertyDetails = {
+    propertyName: currentBiz?.businessName || user?.businessName || user?.name || 'Stay Property',
+    propertyId: String(obj.vendorId || user?._id || 'Not provided'),
+    address: currentBiz?.address || user?.address || 'Not provided',
+    location: currentBiz?.city || user?.city || 'Not provided',
+    contactPhone: currentBiz?.phone || user?.phone || 'Not provided',
+    contactEmail: user?.email || 'Not provided'
+  };
+
+  // Product / Room details
+  const firstItem = (obj.items && obj.items[0]) || {};
+  const targetProdId = firstItem.productId || obj.productId;
+  const matchedProd = targetProdId && productMap ? productMap[String(targetProdId)] : null;
+
+  obj.roomDetails = {
+    name: matchedProd?.name || firstItem.name || obj.roomName || obj.product_details || 'Deluxe Room',
+    type: matchedProd?.subcategory || matchedProd?.category || obj.roomType || firstItem.subcategory || 'Deluxe Room',
+    category: matchedProd?.subcategory || obj.roomCategory || obj.subcategory || 'Stay',
+    id: String(matchedProd?._id || targetProdId || 'Not provided'),
+    roomNumber: obj.roomNumber || matchedProd?.roomNumber || 'Not assigned',
+    roomsCount: Number(obj.roomsCount || obj.roomCount || firstItem.quantity || 1),
+    nightsCount: Number(obj.nightsCount || obj.nights || obj.numberOfNights || 1),
+    price: Number(matchedProd?.price || firstItem.price || obj.amount || 0)
+  };
+
+  // Schedule & Timing (Check-in & Check-out)
+  const rawCheckInDate = obj.checkInDate || obj.appointmentDate;
+  let checkInDate = rawCheckInDate || (obj.createdAt ? new Date(obj.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Not provided');
+  let checkInTime = obj.checkInTime || '';
+  let checkOutDate = obj.checkOutDate || obj.departureDate || '';
+  let checkOutTime = obj.checkOutTime || '';
+
+  // Parse time range if appointmentTimeSlot has "02:00 PM - 06:00 PM"
+  if ((!checkInTime || !checkOutTime) && obj.appointmentTimeSlot && obj.appointmentTimeSlot.includes('-')) {
+    const parts = obj.appointmentTimeSlot.split('-').map(s => s.trim());
+    if (!checkInTime && parts[0]) checkInTime = parts[0];
+    if (!checkOutTime && parts[1]) checkOutTime = parts[1];
+  }
+
+  // Derive check-out date if missing from check-in + nights
+  if (!checkOutDate && checkInDate && checkInDate !== 'Not provided') {
+    const nights = Number(obj.roomDetails.nightsCount || 1);
+    const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '');
+    const parsedDate = new Date(cleanDateStr);
+    if (!isNaN(parsedDate.getTime())) {
+      const outD = new Date(parsedDate);
+      outD.setDate(outD.getDate() + nights);
+      checkOutDate = outD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+  }
+
+  obj.staySchedule = {
+    checkInDate: checkInDate || 'Not provided',
+    checkInTime: checkInTime || 'Not provided',
+    checkOutDate: checkOutDate || 'Not provided',
+    checkOutTime: checkOutTime || 'Not provided',
+    scheduledCheckInDate: checkInDate || 'Not provided',
+    scheduledCheckInTime: checkInTime || 'Not provided',
+    scheduledCheckOutDate: checkOutDate || 'Not provided',
+    scheduledCheckOutTime: checkOutTime || 'Not provided',
+    actualCheckIn: obj.actualCheckIn || null,
+    actualCheckInDate: obj.actualCheckInDate || null,
+    actualCheckInTime: obj.actualCheckInTime || null,
+    actualCheckOut: obj.actualCheckOut || null,
+    actualCheckOutDate: obj.actualCheckOutDate || null,
+    actualCheckOutTime: obj.actualCheckOutTime || null
+  };
+
+  // Keep top-level keys synchronized
+  obj.checkInDate = obj.staySchedule.checkInDate;
+  obj.checkInTime = obj.staySchedule.checkInTime;
+  obj.checkOutDate = obj.staySchedule.checkOutDate;
+  obj.checkOutTime = obj.staySchedule.checkOutTime;
+
+  // Guest details & list
+  let rawGuestList = [];
+  if (Array.isArray(obj.guestList) && obj.guestList.length > 0) {
+    rawGuestList = obj.guestList;
+  } else if (Array.isArray(obj.guestDetails) && obj.guestDetails.length > 0) {
+    rawGuestList = obj.guestDetails;
+  } else if (Array.isArray(obj.guestsInfo) && obj.guestsInfo.length > 0) {
+    rawGuestList = obj.guestsInfo;
+  }
+
+  const adults = obj.adults !== undefined ? Number(obj.adults) : (obj.adultsCount !== undefined ? Number(obj.adultsCount) : (rawGuestList.length > 0 ? rawGuestList.length : 1));
+  const children = obj.children !== undefined ? Number(obj.children) : (obj.childrenCount !== undefined ? Number(obj.childrenCount) : 0);
+  const infants = obj.infants !== undefined ? Number(obj.infants) : (obj.infantsCount !== undefined ? Number(obj.infantsCount) : 0);
+  const totalGuests = Number(obj.guests || obj.numberOfGuests || obj.guestCount || (adults + children + infants) || (rawGuestList.length > 0 ? rawGuestList.length : 1));
+
+  obj.adults = adults;
+  obj.children = children;
+  obj.infants = infants;
+  obj.totalGuests = totalGuests;
+
+  // Build resolved guest list ensuring Guest 1 is primary booking holder
+  const formattedGuests = [];
+  if (rawGuestList.length > 0) {
+    rawGuestList.forEach((g, idx) => {
+      formattedGuests.push({
+        guestNumber: idx + 1,
+        isPrimary: idx === 0,
+        fullName: g.fullName || g.name || (idx === 0 ? obj.bookingHolder.name : `Guest ${idx + 1}`),
+        age: g.age || null,
+        gender: g.gender || null,
+        phoneNumber: g.phoneNumber || g.phone || (idx === 0 ? obj.bookingHolder.phone : null),
+        email: g.email || (idx === 0 ? obj.bookingHolder.email : null),
+        aadhaarNumber: g.aadhaarNumber || g.aadhaar || (idx === 0 ? obj.bookingHolder.aadhaar : null),
+        panNumber: g.panNumber || g.pan || (idx === 0 ? obj.bookingHolder.pan : null),
+        idType: g.idType || (g.aadhaarNumber || (idx === 0 && obj.bookingHolder.aadhaar) ? 'Aadhaar' : (g.panNumber || (idx === 0 && obj.bookingHolder.pan) ? 'PAN' : null)),
+        idNumber: g.idNumber || g.aadhaarNumber || g.panNumber || (idx === 0 ? (obj.bookingHolder.aadhaar || obj.bookingHolder.pan) : null),
+        idVerificationStatus: g.idVerificationStatus || 'Verified',
+        address: g.address || (idx === 0 ? obj.bookingHolder.address : null)
+      });
+    });
+  } else {
+    // Single / Primary booking holder
+    formattedGuests.push({
+      guestNumber: 1,
+      isPrimary: true,
+      fullName: obj.bookingHolder.name,
+      phoneNumber: obj.bookingHolder.phone,
+      email: obj.bookingHolder.email,
+      aadhaarNumber: obj.bookingHolder.aadhaar,
+      panNumber: obj.bookingHolder.pan,
+      idType: obj.bookingHolder.aadhaar ? 'Aadhaar' : (obj.bookingHolder.pan ? 'PAN' : null),
+      idNumber: obj.bookingHolder.aadhaar || obj.bookingHolder.pan || null,
+      idVerificationStatus: 'Verified',
+      address: obj.bookingHolder.address
+    });
+  }
+
+  obj.guestList = formattedGuests;
+  obj.resolvedGuestList = formattedGuests;
+
+  // Vehicle Details
+  obj.vehicleDetails = {
+    travelType: obj.travelType || obj.vehicleDetails?.travelType || null,
+    vehicleType: obj.vehicleType || obj.vehicleDetails?.vehicleType || null,
+    vehicleNumber: obj.vehicleNumber || obj.vehicleDetails?.vehicleNumber || null,
+    numberOfVehicles: obj.numberOfVehicles || obj.vehicleDetails?.numberOfVehicles || null,
+    pickupDropInfo: obj.pickupDropInfo || obj.boardingPoint || obj.droppingPoint || null
+  };
+
+  // Status mapping for Stay: Replace product-like "Order Received" with proper hotel booking status
+  const isStay = obj.type === 'Stay' || obj.category === 'Stay' || (obj.items && obj.items[0]?.category === 'Stay');
+  if (isStay && (obj.status === 'Order Received' || !obj.status)) {
+    obj.status = (obj.paymentStatus === 'Paid' || obj.payment_status === 'Paid') ? 'Confirmed' : 'Pending';
+  }
+
+  // Status history
+  if (!Array.isArray(obj.statusHistory) || obj.statusHistory.length === 0) {
+    obj.statusHistory = [
+      {
+        status: 'Booking Created',
+        timestamp: obj.createdAt || new Date().toISOString(),
+        updatedBy: 'Customer / Booking System',
+        notes: `Stay booking initiated for ${obj.roomDetails.name}`
+      }
+    ];
+    if (obj.status && obj.status !== 'Pending') {
+      obj.statusHistory.push({
+        status: obj.status,
+        timestamp: obj.updatedAt || obj.createdAt || new Date().toISOString(),
+        updatedBy: 'System / Vendor',
+        notes: `Booking status is currently ${obj.status}`
+      });
+    }
+  }
+
+  const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || obj.bookingDate || obj.appointmentDate;
+  if (travelDateVal) {
+    obj.travelDate = travelDateVal;
+  } else if ((obj.type === 'Travel' || obj.type === 'travel') && (obj.created_at || obj.createdAt)) {
+    obj.travelDate = (obj.created_at || obj.createdAt).substring(0, 10);
+  }
+
+  normalizeAddressStateForOrder(obj);
+  return obj;
+};
+
     // Fast targeted lookups for only the retrieved bookings
     const memberIds = [...new Set(bookings.map(o => o.memberId || o.customer_id).filter(Boolean))];
-    const [membershipCards, customerLookup] = await Promise.all([
+    const prodIds = [...new Set(bookings.map(o => (o.items && o.items[0]?.productId) || o.productId).filter(Boolean))];
+
+    const [membershipCards, customerLookup, roomProducts] = await Promise.all([
       MembershipCard.find({ userId: { $in: memberIds } }).select('userId planName').lean(),
-      buildCustomerLookupForOrders(bookings)
+      buildCustomerLookupForOrders(bookings),
+      Product.find({ _id: { $in: prodIds } }).lean()
     ]);
 
     const membershipMap = {};
@@ -1064,64 +1350,13 @@ const getBookings = async (req, res) => {
       if (c.userId && c.planName) membershipMap[c.userId.toString()] = c.planName;
     });
 
-    const normalizedBookings = bookings.map(b => {
-      const obj = b.toObject ? b.toObject() : b;
-      if (!obj.vendorId && obj.vendor_id) obj.vendorId = obj.vendor_id;
-      if (!obj.memberName && obj.customer_name) obj.memberName = obj.customer_name;
-      if (!obj.memberId && obj.customer_id) obj.memberId = obj.customer_id;
-      if (obj.finalAmount === undefined && obj.amount !== undefined) obj.finalAmount = obj.amount;
-      if (obj.totalAmount === undefined && obj.amount !== undefined) obj.totalAmount = obj.amount;
-      const effectiveDate = obj.createdAt || obj.created_at || obj.orderDate || obj.date;
-      if (effectiveDate) {
-        if (!obj.createdAt) obj.createdAt = effectiveDate;
-        if (!obj.created_at) obj.created_at = effectiveDate;
-      }
-
-      // Canonical Customer ID resolution
-      let resolvedCustomerId = null;
-      if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-')) {
-        resolvedCustomerId = String(obj.customerId);
-      } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-')) {
-        resolvedCustomerId = String(obj.customerDisplayId);
-      } else if (obj.memberId && String(obj.memberId).startsWith('FIC-CUST-')) {
-        resolvedCustomerId = String(obj.memberId);
-      } else {
-        const oPhone = (obj.customer_phone || obj.phone || '').toString().replace(/[^0-9]/g, '');
-        const oEmail = (obj.customer_email || (obj.memberId && obj.memberId.includes('@') ? obj.memberId : '') || '').trim().toLowerCase();
-        const oName = (obj.memberName || obj.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-
-        if (oPhone && oPhone.length >= 10 && customerLookup.byPhone[oPhone.slice(-10)]) {
-          resolvedCustomerId = customerLookup.byPhone[oPhone.slice(-10)];
-        } else if (oEmail && customerLookup.byEmail[oEmail]) {
-          resolvedCustomerId = customerLookup.byEmail[oEmail];
-        } else if (oName && customerLookup.byName[oName]) {
-          resolvedCustomerId = customerLookup.byName[oName];
-        } else if (obj.memberId && customerLookup.byId[String(obj.memberId)]) {
-          resolvedCustomerId = customerLookup.byId[String(obj.memberId)];
-        }
-      }
-
-      if (!resolvedCustomerId) {
-        resolvedCustomerId = 'FIC-CUST-100001';
-      }
-
-      obj.customerId = resolvedCustomerId;
-      obj.customerDisplayId = resolvedCustomerId;
-
-      if (obj.memberId && membershipMap[obj.memberId.toString()]) {
-        obj.membershipPlanName = membershipMap[obj.memberId.toString()];
-      }
-
-      const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || obj.bookingDate || obj.appointmentDate;
-      if (travelDateVal) {
-        obj.travelDate = travelDateVal;
-      } else if ((obj.type === 'Travel' || obj.type === 'travel') && (obj.created_at || obj.createdAt)) {
-        obj.travelDate = (obj.created_at || obj.createdAt).substring(0, 10);
-      }
-
-      normalizeAddressStateForOrder(obj);
-      return obj;
+    const productMap = {};
+    roomProducts.forEach(p => {
+      productMap[String(p._id)] = p;
+      if (p.id) productMap[String(p.id)] = p;
     });
+
+    const normalizedBookings = bookings.map(b => enrichBookingWithDetails(b, user, customerLookup, productMap, membershipMap));
 
     res.status(200).json({
       success: true,
@@ -1133,6 +1368,58 @@ const getBookings = async (req, res) => {
   } catch (error) {
     console.error('Get Bookings Error:', error);
     res.status(500).json({ success: false, message: 'Server error retrieving bookings' });
+  }
+};
+
+// @route   GET /api/vendor/orders/:id
+// @route   GET /api/vendor/bookings/:id
+// @desc    Get detailed real-time information for a single booking / order
+const getOrderById = async (req, res) => {
+  try {
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const targetId = req.params.id;
+    if (!targetId) {
+      return res.status(400).json({ success: false, message: 'Order / Booking ID is required' });
+    }
+
+    const isValidObjectId = mongoose.Types.ObjectId.isValid(targetId);
+    let order = null;
+    if (isValidObjectId) {
+      order = await Order.findById(targetId).lean();
+    }
+    if (!order) {
+      order = await Order.findOne({ $or: [{ id: targetId }, { order_number: targetId }, { applicationId: targetId }] }).lean();
+    }
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Booking / Order not found' });
+    }
+
+    const customerLookup = await buildCustomerLookupForOrders([order]);
+
+    const prodId = (order.items && order.items[0]?.productId) || order.productId;
+    let productMap = {};
+    if (prodId && mongoose.Types.ObjectId.isValid(prodId)) {
+      const prod = await Product.findById(prodId).lean();
+      if (prod) {
+        productMap[String(prod._id)] = prod;
+        if (prod.id) productMap[String(prod.id)] = prod;
+      }
+    }
+
+    const enriched = enrichBookingWithDetails(order, user, customerLookup, productMap);
+
+    res.status(200).json({
+      success: true,
+      data: enriched
+    });
+  } catch (error) {
+    console.error('Get Order By ID Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving booking details' });
   }
 };
 
@@ -1414,6 +1701,34 @@ const updateOrderStatus = async (req, res) => {
     const oldStatus = order.status;
     order.status = status || order.status;
 
+    // Track actual check-in / check-out timestamps for Stay bookings
+    const isStay = order.type === 'Stay' || order.category === 'Stay' || (order.items && order.items[0]?.category === 'Stay');
+    if (isStay) {
+      if (order.status === 'Checked In' && !order.actualCheckIn) {
+        const now = new Date();
+        order.actualCheckIn = now;
+        order.actualCheckInDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        order.actualCheckInTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+      } else if (['Checked Out', 'Completed'].includes(order.status) && !order.actualCheckOut) {
+        const now = new Date();
+        order.actualCheckOut = now;
+        order.actualCheckOutDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        order.actualCheckOutTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+      }
+    }
+
+    if (!Array.isArray(order.statusHistory)) {
+      order.statusHistory = [];
+    }
+    if (order.status !== oldStatus) {
+      order.statusHistory.push({
+        status: order.status,
+        timestamp: new Date().toISOString(),
+        updatedBy: req.user.name || 'Vendor Sub-Admin',
+        notes: `Status changed from "${oldStatus}" to "${order.status}"`
+      });
+    }
+
     if (deliveryPartnerId !== undefined) {
       order.deliveryPartnerId = deliveryPartnerId;
       
@@ -1458,6 +1773,13 @@ const updateOrderStatus = async (req, res) => {
         dbUpdate.payment_status = order.paymentStatus;
       }
       if (order.paidAt) dbUpdate.paidAt = order.paidAt;
+      if (order.actualCheckIn) dbUpdate.actualCheckIn = order.actualCheckIn;
+      if (order.actualCheckInDate) dbUpdate.actualCheckInDate = order.actualCheckInDate;
+      if (order.actualCheckInTime) dbUpdate.actualCheckInTime = order.actualCheckInTime;
+      if (order.actualCheckOut) dbUpdate.actualCheckOut = order.actualCheckOut;
+      if (order.actualCheckOutDate) dbUpdate.actualCheckOutDate = order.actualCheckOutDate;
+      if (order.actualCheckOutTime) dbUpdate.actualCheckOutTime = order.actualCheckOutTime;
+      if (order.statusHistory) dbUpdate.statusHistory = order.statusHistory;
 
       await mongoose.connection.db.collection('orders').updateOne(
         { $or: [{ _id: order._id }, { id: order.id }, { order_number: order.order_number }] },
@@ -2705,6 +3027,7 @@ module.exports = {
   deleteProduct,
   getOrders,
   getBookings,
+  getOrderById,
   getApplications,
   updateOrderStatus,
   getOrderResume,

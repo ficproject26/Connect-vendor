@@ -1400,6 +1400,95 @@ const VendorDashboard = () => {
     return '10:30 AM';
   };
 
+  // Masking helpers for sensitive identity numbers
+  const maskAadhaar = (val) => {
+    if (!val || (typeof val !== 'string' && typeof val !== 'number')) return 'Not provided';
+    const clean = String(val).replace(/[^0-9]/g, '');
+    if (clean.length < 4) return 'Not provided';
+    return `XXXX XXXX ${clean.slice(-4)}`;
+  };
+
+  const maskPan = (val) => {
+    if (!val || typeof val !== 'string') return 'Not provided';
+    const clean = String(val).trim().toUpperCase();
+    if (clean.length === 10) {
+      return `${clean.slice(0, 2)}XXXXX${clean.slice(-3)}`;
+    }
+    return clean.length >= 4 ? `XXXXX${clean.slice(-4)}` : 'Not provided';
+  };
+
+  const isStayBooking = (b) => {
+    if (!b) return false;
+    const rawType = (b.type || b.category || b.subNavbarCategory || '').toLowerCase();
+    if (rawType === 'stay' || rawType === 'hotel') return true;
+    if (b.staySchedule || b.checkInDate || b.roomNumber) return true;
+    if (b.product_details && /room|suite|villa|resort|hotel/i.test(b.product_details)) return true;
+    if (b.items && Array.isArray(b.items) && b.items.some(it => /room|suite|villa|resort|hotel/i.test(it?.name || ''))) return true;
+    return false;
+  };
+
+  const resolveStaySchedule = (b) => {
+    if (!b) return { checkInDate: 'Not provided', checkInTime: 'Not provided', checkOutDate: 'Not provided', checkOutTime: 'Not provided' };
+    
+    if (b.staySchedule) {
+      return {
+        checkInDate: b.staySchedule.checkInDate || 'Not provided',
+        checkInTime: b.staySchedule.checkInTime || 'Not provided',
+        checkOutDate: b.staySchedule.checkOutDate || 'Not provided',
+        checkOutTime: b.staySchedule.checkOutTime || 'Not provided',
+        scheduledCheckInDate: b.staySchedule.scheduledCheckInDate || b.staySchedule.checkInDate || 'Not provided',
+        scheduledCheckInTime: b.staySchedule.scheduledCheckInTime || b.staySchedule.checkInTime || 'Not provided',
+        scheduledCheckOutDate: b.staySchedule.scheduledCheckOutDate || b.staySchedule.checkOutDate || 'Not provided',
+        scheduledCheckOutTime: b.staySchedule.scheduledCheckOutTime || b.staySchedule.checkOutTime || 'Not provided',
+        actualCheckIn: b.staySchedule.actualCheckIn || null,
+        actualCheckInDate: b.staySchedule.actualCheckInDate || null,
+        actualCheckInTime: b.staySchedule.actualCheckInTime || null,
+        actualCheckOut: b.staySchedule.actualCheckOut || null,
+        actualCheckOutDate: b.staySchedule.actualCheckOutDate || null,
+        actualCheckOutTime: b.staySchedule.actualCheckOutTime || null
+      };
+    }
+
+    let checkInDate = b.checkInDate || b.appointmentDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Not provided');
+    let checkInTime = b.checkInTime || '';
+    let checkOutDate = b.checkOutDate || b.departureDate || '';
+    let checkOutTime = b.checkOutTime || '';
+
+    if ((!checkInTime || !checkOutTime) && b.appointmentTimeSlot && b.appointmentTimeSlot.includes('-')) {
+      const parts = b.appointmentTimeSlot.split('-').map(s => s.trim());
+      if (!checkInTime && parts[0]) checkInTime = parts[0];
+      if (!checkOutTime && parts[1]) checkOutTime = parts[1];
+    }
+
+    if (!checkOutDate && checkInDate && checkInDate !== 'Not provided') {
+      const nights = Number(b.nightsCount || b.nights || b.numberOfNights || 1);
+      const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '');
+      const parsedDate = new Date(cleanDateStr);
+      if (!isNaN(parsedDate.getTime())) {
+        const outD = new Date(parsedDate);
+        outD.setDate(outD.getDate() + nights);
+        checkOutDate = outD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+    }
+
+    return {
+      checkInDate: checkInDate || 'Not provided',
+      checkInTime: checkInTime || 'Not provided',
+      checkOutDate: checkOutDate || 'Not provided',
+      checkOutTime: checkOutTime || 'Not provided',
+      scheduledCheckInDate: checkInDate || 'Not provided',
+      scheduledCheckInTime: checkInTime || 'Not provided',
+      scheduledCheckOutDate: checkOutDate || 'Not provided',
+      scheduledCheckOutTime: checkOutTime || 'Not provided',
+      actualCheckIn: b.actualCheckIn || null,
+      actualCheckInDate: b.actualCheckInDate || null,
+      actualCheckInTime: b.actualCheckInTime || null,
+      actualCheckOut: b.actualCheckOut || null,
+      actualCheckOutDate: b.actualCheckOutDate || null,
+      actualCheckOutTime: b.actualCheckOutTime || null
+    };
+  };
+
   // Queries & Support States
   const [activeQueryTab, setActiveQueryTab] = useState('customer'); // 'customer' | 'my_tickets'
   const [queriesStatusFilter, setQueriesStatusFilter] = useState('All');
@@ -5601,35 +5690,109 @@ const VendorDashboard = () => {
                                   <tr key={b._id || b.id || b.order_number} className="border-b border-slate-150/70 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
                                     {/* Customer Name & ID */}
                                     <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
-                                      <div>{b.memberName || b.customer_name || 'Customer'}</div>
-                                      <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {getCustomerDisplayId(b)}</div>
+                                      <div>{b.bookingHolder?.name || b.memberName || b.customer_name || 'Customer'}</div>
+                                      <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {b.bookingHolder?.customerId || getCustomerDisplayId(b)}</div>
                                     </td>
 
                                     {/* Booking Type / Detail */}
                                     <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
                                       <div>
-                                        {b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` :
-                                         b.roomNumber ? `🏨 Room: ${b.roomNumber}` :
-                                         b.serviceName || (b.items && b.items[0]?.name) || b.product_details || b.type || 'Reservation'}
+                                        {isStayBooking(b)
+                                          ? (b.roomName || (b.roomDetails && b.roomDetails.name) || (b.roomNumber ? `Room #${b.roomNumber}` : null) || (b.items && b.items[0]?.name) || b.product_details || 'Deluxe Room')
+                                          : (b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` :
+                                             b.roomNumber ? `🏨 Room: ${b.roomNumber}` :
+                                             b.serviceName || (b.items && b.items[0]?.name) || b.product_details || b.type || 'Reservation')}
                                       </div>
-                                      {b.type && <span className="inline-block text-[9px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">{b.type}</span>}
+                                      {(b.type || isStayBooking(b)) && (
+                                        <span className="inline-block text-[9px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">
+                                          {isStayBooking(b) ? 'STAY' : b.type}
+                                        </span>
+                                      )}
                                     </td>
 
                                     {/* Schedule & Timing */}
                                     <td className="px-6 py-4 text-xs font-semibold text-slate-750 dark:text-slate-300">
-                                      <div>📅 {b.appointmentDate || b.checkInDate || (b.createdAt ? b.createdAt.substring(0, 10) : 'N/A')}</div>
-                                      <div className="text-[10px] text-indigo-650 dark:text-indigo-400 font-bold mt-0.5">
-                                        ⌚ {b.appointmentTimeSlot || getBookingTimeSlot(b)}
-                                      </div>
+                                      {isStayBooking(b) ? (() => {
+                                        const sched = resolveStaySchedule(b);
+                                        return (
+                                          <div className="space-y-1.5 py-0.5">
+                                            <div className="leading-tight">
+                                              <div className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                                                Check-in
+                                              </div>
+                                              <div className="font-bold text-slate-850 dark:text-slate-200 text-xs">
+                                                {sched.checkInDate}
+                                              </div>
+                                              <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                                {sched.checkInTime}
+                                              </div>
+                                            </div>
+                                            <div className="leading-tight pt-1 border-t border-slate-150/70 dark:border-slate-800">
+                                              <div className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>
+                                                Check-out
+                                              </div>
+                                              <div className="font-bold text-slate-850 dark:text-slate-200 text-xs">
+                                                {sched.checkOutDate}
+                                              </div>
+                                              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                                {sched.checkOutTime}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })() : (
+                                        <div>
+                                          <div>📅 {b.appointmentDate || b.checkInDate || (b.createdAt ? b.createdAt.substring(0, 10) : 'N/A')}</div>
+                                          <div className="text-[10px] text-indigo-650 dark:text-indigo-400 font-bold mt-0.5">
+                                            ⌚ {b.appointmentTimeSlot || getBookingTimeSlot(b)}
+                                          </div>
+                                        </div>
+                                      )}
                                     </td>
 
                                     {/* Guests / Persons */}
                                     <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
                                       {(() => {
+                                        if (isStayBooking(b)) {
+                                          const adults = Number(b.adults || (b.guestBreakdown && b.guestBreakdown.adults) || 0);
+                                          const children = Number(b.children || (b.guestBreakdown && b.guestBreakdown.children) || 0);
+                                          const infants = Number(b.infants || (b.guestBreakdown && b.guestBreakdown.infants) || 0);
+                                          const listCount = Array.isArray(b.guestList) ? b.guestList.length : (Array.isArray(b.guests) ? b.guests.length : 0);
+                                          
+                                          let total = Number(b.totalGuests || b.guestCount || b.numberOfGuests || b.guests || (adults + children + infants) || listCount || 1);
+                                          if (adults + children > 0 && total < adults + children) {
+                                            total = adults + children + infants;
+                                          }
+
+                                          const subDetails = [];
+                                          if (adults > 0) subDetails.push(`${adults} ${adults === 1 ? 'Adult' : 'Adults'}`);
+                                          if (children > 0) subDetails.push(`${children} ${children === 1 ? 'Child' : 'Children'}`);
+                                          if (infants > 0) subDetails.push(`${infants} ${infants === 1 ? 'Infant' : 'Infants'}`);
+
+                                          return (
+                                            <div className="space-y-0.5">
+                                              <div className="font-bold text-slate-850 dark:text-slate-200 text-xs">
+                                                👥 {total} {total === 1 ? 'Guest' : 'Guests'}
+                                              </div>
+                                              {subDetails.length > 0 ? (
+                                                <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                                  {subDetails.join(' • ')}
+                                                </div>
+                                              ) : (
+                                                <div className="text-[10px] text-slate-400">
+                                                  {total === 1 ? 'Primary Guest' : `${total} Persons`}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        }
+
                                         const guestCount = b.guests || b.numberOfGuests || b.guestCount || b.noOfGuests || (b.items && b.items[0]?.guests);
                                         return (
                                           <div>
-                                            {guestCount ? `👥 ${guestCount} Guests` : `1 Person`}
+                                            <div>{guestCount ? `👥 ${guestCount} Guests` : `1 Person`}</div>
                                             {b.address && <div className="text-[10px] text-slate-400 truncate max-w-[140px] mt-0.5">{getCustomerAddress(b)}</div>}
                                           </div>
                                         );
@@ -5640,14 +5803,24 @@ const VendorDashboard = () => {
                                     <td className="px-6 py-4 text-xs">
                                       <div className="font-semibold text-slate-850 dark:text-slate-350">₹{b.finalAmount || b.amount || 0}</div>
                                       <div className="mt-1">
-                                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                                          b.status === 'Completed' || b.status === 'Delivered' || b.status === 'Checked Out' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200/30' :
-                                          b.status === 'Pending' ? 'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/30' :
-                                          b.status === 'Cancelled' ? 'bg-red-100/80 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/30' :
-                                          'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30'
-                                        }`}>
-                                          {b.status}
-                                        </span>
+                                        {(() => {
+                                          let displayStatus = b.status || 'Pending';
+                                          if (isStayBooking(b) && (displayStatus === 'Order Received' || displayStatus === 'Accepted')) {
+                                            displayStatus = b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending';
+                                          }
+                                          return (
+                                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                                              displayStatus === 'Completed' || displayStatus === 'Delivered' || displayStatus === 'Checked Out' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200/30' :
+                                              displayStatus === 'Checked In' ? 'bg-purple-100/80 dark:bg-purple-950/80 text-purple-700 dark:text-purple-400 border border-purple-200/30' :
+                                              displayStatus === 'Confirmed' ? 'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30' :
+                                              displayStatus === 'Pending' ? 'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/30' :
+                                              displayStatus === 'Cancelled' || displayStatus === 'Rejected' ? 'bg-red-100/80 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/30' :
+                                              'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30'
+                                            }`}>
+                                              {displayStatus}
+                                            </span>
+                                          );
+                                        })()}
                                       </div>
                                     </td>
 
@@ -5655,20 +5828,34 @@ const VendorDashboard = () => {
                                     <td className="px-6 py-4 text-right">
                                       <div className="flex flex-col items-end gap-2">
                                         <select
-                                          value={b.status}
+                                          value={isStayBooking(b) && (b.status === 'Order Received' || b.status === 'Accepted') ? (b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending') : b.status}
                                           disabled={updatingStatusIds.has(String(b._id || b.id || b.order_number))}
                                           onChange={(e) => handleUpdateOrderStatus(b._id || b.id || b.order_number, e.target.value)}
                                           className={`bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs px-2.5 py-1.5 w-36 focus:outline-none focus:border-primary-500 font-semibold ${updatingStatusIds.has(String(b._id || b.id || b.order_number)) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                         >
-                                          {['Pending', 'Confirmed', 'Accepted', 'Checked In', 'Completed', 'Cancelled'].map(status => (
-                                            <option key={status} value={status}>{status}</option>
-                                          ))}
+                                          {isStayBooking(b)
+                                            ? ['Pending', 'Confirmed', 'Checked In', 'Checked Out', 'Completed', 'Cancelled'].map(status => (
+                                                <option key={status} value={status}>{status}</option>
+                                              ))
+                                            : ['Pending', 'Confirmed', 'Accepted', 'Completed', 'Cancelled'].map(status => (
+                                                <option key={status} value={status}>{status}</option>
+                                              ))}
                                         </select>
 
                                         <button
-                                          onClick={() => {
+                                          onClick={async () => {
                                             setSelectedBillOrder(b);
                                             setIsBillModalOpen(true);
+                                            try {
+                                              const orderId = b._id || b.id || b.order_number;
+                                              const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders/${orderId}`, getAxiosConfig());
+                                              if (res.data && (res.data.order || res.data.booking || res.data.data)) {
+                                                const enriched = res.data.order || res.data.booking || res.data.data;
+                                                setSelectedBillOrder(enriched);
+                                              }
+                                            } catch (fetchErr) {
+                                              // Row data already set
+                                            }
                                           }}
                                           className="text-[10px] font-extrabold uppercase bg-[#faed26]/80 text-[#0b3c7b] hover:bg-[#faed26] px-3 py-1 rounded-lg border border-yellow-500/10 transition-all active:scale-[0.97]"
                                         >
@@ -5809,12 +5996,17 @@ const VendorDashboard = () => {
                               <div key={b._id || b.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-900 space-y-3.5 shadow-inner">
                                 <div className="flex justify-between items-start">
                                   <div>
-                                    <h5 className="font-bold text-sm text-slate-900 dark:text-white">{b.memberName || b.customer_name || 'N/A'}</h5>
+                                    <h5 className="font-bold text-sm text-slate-900 dark:text-white">{b.bookingHolder?.name || b.memberName || b.customer_name || 'N/A'}</h5>
                                     <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">
-                                      {vendorType.startsWith('Hotel') 
-                                        ? `🏨 ${b.appointmentTimeSlot || '1'} Night${Number(b.appointmentTimeSlot) !== 1 ? 's' : ''}` 
-                                        : `⌚ ${b.appointmentTimeSlot || 'Standard Slot'}`}
-                                      {vendorType.startsWith('Hotel') && b.roomNumber && ` (Room: ${b.roomNumber})`}
+                                      {isStayBooking(b)
+                                        ? (() => {
+                                            const sched = resolveStaySchedule(b);
+                                            return `🏨 Check-in: ${sched.checkInTime} • Check-out: ${sched.checkOutTime}${b.roomNumber ? ` (Room: ${b.roomNumber})` : ''}`;
+                                          })()
+                                        : (vendorType.startsWith('Hotel') 
+                                          ? `🏨 ${b.appointmentTimeSlot || '1'} Night${Number(b.appointmentTimeSlot) !== 1 ? 's' : ''}` 
+                                          : `⌚ ${b.appointmentTimeSlot || 'Standard Slot'}`)}
+                                      {!isStayBooking(b) && vendorType.startsWith('Hotel') && b.roomNumber && ` (Room: ${b.roomNumber})`}
                                     </p>
                                   </div>
                                   <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full ${
@@ -12360,7 +12552,7 @@ required
           const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
           if (rawCat === 'JOB' || rawCat === 'JOBS' || Boolean(selectedBillOrder?.applicationId) || Boolean(selectedBillOrder?.candidateResume) || Boolean(selectedBillOrder?.candidateEducation)) return "Candidate Job Application Details";
           if (rawCat === 'TRAVEL') return "Travel Booking Details";
-          if (rawCat === 'STAY' || rawCat === 'HOTEL') return "Stay Booking Details";
+          if (rawCat === 'STAY' || rawCat === 'HOTEL' || isStayBooking(selectedBillOrder)) return "Stay / Room Booking Details";
           if (rawCat === 'FOOD' || rawCat === 'RESTAURANT') return "Food Order Details";
           if (rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL') return "Service Booking Details";
           return "Order & Transaction Details";
@@ -12370,7 +12562,7 @@ required
           const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
           const isJobOrder = rawCat === 'JOB' || rawCat === 'JOBS' || Boolean(selectedBillOrder?.applicationId) || Boolean(selectedBillOrder?.candidateResume) || Boolean(selectedBillOrder?.candidateEducation);
           const isTravelOrder = rawCat === 'TRAVEL';
-          const isStayOrder = rawCat === 'STAY' || rawCat === 'HOTEL';
+          const isStayOrder = rawCat === 'STAY' || rawCat === 'HOTEL' || isStayBooking(selectedBillOrder);
           const isFoodOrder = rawCat === 'FOOD' || rawCat === 'RESTAURANT';
           const isServiceOrder = rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL';
           
@@ -12516,52 +12708,497 @@ required
           }
 
           if (isStayOrder) {
+            const sched = resolveStaySchedule(selectedBillOrder);
+            let displayStatus = selectedBillOrder.status || 'Pending';
+            if (displayStatus === 'Order Received' || displayStatus === 'Accepted') {
+              displayStatus = selectedBillOrder.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending';
+            }
+
+            const holder = selectedBillOrder.bookingHolder || {
+              name: selectedBillOrder.memberName || selectedBillOrder.customer_name || 'Customer',
+              customerId: formatCustomerId(selectedBillOrder, customers),
+              phone: selectedBillOrder.customer_phone || selectedBillOrder.phone || '',
+              email: selectedBillOrder.customer_email || selectedBillOrder.email || '',
+              address: getCustomerAddress(selectedBillOrder),
+              aadhaar: selectedBillOrder.aadhaar || '',
+              pan: selectedBillOrder.pan || ''
+            };
+
+            const adultsCount = Number(selectedBillOrder.adults || (selectedBillOrder.guestBreakdown && selectedBillOrder.guestBreakdown.adults) || 0);
+            const childrenCount = Number(selectedBillOrder.children || (selectedBillOrder.guestBreakdown && selectedBillOrder.guestBreakdown.children) || 0);
+            const infantsCount = Number(selectedBillOrder.infants || (selectedBillOrder.guestBreakdown && selectedBillOrder.guestBreakdown.infants) || 0);
+            const guestListSource = selectedBillOrder.resolvedGuestList || selectedBillOrder.guestList || selectedBillOrder.guestDetails || (Array.isArray(selectedBillOrder.guests) ? selectedBillOrder.guests : []);
+            
+            let totalGuestsCount = Number(selectedBillOrder.totalGuests || selectedBillOrder.guestCount || selectedBillOrder.numberOfGuests || (typeof selectedBillOrder.guests === 'number' ? selectedBillOrder.guests : 0) || (adultsCount + childrenCount + infantsCount) || (Array.isArray(guestListSource) ? guestListSource.length : 1) || 1);
+            if (adultsCount + childrenCount > 0 && totalGuestsCount < (adultsCount + childrenCount)) {
+              totalGuestsCount = adultsCount + childrenCount + infantsCount;
+            }
+
+            const rawHistory = Array.isArray(selectedBillOrder.statusHistory) && selectedBillOrder.statusHistory.length > 0
+              ? selectedBillOrder.statusHistory
+              : [
+                  { status: 'Booking Created', timestamp: selectedBillOrder.createdAt || selectedBillOrder.created_at, note: 'Initial booking request submitted' },
+                  { status: displayStatus, timestamp: selectedBillOrder.updatedAt || selectedBillOrder.createdAt, note: 'Current active booking status' }
+                ];
+
             return (
-              <div className="space-y-5 text-slate-800 dark:text-slate-200 text-xs">
+              <div className="space-y-6 text-slate-800 dark:text-slate-200 text-xs max-h-[78vh] overflow-y-auto pr-1">
                 {/* Header */}
-                <div className="text-center pb-4 border-b border-dashed border-slate-200 dark:border-slate-800">
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 mb-2">
-                    <CheckCircle2 size={24} />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-dashed border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-purple-100 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 shrink-0">
+                      <Hotel size={22} />
+                    </div>
+                    <div>
+                      <h4 className="text-base font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                        Stay Booking Details
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                        {selectedBillOrder.roomName || (selectedBillOrder.roomDetails && selectedBillOrder.roomDetails.name) || selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Deluxe Room Reservation'}
+                      </p>
+                    </div>
                   </div>
-                  <h4 className="text-lg font-black uppercase tracking-wider text-slate-900 dark:text-white">Stay Booking Details</h4>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Room/Suite: {selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Room Reservation'}</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
+                      #{selectedBillOrder._id || selectedBillOrder.id || selectedBillOrder.order_number || 'N/A'}
+                    </span>
+                    <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full uppercase ${
+                      displayStatus === 'Checked In' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200/40' :
+                      displayStatus === 'Checked Out' || displayStatus === 'Completed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200/40' :
+                      displayStatus === 'Confirmed' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-200/40' :
+                      displayStatus === 'Cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-300 border border-red-200/40' :
+                      'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200/40'
+                    }`}>
+                      {displayStatus}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Details grid */}
-                <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-850 p-4 rounded-2xl space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                {/* 1. BOOKING & PAYMENT SUMMARY */}
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <ClipboardList size={13} className="text-indigo-500" />
+                    1. Booking Information
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Guest Name</span>
-                      <span className="font-extrabold text-sm text-slate-900 dark:text-white">{selectedBillOrder.memberName || selectedBillOrder.customer_name || 'N/A'}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Booking ID</span>
+                      <span className="font-bold font-mono text-slate-900 dark:text-white truncate block">
+                        {selectedBillOrder._id || selectedBillOrder.id || selectedBillOrder.order_number || 'Not provided'}
+                      </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Room Number</span>
-                      <span className="font-extrabold text-purple-600 dark:text-purple-400">{selectedBillOrder.roomNumber ? `Room #${selectedBillOrder.roomNumber}` : 'Standard Room'}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Booking Date</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {selectedBillOrder.createdAt ? new Date(selectedBillOrder.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Not provided'}
+                      </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Check-in</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.checkInDate || selectedBillOrder.appointmentDate || 'N/A'}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Booking Status</span>
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 uppercase">
+                        {displayStatus}
+                      </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Check-out</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.checkOutDate || 'N/A'}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Payment Status</span>
+                      <span className="font-extrabold text-emerald-600 dark:text-emerald-400 uppercase">
+                        {selectedBillOrder.paymentStatus || 'Completed'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. STAY SCHEDULE (CHECK-IN / CHECK-OUT) */}
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <Calendar size={13} className="text-emerald-500" />
+                    2. Stay Schedule & Timing
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Check In Box */}
+                    <div className="p-3 bg-white dark:bg-slate-950/60 rounded-xl border border-emerald-500/20 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                          Check-in Schedule
+                        </span>
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
+                          Arrival
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">Scheduled Date</span>
+                          <span className="font-bold text-slate-900 dark:text-white">{sched.scheduledCheckInDate || sched.checkInDate}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">Scheduled Time</span>
+                          <span className="font-bold text-slate-900 dark:text-white">{sched.scheduledCheckInTime || sched.checkInTime}</span>
+                        </div>
+                      </div>
+                      {(sched.actualCheckInDate || sched.actualCheckInTime) && (
+                        <div className="pt-2 border-t border-dashed border-emerald-500/20 text-xs">
+                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block">Actual Check-in:</span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                            {sched.actualCheckInDate || ''} {sched.actualCheckInTime ? `• ${sched.actualCheckInTime}` : ''}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Check Out Box */}
+                    <div className="p-3 bg-white dark:bg-slate-950/60 rounded-xl border border-amber-500/20 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                          Check-out Schedule
+                        </span>
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">
+                          Departure
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">Scheduled Date</span>
+                          <span className="font-bold text-slate-900 dark:text-white">{sched.scheduledCheckOutDate || sched.checkOutDate}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">Scheduled Time</span>
+                          <span className="font-bold text-slate-900 dark:text-white">{sched.scheduledCheckOutTime || sched.checkOutTime}</span>
+                        </div>
+                      </div>
+                      {(sched.actualCheckOutDate || sched.actualCheckOutTime) && (
+                        <div className="pt-2 border-t border-dashed border-amber-500/20 text-xs">
+                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 block">Actual Check-out:</span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                            {sched.actualCheckOutDate || ''} {sched.actualCheckOutTime ? `• ${sched.actualCheckOutTime}` : ''}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. PROPERTY & ROOM DETAILS */}
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <Store size={13} className="text-purple-500" />
+                    3. Property & Room Information
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Hotel / Property Name</span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {selectedBillOrder.property?.name || selectedBillOrder.propertyName || selectedBillOrder.vendorName || user?.businessName || 'Not provided'}
+                      </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Total Amount</span>
-                      <span className="font-extrabold text-slate-900 dark:text-white text-sm">₹{selectedBillOrder.finalAmount || selectedBillOrder.amount || 0}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Property ID</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300">
+                        {selectedBillOrder.property?.propertyId || selectedBillOrder.propertyId || selectedBillOrder.vendorId || user?.businessId || 'Not provided'}
+                      </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Booking Status</span>
-                      <span className="font-extrabold text-emerald-600 dark:text-emerald-450 uppercase">{selectedBillOrder.status}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Property Address / City</span>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        {selectedBillOrder.property?.address || selectedBillOrder.propertyAddress || user?.businessAddress || selectedBillOrder.city || 'Not provided'}
+                      </span>
                     </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Room Name & Type</span>
+                      <span className="font-extrabold text-purple-600 dark:text-purple-400">
+                        {selectedBillOrder.roomName || (selectedBillOrder.roomDetails && selectedBillOrder.roomDetails.name) || selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Deluxe Room'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Room Number / Room ID</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {selectedBillOrder.roomNumber ? `Room #${selectedBillOrder.roomNumber}` : (selectedBillOrder.roomId || 'Not assigned')}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Rooms & Nights</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {selectedBillOrder.roomsCount || selectedBillOrder.roomCount || selectedBillOrder.numberOfRooms || 1} Room(s) • {selectedBillOrder.nightsCount || selectedBillOrder.numberOfNights || selectedBillOrder.nights || 1} Night(s)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. PRIMARY CUSTOMER / BOOKING HOLDER */}
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                      <User size={13} className="text-blue-500" />
+                      4. Primary Customer / Booking Holder
+                    </div>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300">
+                      Primary Contact
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Customer Name</span>
+                      <span className="font-extrabold text-sm text-slate-900 dark:text-white">
+                        {holder.name || 'Not provided'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Customer ID</span>
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                        {holder.customerId || 'Not provided'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Mobile Number</span>
+                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                        {holder.phone || 'Not provided'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Email Address</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {holder.email || 'Not provided'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Aadhaar (Masked)</span>
+                      <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                        {maskAadhaar(holder.aadhaar)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">PAN (Masked)</span>
+                      <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                        {maskPan(holder.pan)}
+                      </span>
+                    </div>
+                    <div className="sm:col-span-2 md:col-span-3">
+                      <span className="text-[10px] text-slate-400 font-semibold block">Customer Address</span>
+                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                        {holder.address || 'Not provided'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. GUEST DETAILS */}
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                    <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                      <Users size={13} className="text-teal-500" />
+                      5. Guests Information ({totalGuestsCount} {totalGuestsCount === 1 ? 'Guest' : 'Guests'})
+                    </div>
+                    {(adultsCount > 0 || childrenCount > 0 || infantsCount > 0) && (
+                      <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                        {[
+                          adultsCount > 0 ? `${adultsCount} Adults` : null,
+                          childrenCount > 0 ? `${childrenCount} Children` : null,
+                          infantsCount > 0 ? `${infantsCount} Infants` : null
+                        ].filter(Boolean).join(' • ')}
+                      </div>
+                    )}
+                  </div>
+
+                  {Array.isArray(guestListSource) && guestListSource.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {guestListSource.map((g, idx) => (
+                        <div key={idx} className="p-3 bg-white dark:bg-slate-950/70 rounded-xl border border-slate-200/60 dark:border-slate-800/80 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center text-[10px] font-extrabold">
+                                {idx + 1}
+                              </span>
+                              {g.name || g.fullName || (idx === 0 ? holder.name : `Guest ${idx + 1}`)}
+                            </span>
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                              {g.role || (idx === 0 ? 'Primary / Booking Holder' : 'Additional Guest')}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-semibold">Age / Gender</span>
+                              <span className="font-medium text-slate-800 dark:text-slate-200">
+                                {g.age ? `${g.age} Yrs` : 'Not provided'} • {g.gender || 'Not provided'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-semibold">Mobile</span>
+                              <span className="font-mono text-slate-800 dark:text-slate-200">
+                                {g.phone || g.mobile || (idx === 0 ? holder.phone : 'Not provided')}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-semibold">ID Type & Number</span>
+                              <span className="font-medium text-slate-800 dark:text-slate-200">
+                                {g.idType || (g.aadhaar ? 'Aadhaar' : (g.pan ? 'PAN' : 'Not provided'))}: {
+                                  g.idNumber ? (String(g.idType || '').toLowerCase().includes('aadhaar') ? maskAadhaar(g.idNumber) : g.idNumber) :
+                                  (g.aadhaar ? maskAadhaar(g.aadhaar) : (g.pan ? maskPan(g.pan) : 'Not provided'))
+                                }
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-semibold">Verification</span>
+                              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                {g.idVerificationStatus || g.verificationStatus || (idx === 0 ? 'Verified' : 'Not provided')}
+                              </span>
+                            </div>
+                          </div>
+                          {(g.aadhaar || g.pan || g.address) && (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-850 text-xs text-slate-500">
+                              {g.aadhaar && <div><span className="text-[10px] text-slate-400">Aadhaar:</span> {maskAadhaar(g.aadhaar)}</div>}
+                              {g.pan && <div><span className="text-[10px] text-slate-400">PAN:</span> {maskPan(g.pan)}</div>}
+                              {g.address && <div className="sm:col-span-2"><span className="text-[10px] text-slate-400">Address:</span> {g.address}</div>}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-white dark:bg-slate-950/70 rounded-xl border border-slate-200/60 dark:border-slate-800/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center text-[10px] font-extrabold">
+                            1
+                          </span>
+                          {holder.name || 'Primary Guest'}
+                        </span>
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300">
+                          Booking Holder / Guest
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">Mobile</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200">{holder.phone || 'Not provided'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">ID / Aadhaar</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200">{maskAadhaar(holder.aadhaar)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">PAN</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200">{maskPan(holder.pan)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">Verification</span>
+                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">Verified</span>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-slate-400 italic pt-1">
+                        No additional guests provided during customer booking.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 6. TRAVEL & VEHICLE DETAILS */}
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <Truck size={13} className="text-amber-500" />
+                    6. Travel & Arrival / Vehicle Information
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Travelling By</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {selectedBillOrder.travelType || selectedBillOrder.vehicleDetails?.travellingBy || selectedBillOrder.vehicleDetails?.travelType || 'Not provided'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Vehicle Type</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {selectedBillOrder.vehicleType || selectedBillOrder.vehicleDetails?.vehicleType || 'Not provided'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Vehicle Number</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                        {selectedBillOrder.vehicleNumber || selectedBillOrder.vehicleDetails?.vehicleNumber || 'Not provided'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Pickup / Drop Info</span>
+                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                        {selectedBillOrder.pickupDrop || selectedBillOrder.vehicleDetails?.pickupDrop || selectedBillOrder.specialRequests || 'Not provided'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 7. PAYMENT DETAILS */}
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <CreditCard size={13} className="text-emerald-500" />
+                    7. Payment & Billing Breakdown
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Room Rate / Base Subtotal</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        ₹{selectedBillOrder.itemTotal || selectedBillOrder.subtotal || selectedBillOrder.roomPrice || selectedBillOrder.price || selectedBillOrder.amount || 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Discounts</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                        {selectedBillOrder.discount ? `-₹${selectedBillOrder.discount}` : '₹0'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Taxes & Fees</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {selectedBillOrder.taxes || selectedBillOrder.tax ? `₹${selectedBillOrder.taxes || selectedBillOrder.tax}` : '₹0'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Additional Charges</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {selectedBillOrder.additionalCharges || selectedBillOrder.serviceCharges ? `₹${selectedBillOrder.additionalCharges || selectedBillOrder.serviceCharges}` : '₹0'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Payment Method</span>
+                      <span className="font-medium text-slate-800 dark:text-slate-200">
+                        {selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || 'Connect Wallet / Online'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Final Amount Paid</span>
+                      <span className="font-black text-sm text-indigo-600 dark:text-indigo-400">
+                        ₹{selectedBillOrder.finalAmount || selectedBillOrder.amount || 0}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 8. STATUS TIMELINE / HISTORY */}
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <Clock size={13} className="text-blue-500" />
+                    8. Status History
+                  </div>
+                  <div className="space-y-2">
+                    {rawHistory.map((item, hIdx) => (
+                      <div key={hIdx} className="flex items-center justify-between text-xs py-1 border-b border-dashed border-slate-200 dark:border-slate-800 last:border-0">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{item.status || item.title || 'Status Update'}</span>
+                          {item.note && <span className="text-[10px] text-slate-400 font-normal">({item.note})</span>}
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          {item.timestamp ? new Date(item.timestamp).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
                 {/* Close Button */}
-                <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-slate-800/80">
+                <div className="flex justify-end pt-3 border-t border-slate-200 dark:border-slate-800">
                   <button
                     onClick={() => setIsBillModalOpen(false)}
-                    className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 font-semibold text-xs px-5 py-2.5 rounded-xl transition-all active:scale-[0.98]"
+                    className="bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 font-bold text-xs px-6 py-2.5 rounded-xl transition-all shadow-sm active:scale-[0.98]"
                   >
                     Close Details
                   </button>

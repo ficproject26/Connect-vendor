@@ -11,6 +11,7 @@ const {
   deleteProduct,
   getOrders,
   getBookings,
+  getOrderById,
   getApplications,
   updateOrderStatus,
   getOrderResume,
@@ -106,7 +107,9 @@ router.delete('/products/:id', deleteProduct);
 
 // Orders / Bookings / Applications
 router.get('/orders', getOrders);
+router.get('/orders/:id', getOrderById);
 router.get('/bookings', getBookings);
+router.get('/bookings/:id', getOrderById);
 router.get('/applications', getApplications);
 router.put('/orders/:id/status', updateOrderStatus);
 router.get('/orders/:id/resume', getOrderResume);
