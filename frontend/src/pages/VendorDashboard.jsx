@@ -696,6 +696,8 @@ const VendorDashboard = () => {
   const [selectedMainCat, setSelectedMainCat] = useState('');
   const [selectedSubcat, setSelectedSubcat] = useState('');
   const [dbCategories, setDbCategories] = useState([]);
+  const [stayHierarchy, setStayHierarchy] = useState({ subcategories: [] });
+  const [loadingStayCategories, setLoadingStayCategories] = useState(false);
   const [dynamicCategoryFields, setDynamicCategoryFields] = useState([]);
 
   // Business Profile Edit States
@@ -724,6 +726,25 @@ const VendorDashboard = () => {
     window.addEventListener('new_incoming_order', handleNewOrderAlert);
     return () => window.removeEventListener('new_incoming_order', handleNewOrderAlert);
   }, []);
+
+  // Real-time fetch for Stay module categories directly from database
+  const fetchStayCategories = async () => {
+    setLoadingStayCategories(true);
+    try {
+      const res = await axios.get(`${getBackendUrl()}/api/public/categories?mainCategory=Stay&onlyActive=true`);
+      if (res.data && res.data.success) {
+        setStayHierarchy({
+          mainCategory: res.data.mainCategory || 'Stay',
+          mainCategoryId: res.data.mainCategoryId,
+          subcategories: res.data.subcategories || []
+        });
+      }
+    } catch (err) {
+      console.error('Categories fetch error for Stay:', err);
+    } finally {
+      setLoadingStayCategories(false);
+    }
+  };
 
   useEffect(() => {
     if (!isItemModalOpen) return;
@@ -763,13 +784,90 @@ const VendorDashboard = () => {
       }
     };
     fetchDynamicCategories();
+    fetchStayCategories();
   }, []);
+
+  // Sync Stay categories whenever active business or modal opens for Stay
+  useEffect(() => {
+    const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
+    const isStay = (
+      activeBiz?.vendorType === 'Stay' ||
+      activeBiz?.name === 'Stay' ||
+      activeBiz?.category === 'Stay' ||
+      vendorType.startsWith('Hotel') ||
+      terms.catalogItem === 'Room' ||
+      selectedMainCat === 'Stay'
+    );
+    if (isStay) {
+      fetchStayCategories();
+    }
+  }, [activeBusinessId, vendorType, selectedMainCat, isItemModalOpen]);
 
   const getCategoryTaxonomy = () => {
     const tax = {};
     tax[selectedMainCat] = {};
     
-    // 1. First populate from real DB categories
+    // 1. Special strict handling for Stay module - strictly database-driven, hierarchy-safe, NO product leakage, NO mock data
+    if (selectedMainCat === 'Stay') {
+      const staySubMap = {};
+      const subList = Array.isArray(stayHierarchy?.subcategories) && stayHierarchy.subcategories.length > 0
+        ? stayHierarchy.subcategories
+        : [];
+
+      if (subList.length > 0) {
+        subList.forEach(sub => {
+          if (!sub || sub.isActive === false) return;
+          const sName = (sub.name || '').trim();
+          if (!sName) return;
+          staySubMap[sName] = (sub.childCategories || [])
+            .filter(ch => ch && ch.isActive !== false)
+            .map(ch => (ch.name || '').trim())
+            .filter(Boolean);
+        });
+      } else if (Array.isArray(dbCategories) && dbCategories.length > 0) {
+        // Fallback: parse strictly from dbCategories where main === 'Stay'
+        const SYSTEM_MAIN_CATS = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+        const getSubName = (c) => (c.subcategory || (c.level === 'sub' && !SYSTEM_MAIN_CATS.map(m => m.toLowerCase()).includes(String(c.name).toLowerCase()) ? c.name : '')).trim();
+        const getChildName = (c) => (c.subSubcategory || (c.level === 'child' && !SYSTEM_MAIN_CATS.map(m => m.toLowerCase()).includes(String(c.name).toLowerCase()) ? c.name : '')).trim();
+
+        const stayMain = dbCategories.find(c => (c.level === 'main' || !c.parentId) && String(c.name || '').trim().toLowerCase() === 'stay');
+        const stayMainId = stayMain ? String(stayMain._id) : null;
+
+        const staySubs = dbCategories.filter(c => 
+          c.level === 'sub' && 
+          c.isActive !== false && 
+          !c.isDeleted &&
+          c.description !== 'DELETED_HIERARCHY_MARKER' &&
+          (String(c.parentId) === stayMainId || String(c.name || '').trim().toLowerCase() === 'stay' || String(c.mainCategory || '').trim().toLowerCase() === 'stay')
+        );
+
+        staySubs.forEach(s => {
+          const sName = getSubName(s);
+          if (!sName || sName === 'ALL_SUBCATEGORIES_DELETED_MARKER') return;
+          if (!staySubMap[sName]) staySubMap[sName] = [];
+
+          const children = dbCategories.filter(ch => 
+            ch.level === 'child' && 
+            ch.isActive !== false && 
+            !ch.isDeleted &&
+            ch.description !== 'DELETED_HIERARCHY_MARKER' &&
+            (String(ch.parentId) === String(s._id) || (getSubName(ch).toLowerCase() === sName.toLowerCase() && (String(ch.name || '').trim().toLowerCase() === 'stay' || String(ch.mainCategory || '').trim().toLowerCase() === 'stay')))
+          );
+
+          children.forEach(ch => {
+            const chName = getChildName(ch);
+            if (chName && chName !== 'ALL_CHILD_DELETED_MARKER' && !staySubMap[sName].includes(chName)) {
+              staySubMap[sName].push(chName);
+            }
+          });
+        });
+      }
+
+      tax['Stay'] = staySubMap;
+      return tax;
+    }
+
+    // 2. Populate from real DB categories for other categories
     if (Array.isArray(dbCategories) && dbCategories.length > 0) {
       const idToCat = {};
       dbCategories.forEach(c => { if (c && c._id) idToCat[String(c._id)] = c; });
@@ -866,8 +964,8 @@ const VendorDashboard = () => {
       tax[selectedMainCat] = dbSubMap;
     }
 
-    // 2. Also populate from the vendor's actual registered business categories (profile & outlets)
-    if (user) {
+    // 3. Also populate from the vendor's actual registered business categories (profile & outlets) - ONLY for non-Stay modules
+    if (user && selectedMainCat !== 'Stay') {
       if (!tax[selectedMainCat]) tax[selectedMainCat] = {};
       const bizList = user.businesses && user.businesses.length > 0 ? user.businesses : [user];
       bizList.forEach(b => {
@@ -2395,10 +2493,21 @@ const VendorDashboard = () => {
 
   // Catalog Item CRUD Operations
   const handleOpenAddItem = () => {
+    const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
+    const isStay = (
+      activeBiz?.vendorType === 'Stay' ||
+      activeBiz?.name === 'Stay' ||
+      activeBiz?.category === 'Stay' ||
+      vendorType.startsWith('Hotel') ||
+      terms.catalogItem === 'Room'
+    );
     const vendorCategory = user?.subcategory || user?.category || user?.vendorType || '';
-    const defaultMain = getProductMainCategory(vendorCategory, vendorType);
+    const defaultMain = isStay ? 'Stay' : getProductMainCategory(vendorCategory, vendorType);
 
     setSelectedMainCat(defaultMain);
+    if (isStay || defaultMain === 'Stay') {
+      fetchStayCategories();
+    }
 
     // Default category & subcategory to empty so vendor selects from real Admin DB categories
     const catVal = '';
@@ -2420,13 +2529,26 @@ const VendorDashboard = () => {
   };
 
   const handleOpenEditItem = (item) => {
-    const mainCat = getProductMainCategory(item.category, vendorType);
+    const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
+    const isStay = (
+      item.mainCategory === 'Stay' ||
+      item.subNavbarCategory === 'Stay' ||
+      activeBiz?.vendorType === 'Stay' ||
+      activeBiz?.name === 'Stay' ||
+      activeBiz?.category === 'Stay' ||
+      vendorType.startsWith('Hotel') ||
+      terms.catalogItem === 'Room'
+    );
+    const mainCat = isStay ? 'Stay' : getProductMainCategory(item.category, vendorType);
     setSelectedMainCat(mainCat);
+    if (isStay || mainCat === 'Stay') {
+      fetchStayCategories();
+    }
 
-    let catVal = item.category || 'General';
+    let catVal = item.category || (isStay ? '' : 'General');
     let childVal = item.subcategory || '';
 
-    if (mainCat && COMPLETE_CAT_TAXONOMY[mainCat]) {
+    if (!isStay && mainCat && COMPLETE_CAT_TAXONOMY[mainCat]) {
       for (const parentK of Object.keys(COMPLETE_CAT_TAXONOMY[mainCat])) {
         if (COMPLETE_CAT_TAXONOMY[mainCat][parentK].includes(item.category)) {
           catVal = parentK;
@@ -2631,9 +2753,26 @@ const VendorDashboard = () => {
       return;
     }
     if (!itemForm.category) {
-      setError('Category cannot be empty');
+      setError(selectedMainCat === 'Stay' ? 'Please select a Sub Category for the Room.' : 'Category cannot be empty');
       return;
     }
+
+    if (selectedMainCat === 'Stay') {
+      const currentTax = getCategoryTaxonomy();
+      const validSubCats = currentTax['Stay'] ? Object.keys(currentTax['Stay']) : [];
+      if (!validSubCats.some(s => s.toLowerCase() === itemForm.category.trim().toLowerCase())) {
+        setError(`Invalid Sub Category "${itemForm.category}". Please select an active Stay subcategory.`);
+        return;
+      }
+      const validChildCats = currentTax['Stay'][itemForm.category] || [];
+      if (itemForm.subcategory && validChildCats.length > 0) {
+        if (!validChildCats.some(c => c.toLowerCase() === itemForm.subcategory.trim().toLowerCase())) {
+          setError(`Invalid Child Category "${itemForm.subcategory}". Must belong to subcategory "${itemForm.category}".`);
+          return;
+        }
+      }
+    }
+
     const payload = {
       ...itemForm,
       aboutProduct: itemForm.description || itemForm.aboutProduct,
@@ -9604,25 +9743,39 @@ const VendorDashboard = () => {
           ) : (
             <>
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">{terms.nameLabel}</label>
+            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+              {(selectedMainCat === 'Stay' || terms.catalogItem === 'Room') ? 'Room Number / Name' : terms.nameLabel}
+            </label>
             <input
               type="text"
               required
               value={itemForm.name}
               onChange={e => setItemForm({ ...itemForm, name: e.target.value })}
               className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-              placeholder={terms.catalogItem === 'Doctor' ? 'e.g. Dr. Robert Watson' : 'e.g. Deluxe Room / Antibiotic Box'}
+              placeholder={
+                terms.catalogItem === 'Doctor' 
+                  ? 'e.g. Dr. Robert Watson' 
+                  : (selectedMainCat === 'Stay' || terms.catalogItem === 'Room')
+                  ? 'e.g. Deluxe Room 101, Executive Suite, Ocean Villa'
+                  : 'e.g. Deluxe Room / Antibiotic Box'
+              }
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">ABOUT PRODUCT</label>
+            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+              {(selectedMainCat === 'Stay' || terms.catalogItem === 'Room') ? 'ROOM DESCRIPTION' : 'ABOUT PRODUCT'}
+            </label>
             <textarea
               value={itemForm.description}
               rows={2}
               onChange={e => setItemForm({ ...itemForm, description: e.target.value })}
               className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-              placeholder="Provide key details, conditions, specs..."
+              placeholder={
+                (selectedMainCat === 'Stay' || terms.catalogItem === 'Room')
+                  ? 'Provide room specifications, view, bed size, guest policies...'
+                  : 'Provide key details, conditions, specs...'
+              }
             />
           </div>
 
@@ -9655,7 +9808,9 @@ const VendorDashboard = () => {
           {selectedMainCat && (
             <>
               <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Category</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  {selectedMainCat === 'Stay' ? 'Sub Category' : 'Category'}
+                </label>
                 <select
                   required
                   value={itemForm.category}
@@ -9679,10 +9834,18 @@ const VendorDashboard = () => {
                       return true;
                     });
 
+                    if (parentKeys.length === 0) {
+                      return (
+                        <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">
+                          {selectedMainCat === 'Stay' ? '-- No Stay Sub Categories Available --' : '-- No Categories Available --'}
+                        </option>
+                      );
+                    }
+
                     return (
                       <>
                         <option value="" className="bg-white dark:bg-slate-900 text-slate-400">
-                          -- Select Category --
+                          {selectedMainCat === 'Stay' ? '-- Select Sub Category --' : '-- Select Category --'}
                         </option>
                         {parentKeys.map(cat => (
                           <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
@@ -9705,7 +9868,11 @@ const VendorDashboard = () => {
                 >
                   {(() => {
                     if (!itemForm.category) {
-                      return <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">-- Select Category First --</option>;
+                      return (
+                        <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">
+                          {selectedMainCat === 'Stay' ? '-- Select Sub Category First --' : '-- Select Category First --'}
+                        </option>
+                      );
                     }
 
                     const currentTax = getCategoryTaxonomy();
@@ -9739,7 +9906,9 @@ const VendorDashboard = () => {
           {itemForm.subcategory && itemForm.subcategory.trim() !== '' && dynamicCategoryFields && dynamicCategoryFields.length > 0 && (
             <div className="space-y-3 p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 animate-fadeIn">
               <div className="flex items-center gap-2 border-b border-amber-500/20 pb-2">
-                <span className="text-amber-600 dark:text-amber-400 font-extrabold text-xs uppercase tracking-wider">⚡ Required Product Fields ({itemForm.subcategory})</span>
+                <span className="text-amber-600 dark:text-amber-400 font-extrabold text-xs uppercase tracking-wider">
+                  ⚡ Required {(selectedMainCat === 'Stay' || terms.catalogItem === 'Room') ? 'Room' : 'Product'} Fields ({itemForm.subcategory})
+                </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {dynamicCategoryFields.map(fieldName => (

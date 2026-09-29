@@ -2,9 +2,53 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
-const { Product, Order, Customer, DeliveryPartner, User, MembershipCard, PlatformConfig, Patient } = require('../models/Schemas');
+const { Product, Order, Customer, DeliveryPartner, User, MembershipCard, PlatformConfig, Patient, Category } = require('../models/Schemas');
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
 const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES, cacheManager } = require('../realtime/realtimeManager');
+
+// Helper to validate Stay category hierarchy against database
+const validateCatalogCategoryHierarchy = async (mainCategory, subCatName, childCatName) => {
+  const targetMain = (mainCategory || '').trim().toLowerCase();
+  if (targetMain !== 'stay') {
+    return { valid: true };
+  }
+
+  const all = await Category.find({ isDeleted: { $ne: true } }).lean();
+  const SYSTEM_MAIN_CATS = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+  const getSubName = (c) => (c.subcategory || (c.level === 'sub' && !SYSTEM_MAIN_CATS.map(m => m.toLowerCase()).includes(String(c.name).toLowerCase()) ? c.name : '')).trim();
+  const getChildName = (c) => (c.subSubcategory || (c.level === 'child' && !SYSTEM_MAIN_CATS.map(m => m.toLowerCase()).includes(String(c.name).toLowerCase()) ? c.name : '')).trim();
+
+  const stayMain = all.find(c => (c.level === 'main' || !c.parentId) && String(c.name || '').trim().toLowerCase() === 'stay');
+  if (!stayMain || stayMain.isActive === false) {
+    return { valid: false, error: 'Stay main category is currently inactive or not configured in database' };
+  }
+
+  const matchingSubs = all.filter(c => 
+    c.level === 'sub' && 
+    c.isActive !== false &&
+    (String(c.parentId) === String(stayMain._id) || String(c.name || '').trim().toLowerCase() === 'stay' || String(c.mainCategory || '').trim().toLowerCase() === 'stay') &&
+    getSubName(c).toLowerCase() === String(subCatName || '').trim().toLowerCase()
+  );
+
+  if (matchingSubs.length === 0) {
+    return { valid: false, error: `Invalid Stay subcategory: "${subCatName}". Only active Stay subcategories from Admin Category Management are permitted.` };
+  }
+
+  if (childCatName && String(childCatName).trim()) {
+    const subIds = matchingSubs.map(s => String(s._id));
+    const matchingChild = all.find(ch => 
+      ch.level === 'child' &&
+      ch.isActive !== false &&
+      (subIds.includes(String(ch.parentId)) || (getSubName(ch).toLowerCase() === String(subCatName).trim().toLowerCase() && (String(ch.name || '').trim().toLowerCase() === 'stay' || String(ch.mainCategory || '').trim().toLowerCase() === 'stay'))) &&
+      getChildName(ch).toLowerCase() === String(childCatName).trim().toLowerCase()
+    );
+    if (!matchingChild) {
+      return { valid: false, error: `Child category "${childCatName}" does not belong to subcategory "${subCatName}" under Stay in database.` };
+    }
+  }
+
+  return { valid: true };
+};
 
 const getProductMainCategory = (category) => {
   if (!category) return '';
@@ -275,6 +319,15 @@ const createProduct = async (req, res) => {
     const finalCategory = category || vendorSubcategory || 'General';
     const vendorId = (req.body.vendorId || req.user._id).toString();
 
+    // Strict validation for Stay category hierarchy
+    const resolvedMainCat = (mainCategory || subNavbarCategory || '').trim();
+    if (resolvedMainCat.toLowerCase() === 'stay') {
+      const validation = await validateCatalogCategoryHierarchy('Stay', finalCategory, bodySubcategory);
+      if (!validation.valid) {
+        return res.status(400).json({ success: false, message: validation.error });
+      }
+    }
+
     const product = await Product.create({
       vendorId,
       vendor_id: vendorId,
@@ -478,6 +531,16 @@ const updateProduct = async (req, res) => {
 
     const vendorSubcategory = getVendorSubcategory(req.user);
     const finalCategory = category || product.category || vendorSubcategory || 'General';
+
+    // Strict validation for Stay category hierarchy
+    const resolvedMainCat = (mainCategory || subNavbarCategory || product.mainCategory || product.subNavbarCategory || '').trim();
+    if (resolvedMainCat.toLowerCase() === 'stay') {
+      const targetSubcategory = bodySubcategory !== undefined ? bodySubcategory : product.subcategory;
+      const validation = await validateCatalogCategoryHierarchy('Stay', finalCategory, targetSubcategory);
+      if (!validation.valid) {
+        return res.status(400).json({ success: false, message: validation.error });
+      }
+    }
 
     const updated = await Product.findByIdAndUpdate(req.params.id, {
       $set: {

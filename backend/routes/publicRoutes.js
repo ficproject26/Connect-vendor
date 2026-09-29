@@ -858,11 +858,184 @@ router.get('/categories/subcategories/fields', async (req, res) => {
   }
 });
 
+// Helper to resolve clean category hierarchy strictly from MongoDB documents
+const buildCleanCategoryHierarchy = (dbCats, targetMainCatName, onlyActive = true) => {
+  const SYSTEM_MAIN_CATS = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+  const targetLower = (targetMainCatName || '').trim().toLowerCase();
+
+  const getSubName = (c) => (c.subcategory || (c.level === 'sub' && !SYSTEM_MAIN_CATS.map(m => m.toLowerCase()).includes(String(c.name).toLowerCase()) ? c.name : '')).trim();
+  const getChildName = (c) => (c.subSubcategory || (c.level === 'child' && !SYSTEM_MAIN_CATS.map(m => m.toLowerCase()).includes(String(c.name).toLowerCase()) ? c.name : '')).trim();
+
+  // Find Main Category doc
+  const mainDoc = dbCats.find(c => 
+    (c.level === 'main' || !c.parentId) && 
+    String(c.name || '').trim().toLowerCase() === targetLower
+  );
+
+  const mainCatId = mainDoc ? String(mainDoc._id) : null;
+  const canonicalMainName = mainDoc ? mainDoc.name : (targetMainCatName.charAt(0).toUpperCase() + targetMainCatName.slice(1));
+
+  // Find all Subcategory docs strictly belonging to this Main Category
+  const subDocs = dbCats.filter(c => {
+    if (c.level !== 'sub') return false;
+    if (c.isDeleted || c.description === 'DELETED_HIERARCHY_MARKER') return false;
+    if (onlyActive && c.isActive === false) return false;
+
+    const matchesParentId = mainCatId && String(c.parentId) === mainCatId;
+    const matchesName = String(c.name || '').trim().toLowerCase() === targetLower;
+    const matchesMain = String(c.mainCategory || '').trim().toLowerCase() === targetLower;
+
+    return matchesParentId || matchesName || matchesMain;
+  });
+
+  const subcategoriesMap = new Map();
+
+  subDocs.forEach(s => {
+    const sName = getSubName(s);
+    if (!sName || sName === 'ALL_SUBCATEGORIES_DELETED_MARKER') return;
+
+    const sKey = sName.toLowerCase();
+    if (!subcategoriesMap.has(sKey)) {
+      subcategoriesMap.set(sKey, {
+        _id: s._id,
+        id: s._id,
+        name: sName,
+        slug: s.slug || sName.toLowerCase().replace(/\s+/g, '-'),
+        mainCategory: canonicalMainName,
+        mainCategoryId: mainCatId,
+        isActive: s.isActive !== false,
+        requiredVendorFields: s.requiredVendorFields || [],
+        description: s.description || '',
+        childCategories: []
+      });
+    }
+
+    const subObj = subcategoriesMap.get(sKey);
+    const subDocId = String(s._id);
+
+    // Find child categories strictly belonging to this subcategory
+    const childDocs = dbCats.filter(ch => {
+      if (ch.level !== 'child') return false;
+      if (ch.isDeleted || ch.description === 'DELETED_HIERARCHY_MARKER') return false;
+      if (onlyActive && ch.isActive === false) return false;
+
+      const matchesParent = String(ch.parentId) === subDocId;
+      const chSubName = getSubName(ch).toLowerCase();
+      const matchesSubName = chSubName && chSubName === sKey;
+      const matchesMain = String(ch.name || '').trim().toLowerCase() === targetLower || 
+                          String(ch.mainCategory || '').trim().toLowerCase() === targetLower;
+
+      return matchesParent || (matchesSubName && matchesMain);
+    });
+
+    childDocs.forEach(ch => {
+      const chName = getChildName(ch);
+      if (!chName || chName === 'ALL_CHILD_DELETED_MARKER') return;
+
+      const chKey = chName.toLowerCase();
+      if (!subObj.childCategories.some(c => c.name.toLowerCase() === chKey)) {
+        subObj.childCategories.push({
+          _id: ch._id,
+          id: ch._id,
+          name: chName,
+          slug: ch.slug || chName.toLowerCase().replace(/\s+/g, '-'),
+          subcategoryId: s._id,
+          subcategory: sName,
+          mainCategory: canonicalMainName,
+          isActive: ch.isActive !== false,
+          requiredVendorFields: ch.requiredVendorFields || [],
+          description: ch.description || ''
+        });
+      }
+    });
+  });
+
+  return {
+    mainCategory: canonicalMainName,
+    mainCategoryId: mainCatId,
+    subcategories: Array.from(subcategoriesMap.values())
+  };
+};
+
+// @route   GET /api/public/categories/subcategories
+// @desc    Get strictly filtered subcategories for a main category
+router.get('/categories/subcategories', async (req, res) => {
+  try {
+    const { mainCategory, onlyActive } = req.query;
+    if (!mainCategory) {
+      return res.status(400).json({ success: false, message: 'mainCategory query parameter is required', data: [] });
+    }
+
+    const dbCats = await Category.find({ isDeleted: { $ne: true } }).lean();
+    const shouldFilterActive = onlyActive !== 'false';
+    const hierarchy = buildCleanCategoryHierarchy(dbCats, mainCategory, shouldFilterActive);
+
+    res.status(200).json({
+      success: true,
+      mainCategory: hierarchy.mainCategory,
+      mainCategoryId: hierarchy.mainCategoryId,
+      data: hierarchy.subcategories
+    });
+  } catch (error) {
+    console.error('Get Subcategories Error:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching subcategories', data: [] });
+  }
+});
+
+// @route   GET /api/public/categories/child-categories
+// @desc    Get strictly filtered child categories for a subcategory
+router.get('/categories/child-categories', async (req, res) => {
+  try {
+    const { mainCategory, subCategoryId, subcategory, onlyActive } = req.query;
+    if (!mainCategory) {
+      return res.status(400).json({ success: false, message: 'mainCategory is required', data: [] });
+    }
+    if (!subCategoryId && !subcategory) {
+      return res.status(400).json({ success: false, message: 'subCategoryId or subcategory is required', data: [] });
+    }
+
+    const dbCats = await Category.find({ isDeleted: { $ne: true } }).lean();
+    const shouldFilterActive = onlyActive !== 'false';
+    const hierarchy = buildCleanCategoryHierarchy(dbCats, mainCategory, shouldFilterActive);
+
+    const targetSub = hierarchy.subcategories.find(s => 
+      (subCategoryId && String(s._id) === String(subCategoryId)) || 
+      (subcategory && s.name.toLowerCase() === subcategory.trim().toLowerCase())
+    );
+
+    res.status(200).json({
+      success: true,
+      mainCategory: hierarchy.mainCategory,
+      subcategory: targetSub ? targetSub.name : (subcategory || ''),
+      subCategoryId: targetSub ? targetSub._id : (subCategoryId || null),
+      data: targetSub ? targetSub.childCategories : []
+    });
+  } catch (error) {
+    console.error('Get Child Categories Error:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching child categories', data: [] });
+  }
+});
+
 // @route   GET /api/public/categories
-// @desc    Get dynamic admin categories and base taxonomy
+// @desc    Get dynamic admin categories and base taxonomy, with strict mainCategory filtering support
 router.get('/categories', async (req, res) => {
   try {
+    const { mainCategory, onlyActive } = req.query;
     const dbCats = await Category.find({ isDeleted: { $ne: true } }).lean();
+
+    if (mainCategory) {
+      const shouldFilterActive = onlyActive !== 'false';
+      const hierarchy = buildCleanCategoryHierarchy(dbCats, mainCategory, shouldFilterActive);
+      return res.status(200).json({
+        success: true,
+        mainCategory: hierarchy.mainCategory,
+        mainCategoryId: hierarchy.mainCategoryId,
+        subcategories: hierarchy.subcategories,
+        data: dbCats || [],
+        hierarchy
+      });
+    }
+
     res.status(200).json({ success: true, data: dbCats || [], taxonomy: COMPLETE_CAT_TAXONOMY });
   } catch (error) {
     console.error('Get Public Categories Error:', error);
@@ -871,3 +1044,4 @@ router.get('/categories', async (req, res) => {
 });
 
 module.exports = router;
+
