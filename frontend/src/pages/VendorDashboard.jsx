@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useSelector, useDispatch } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, ShoppingBag, ClipboardList, Users, Truck, User, 
   Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
@@ -18,6 +18,23 @@ import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 import { compressImage } from '../utils/imageCompressor';
 import SubscriptionManagement from './business/SubscriptionManagement';
+import {
+  CATEGORY_PRODUCTS,
+  CATEGORY_DAILY_NEEDS,
+  CATEGORY_FOOD,
+  CATEGORY_SERVICES,
+  CATEGORY_STAY,
+  CATEGORY_TRAVEL,
+  CATEGORY_ALL,
+  ORDER_CATEGORIES,
+  BOOKING_CATEGORIES,
+  normalizeCategory,
+  categoryToSlug,
+  slugToCategory,
+  isOrderCategory,
+  isBookingCategory,
+  getRecordCategory
+} from '../utils/categoryContext';
 
 const formatCustomerId = (c, customersList = null) => {
   if (!c) return 'FIC-CUST-100001';
@@ -572,8 +589,11 @@ const VendorDashboard = () => {
     }
   };
 
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const tabParam = searchParams.get('tab');
+  const categoryParam = searchParams.get('category');
   
   const hasOrderCategory = () => {
     const allBiz = [{ vendorType: user?.vendorType, category: user?.category }, ...(user?.businesses || [])];
@@ -628,6 +648,26 @@ const VendorDashboard = () => {
     return isTabAllowed(initial, user?.role, vendorType) ? initial : 'dashboard';
   });
 
+  // Category context & transaction group management state
+  const [currentCategoryContext, setCurrentCategoryContext] = useState(() => {
+    if (categoryParam) return slugToCategory(categoryParam);
+    return CATEGORY_ALL;
+  });
+
+  const [orderCategoryFilter, setOrderCategoryFilter] = useState(() => {
+    if (categoryParam && isOrderCategory(slugToCategory(categoryParam))) {
+      return slugToCategory(categoryParam);
+    }
+    return 'All';
+  });
+
+  const [bookingCategoryFilter, setBookingCategoryFilter] = useState(() => {
+    if (categoryParam && isBookingCategory(slugToCategory(categoryParam))) {
+      return slugToCategory(categoryParam);
+    }
+    return 'All';
+  });
+
   const setActiveTab = (tab) => {
     if (isTabAllowed(tab, user?.role, vendorType)) {
       setActiveTabInternal(tab);
@@ -636,15 +676,139 @@ const VendorDashboard = () => {
     }
   };
 
-  useEffect(() => {
-    if (tabParam) {
-      if (isTabAllowed(tabParam, user?.role, vendorType)) {
-        setActiveTabInternal(tabParam);
+  // Navigate to Orders respecting Category Context
+  const navigateToOrders = (explicitCategory) => {
+    let target = explicitCategory;
+    if (target === undefined) {
+      if (activeTab === 'dashboard' || currentCategoryContext === CATEGORY_ALL || currentCategoryContext === 'all') {
+        target = CATEGORY_ALL;
+      } else if (isOrderCategory(currentCategoryContext)) {
+        target = currentCategoryContext;
       } else {
-        setActiveTabInternal('dashboard');
+        const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
+        const activeBizCat = normalizeCategory(activeBiz?.vendorType || user?.vendorType || '');
+        target = isOrderCategory(activeBizCat) ? activeBizCat : CATEGORY_ALL;
       }
     }
-  }, [tabParam, user?.role, vendorType]);
+    const norm = normalizeCategory(target);
+    const slug = categoryToSlug(norm);
+    setOrderCategoryFilter(norm);
+    setCurrentCategoryContext(norm);
+    setActiveTabInternal('orders');
+    setSearchParams({ tab: 'orders', category: slug });
+  };
+
+  // Navigate to Bookings respecting Category Context
+  const navigateToBookings = (explicitCategory) => {
+    let target = explicitCategory;
+    if (target === undefined) {
+      if (activeTab === 'dashboard' || currentCategoryContext === CATEGORY_ALL || currentCategoryContext === 'all') {
+        target = CATEGORY_ALL;
+      } else if (isBookingCategory(currentCategoryContext)) {
+        target = currentCategoryContext;
+      } else {
+        const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
+        const activeBizCat = normalizeCategory(activeBiz?.vendorType || user?.vendorType || '');
+        target = isBookingCategory(activeBizCat) ? activeBizCat : CATEGORY_ALL;
+      }
+    }
+    const norm = normalizeCategory(target);
+    const slug = categoryToSlug(norm);
+    setBookingCategoryFilter(norm);
+    setCurrentCategoryContext(norm);
+    setActiveTabInternal('bookings');
+    setSearchParams({ tab: 'bookings', category: slug });
+  };
+
+  // Overview / Home sidebar selection
+  const handleSelectOverviewSidebar = () => {
+    setCurrentCategoryContext(CATEGORY_ALL);
+    setOrderCategoryFilter(CATEGORY_ALL);
+    setBookingCategoryFilter(CATEGORY_ALL);
+    setActiveTabInternal('dashboard');
+    setSearchParams({ tab: 'dashboard', category: 'all' });
+  };
+
+  // My Categories sidebar selection
+  const handleSelectCategorySidebar = (biz) => {
+    if (!biz.isActive) {
+      dispatch(switchBusinessSuccess(biz.id));
+      setMessage(`Switched business profile to ${biz.name}!`);
+    }
+    const cat = normalizeCategory(biz.name);
+    setCurrentCategoryContext(cat);
+
+    if (activeTab === 'orders' && isOrderCategory(cat)) {
+      setOrderCategoryFilter(cat);
+      setSearchParams({ tab: 'orders', category: categoryToSlug(cat) });
+    } else if (activeTab === 'bookings' && isBookingCategory(cat)) {
+      setBookingCategoryFilter(cat);
+      setSearchParams({ tab: 'bookings', category: categoryToSlug(cat) });
+    } else {
+      setActiveTabInternal('catalog');
+      if (isOrderCategory(cat)) setOrderCategoryFilter(cat);
+      if (isBookingCategory(cat)) setBookingCategoryFilter(cat);
+      setSearchParams({ tab: 'catalog', category: categoryToSlug(cat) });
+    }
+  };
+
+  // Category change inside Orders table
+  const handleOrderCategoryChange = (newCat) => {
+    const norm = normalizeCategory(newCat);
+    setOrderCategoryFilter(norm);
+    setCurrentCategoryContext(norm);
+    setSearchParams({ tab: 'orders', category: categoryToSlug(norm) });
+  };
+
+  // Category change inside Bookings table
+  const handleBookingCategoryChange = (newCat) => {
+    const norm = normalizeCategory(newCat);
+    setBookingCategoryFilter(norm);
+    setCurrentCategoryContext(norm);
+    setSearchParams({ tab: 'bookings', category: categoryToSlug(norm) });
+  };
+
+  // General sidebar menu selection
+  const handleSelectMenuItem = (itemId) => {
+    if (itemId === 'orders') {
+      navigateToOrders();
+    } else if (itemId === 'bookings') {
+      navigateToBookings();
+    } else {
+      setActiveTab(itemId);
+      const params = { tab: itemId };
+      if (currentCategoryContext && currentCategoryContext !== CATEGORY_ALL) {
+        params.category = categoryToSlug(currentCategoryContext);
+      }
+      setSearchParams(params);
+    }
+  };
+
+  // Sync state with URL search params (direct navigation, refresh, back/forward)
+  useEffect(() => {
+    const tab = searchParams.get('tab') || 'dashboard';
+    const catSlug = searchParams.get('category');
+    const resolvedCat = catSlug ? slugToCategory(catSlug) : (tab === 'dashboard' ? CATEGORY_ALL : '');
+
+    if (isTabAllowed(tab, user?.role, vendorType)) {
+      setActiveTabInternal(tab);
+    } else {
+      setActiveTabInternal('dashboard');
+    }
+
+    if (resolvedCat) {
+      setCurrentCategoryContext(resolvedCat);
+      if (tab === 'orders') {
+        setOrderCategoryFilter(isOrderCategory(resolvedCat) ? resolvedCat : CATEGORY_ALL);
+      } else if (tab === 'bookings') {
+        setBookingCategoryFilter(isBookingCategory(resolvedCat) ? resolvedCat : CATEGORY_ALL);
+      }
+    } else if (tab === 'orders') {
+      setOrderCategoryFilter(prev => (prev && isOrderCategory(prev)) ? prev : CATEGORY_ALL);
+    } else if (tab === 'bookings') {
+      setBookingCategoryFilter(prev => (prev && isBookingCategory(prev)) ? prev : CATEGORY_ALL);
+    }
+  }, [searchParams, user?.role, vendorType]);
 
   useEffect(() => {
     document.title = 'vendor';
@@ -1203,7 +1367,6 @@ const VendorDashboard = () => {
   const [catalogSortOrder, setCatalogSortOrder] = useState('Default');
 
   const [orderStatusFilter, setOrderStatusFilter] = useState('All');
-  const [orderCategoryFilter, setOrderCategoryFilter] = useState('All');
   const [orderPaymentFilter, setOrderPaymentFilter] = useState('All');
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [orderTimeFilter, setOrderTimeFilter] = useState('All');
@@ -2098,7 +2261,12 @@ const VendorDashboard = () => {
           const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/products?type=${encodeURIComponent(targetCategoryType)}`, getAxiosConfig());
           if (res.data.success) setCatalog(res.data.data);
         } else if (activeTab === 'orders') {
-          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
+          const catParam = orderCategoryFilter && orderCategoryFilter !== 'All'
+            ? `?category=${encodeURIComponent(categoryToSlug(orderCategoryFilter))}`
+            : (currentCategoryContext && currentCategoryContext !== 'All' && isOrderCategory(currentCategoryContext)
+              ? `?category=${encodeURIComponent(categoryToSlug(currentCategoryContext))}`
+              : '');
+          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders${catParam}`, getAxiosConfig());
           if (res.data.success) setOrders(res.data.data);
           
           // Fetch delivery partners non-blockingly
@@ -2108,7 +2276,12 @@ const VendorDashboard = () => {
             })
             .catch(() => {});
         } else if (activeTab === 'bookings') {
-          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig());
+          const catParam = bookingCategoryFilter && bookingCategoryFilter !== 'All'
+            ? `?category=${encodeURIComponent(categoryToSlug(bookingCategoryFilter))}`
+            : (currentCategoryContext && currentCategoryContext !== 'All' && isBookingCategory(currentCategoryContext)
+              ? `?category=${encodeURIComponent(categoryToSlug(currentCategoryContext))}`
+              : '');
+          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/bookings${catParam}`, getAxiosConfig());
           if (res.data.success) setBookings(res.data.data);
         } else if (activeTab === 'applications') {
           const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/applications`, getAxiosConfig());
@@ -2233,7 +2406,7 @@ const VendorDashboard = () => {
     };
 
     fetchTabData();
-  }, [activeTab, activeBusinessId]);
+  }, [activeTab, activeBusinessId, orderCategoryFilter, bookingCategoryFilter]);
 
   // Clear stale cached data when active business or user session changes
   useEffect(() => {
@@ -3451,7 +3624,7 @@ const VendorDashboard = () => {
                   <div className="space-y-2 w-full">
                     {/* 1. Overview / Home */}
                     <button
-                      onClick={() => { setActiveTab(firstItem.id); setIsMobileMenuOpen(false); }}
+                      onClick={() => { handleSelectOverviewSidebar(); setIsMobileMenuOpen(false); }}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                         activeTab === firstItem.id 
                           ? 'bg-white/15 text-[#faed26] font-bold shadow-md' 
@@ -3469,16 +3642,12 @@ const VendorDashboard = () => {
                         <ul className="space-y-0.5 w-full">
                           {bizItems.map(biz => {
                             const Icon = biz.icon;
-                            const isCategorySelected = biz.isActive && activeTab === 'catalog';
+                            const isCategorySelected = biz.isActive && (activeTab === 'catalog' || currentCategoryContext === normalizeCategory(biz.name));
                             return (
                               <li key={biz.id}>
                                 <button
                                   onClick={() => {
-                                    if (!biz.isActive) {
-                                      dispatch(switchBusinessSuccess(biz.id));
-                                      setMessage(`Switched business profile to ${biz.name}!`);
-                                    }
-                                    setActiveTab('catalog');
+                                    handleSelectCategorySidebar(biz);
                                     setIsMobileMenuOpen(false);
                                   }}
                                   className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
@@ -3508,7 +3677,7 @@ const VendorDashboard = () => {
                           return (
                             <li key={item.id}>
                               <button
-                                onClick={() => { setActiveTab(item.id); setIsMobileMenuOpen(false); }}
+                                onClick={() => { handleSelectMenuItem(item.id); setIsMobileMenuOpen(false); }}
                                 className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                                   activeTab === item.id 
                                     ? 'bg-white/15 text-[#faed26] font-bold shadow-md' 
@@ -3729,7 +3898,7 @@ const VendorDashboard = () => {
                 <ul className="space-y-1 w-full">
                   <li>
                     <button
-                      onClick={() => setActiveTab(firstItem.id)}
+                      onClick={() => handleSelectOverviewSidebar()}
                       title={firstItem.name}
                       className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3 gap-3 text-left'} rounded-2xl text-sm font-semibold transition-all border border-transparent ${
                         activeTab === firstItem.id 
@@ -3754,17 +3923,11 @@ const VendorDashboard = () => {
                     <ul className="space-y-1 w-full">
                       {bizItems.map(biz => {
                         const Icon = biz.icon;
-                        const isCategorySelected = biz.isActive && activeTab === 'catalog';
+                        const isCategorySelected = biz.isActive && (activeTab === 'catalog' || currentCategoryContext === normalizeCategory(biz.name));
                         return (
                           <li key={biz.id}>
                             <button
-                              onClick={() => {
-                                if (!biz.isActive) {
-                                  dispatch(switchBusinessSuccess(biz.id));
-                                  setMessage(`Switched business profile to ${biz.name}!`);
-                                }
-                                setActiveTab('catalog');
-                              }}
+                              onClick={() => handleSelectCategorySidebar(biz)}
                               title={biz.name}
                               className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center p-3' : 'justify-between px-4 py-3'} text-left rounded-2xl text-sm font-semibold transition-all border border-transparent ${
                                 isCategorySelected
@@ -3803,7 +3966,7 @@ const VendorDashboard = () => {
                       return (
                         <li key={item.id}>
                           <button
-                            onClick={() => setActiveTab(item.id)}
+                            onClick={() => handleSelectMenuItem(item.id)}
                             title={item.name}
                             className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3 gap-3 text-left'} rounded-2xl text-sm font-semibold transition-all border border-transparent ${
                               activeTab === item.id 
@@ -4414,7 +4577,7 @@ const VendorDashboard = () => {
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Recent {terms.ordersName}</h3>
                     <button 
-                      onClick={() => setActiveTab('orders')} 
+                      onClick={() => navigateToOrders('All')} 
                       className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
                     >
                       View All
@@ -5075,7 +5238,7 @@ const VendorDashboard = () => {
                 <div className="w-full sm:w-40 shrink-0">
                   <select
                     value={orderCategoryFilter}
-                    onChange={(e) => setOrderCategoryFilter(e.target.value)}
+                    onChange={(e) => handleOrderCategoryChange(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
                   >
                     <option value="All">All Categories</option>
@@ -5153,12 +5316,13 @@ const VendorDashboard = () => {
 
                 const filteredOrders = orders.filter(order => {
                   // Strict category guard: NEVER show job applications or bookings in Orders
-                  const oType = (order.type || '').toLowerCase();
-                  const oCat = (order.category || '').toLowerCase();
-                  const isBookingOrJob = ['job', 'jobs', 'application', 'services', 'service', 'stay', 'hotel', 'travel', 'booking'].some(
-                    k => oType.startsWith(k) || oCat.startsWith(k)
-                  );
-                  if (isBookingOrJob) return false;
+                  const recCat = getRecordCategory(order);
+                  if (!ORDER_CATEGORIES.includes(recCat)) return false;
+
+                  // Category filter
+                  if (orderCategoryFilter && orderCategoryFilter !== 'All') {
+                    if (recCat !== normalizeCategory(orderCategoryFilter)) return false;
+                  }
 
                   const matchesBusiness = !savedActiveId || 
                     String(order.vendorId) === String(savedActiveId) || 
@@ -5168,13 +5332,6 @@ const VendorDashboard = () => {
                     (user?.businesses || []).some(b => String(b._id || b.id) === String(order.vendorId || order.vendor_id));
 
                   if (!matchesBusiness) return false;
-
-                  // Category filter
-                  if (orderCategoryFilter !== 'All') {
-                    const cf = orderCategoryFilter.toLowerCase();
-                    const matchCat = oType.includes(cf) || oCat.includes(cf);
-                    if (!matchCat) return false;
-                  }
 
                   // Payment filter
                   if (orderPaymentFilter !== 'All') {
@@ -5553,6 +5710,20 @@ const VendorDashboard = () => {
                         />
                       </div>
 
+                      {/* Category filter */}
+                      <div className="w-full sm:w-48 shrink-0">
+                        <select
+                          value={bookingCategoryFilter}
+                          onChange={(e) => handleBookingCategoryChange(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                        >
+                          <option value="All">All Categories</option>
+                          <option value="Services">Services</option>
+                          <option value="Stay">Stay</option>
+                          <option value="Travel">Travel</option>
+                        </select>
+                      </div>
+
                       <div className="w-full sm:w-48 shrink-0">
                         <select
                           value={bookingTimeFilter}
@@ -5599,6 +5770,15 @@ const VendorDashboard = () => {
                         const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
 
                         const filteredBookings = bookings.filter(b => {
+                          // Strict transaction group isolation: NEVER display orders or jobs in Bookings
+                          const recCat = getRecordCategory(b);
+                          if (!BOOKING_CATEGORIES.includes(recCat)) return false;
+
+                          // Category filter
+                          if (bookingCategoryFilter && bookingCategoryFilter !== 'All') {
+                            if (recCat !== normalizeCategory(bookingCategoryFilter)) return false;
+                          }
+
                           const matchesBusiness = !savedActiveId ||
                             String(b.vendorId) === String(savedActiveId) ||
                             String(b.vendor_id) === String(savedActiveId) ||

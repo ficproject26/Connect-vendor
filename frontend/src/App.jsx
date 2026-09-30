@@ -24,6 +24,20 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   return children;
 };
 
+import { useSearchParams } from 'react-router-dom';
+
+const OrdersRedirect = () => {
+  const [searchParams] = useSearchParams();
+  const cat = searchParams.get('category');
+  return <Navigate to={`/vendor?tab=orders${cat ? `&category=${encodeURIComponent(cat)}` : ''}`} replace />;
+};
+
+const BookingsRedirect = () => {
+  const [searchParams] = useSearchParams();
+  const cat = searchParams.get('category');
+  return <Navigate to={`/vendor?tab=bookings${cat ? `&category=${encodeURIComponent(cat)}` : ''}`} replace />;
+};
+
 function App() {
   useEffect(() => {
     // Initialize theme preference from localStorage, default to dark
@@ -54,6 +68,10 @@ function App() {
             <Route path="/" element={<Login />} />
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="/register" element={<Register />} />
+
+            {/* Direct convenience routes for Orders and Bookings with category query params */}
+            <Route path="/orders" element={<OrdersRedirect />} />
+            <Route path="/bookings" element={<BookingsRedirect />} />
 
             {/* Protected Role-Based Dashboards */}
             <Route 

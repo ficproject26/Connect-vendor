@@ -67,6 +67,43 @@ const ORDER_BASED_TYPES = ['Order', 'Daily Needs', 'Food', 'Products', 'order', 
 const BOOKING_BASED_TYPES = ['Booking', 'Appointment', 'Stay', 'Travel', 'Services', 'booking', 'Hotel', 'Hospital', 'Travel Agency', 'Technician'];
 const APPLICATION_BASED_TYPES = ['Job', 'Jobs', 'Job Application', 'application', 'Application'];
 
+// Centralized Category Normalization & Mapping Function
+const normalizeCategory = (cat) => {
+  if (!cat) return '';
+  const clean = String(cat).trim().toLowerCase().replace(/[-_]/g, ' ');
+  if (clean === 'product' || clean === 'products') return 'Products';
+  if (clean === 'daily need' || clean === 'daily needs' || clean === 'dailyneed' || clean === 'dailyneeds' || clean === 'grocery' || clean === 'pharmacy') return 'Daily Needs';
+  if (clean === 'food' || clean === 'foods' || clean === 'restaurant' || clean === 'restaurants') return 'Food';
+  if (clean === 'service' || clean === 'services' || clean === 'hospital' || clean === 'technician') return 'Services';
+  if (clean === 'stay' || clean === 'stays' || clean === 'hotel' || clean === 'hotels' || clean === 'room' || clean === 'rooms') return 'Stay';
+  if (clean === 'travel' || clean === 'travels' || clean === 'package' || clean === 'packages') return 'Travel';
+  if (clean === 'job' || clean === 'jobs' || clean === 'application' || clean === 'applications') return 'Job';
+  return cat;
+};
+
+const mapCategoryToTypes = (cat) => {
+  const norm = normalizeCategory(cat);
+  if (norm === 'Products') {
+    return ['Products', 'Product', 'products', 'product', 'Store', 'Electronics', 'Furniture'];
+  }
+  if (norm === 'Daily Needs') {
+    return ['Daily Needs', 'daily needs', 'daily_needs', 'Daily_Needs', 'Grocery', 'grocery', 'Pharmacy', 'pharmacy'];
+  }
+  if (norm === 'Food') {
+    return ['Food', 'food', 'Restaurant', 'restaurant', 'Foods', 'foods'];
+  }
+  if (norm === 'Services') {
+    return ['Services', 'services', 'Service', 'service', 'Hospital', 'hospital', 'Technician'];
+  }
+  if (norm === 'Stay') {
+    return ['Stay', 'stay', 'Hotel', 'hotel', 'Room', 'room'];
+  }
+  if (norm === 'Travel') {
+    return ['Travel', 'travel', 'Travels', 'travels', 'Travel Agency', 'package', 'Package'];
+  }
+  return [cat];
+};
+
 const vendorHasOrderCategories = (user) => {
   if (!user) return false;
   const allBiz = [{ vendorType: user.vendorType, category: user.category }, ...(user.businesses || [])];
@@ -812,10 +849,13 @@ const getOrders = async (req, res) => {
     };
 
     // Support category filter
-    if (req.query.category && req.query.category !== 'All') {
-      const catRegex = new RegExp('^' + String(req.query.category).trim(), 'i');
+    if (req.query.category && !['All', 'all'].includes(String(req.query.category).trim())) {
+      const allowedTypes = mapCategoryToTypes(req.query.category);
+      const catRegex = new RegExp(allowedTypes.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
       baseQuery.$and.push({
         $or: [
+          { type: { $in: allowedTypes } },
+          { category: { $in: allowedTypes } },
           { type: catRegex },
           { category: catRegex }
         ]
@@ -1050,6 +1090,20 @@ const getBookings = async (req, res) => {
         }
       ]
     };
+
+    // Support category filter for bookings
+    if (req.query.category && !['All', 'all'].includes(String(req.query.category).trim())) {
+      const allowedTypes = mapCategoryToTypes(req.query.category);
+      const catRegex = new RegExp(allowedTypes.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
+      baseQuery.$and.push({
+        $or: [
+          { type: { $in: allowedTypes } },
+          { category: { $in: allowedTypes } },
+          { type: catRegex },
+          { category: catRegex }
+        ]
+      });
+    }
 
     // Support search
     if (req.query.search) {
