@@ -2217,19 +2217,20 @@ const getCustomers = async (req, res) => {
       });
     }
 
-    const dbCustomers = await Customer.find({
-      $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
-      ]
-    });
-
-    const rawOrders = await Order.find({
-      $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
-      ]
-    });
+    const [dbCustomers, rawOrders] = await Promise.all([
+      Customer.find({
+        $or: [
+          { vendorId: { $in: businessIds } },
+          { vendor_id: { $in: businessIds } }
+        ]
+      }).lean(),
+      Order.find({
+        $or: [
+          { vendorId: { $in: businessIds } },
+          { vendor_id: { $in: businessIds } }
+        ]
+      }).select('vendorId vendor_id memberName customer_name candidateEmail customer_email memberId customer_phone phone mobileNumber contactNumber candidatePhone memberPhone customer_address address deliveryAddress shippingAddress location candidateAddress memberAddress finalAmount totalAmount amount customerId registrationId').lean()
+    ]);
 
     const customerMap = {};
 
@@ -2245,9 +2246,8 @@ const getCustomers = async (req, res) => {
       return cleanEmail || cleanName || 'unknown_customer';
     };
 
-    // 1. Register all DB customer records
-    dbCustomers.forEach(c => {
-      const obj = c.toObject ? c.toObject() : c;
+    // 1. Register all DB customer records (already lean POJOs)
+    dbCustomers.forEach(obj => {
       const name = (obj.name || 'Customer').trim();
       const email = (obj.email || obj.memberId || '').trim();
       const key = getCustomerKey(name, email);
@@ -2302,24 +2302,56 @@ const getCustomers = async (req, res) => {
     });
 
     // 2.5 Fill missing customer address/phone from User profiles
-    const allUsers = await User.find({}).lean();
+    // Instead of fetching ALL users, only fetch users whose emails or phones match known customers
+    const customerEmails = [];
+    const customerPhones = [];
+    const customerNames = [];
+    Object.values(customerMap).forEach(cust => {
+      const e = (cust.email || '').trim().toLowerCase();
+      const p = (cust.phone || '').toString().trim().replace(/[^0-9]/g, '');
+      const n = (cust.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (e && e.includes('@') && !e.includes('gmail.com')) customerEmails.push(e);
+      if (p && p.length >= 8) customerPhones.push(p);
+      if (n && n !== 'customer' && n.length > 2) customerNames.push(n);
+    });
+
+    // Targeted query — only look up users that could plausibly match
+    const userQuery = [];
+    if (customerEmails.length) userQuery.push({ email: { $in: customerEmails } });
+    if (customerPhones.length) userQuery.push({ phone: { $in: customerPhones } }, { mobileNumber: { $in: customerPhones } });
+    if (customerNames.length) userQuery.push({ name: { $in: customerNames.map(n => new RegExp(`^${n}$`, 'i')) } });
+
+    let usersByEmail = {};
+    let usersByPhone = {};
+    let usersByName = {};
+
+    if (userQuery.length > 0) {
+      const matchedUsers = await User.find({ $or: userQuery })
+        .select('name email phone mobileNumber address street city district state pincode postalCode')
+        .lean();
+
+      // Index into Maps for O(1) lookup
+      matchedUsers.forEach(u => {
+        const uEmail = (u.email || '').trim().toLowerCase();
+        const uPhone = (u.phone || u.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
+        const uName = (u.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (uEmail) usersByEmail[uEmail] = u;
+        if (uPhone) usersByPhone[uPhone] = u;
+        if (uName && uName !== 'customer') usersByName[uName] = u;
+      });
+    }
+
     Object.keys(customerMap).forEach(key => {
       const cust = customerMap[key];
       const custNameClean = (cust.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
       const custEmailClean = (cust.email || '').trim().toLowerCase();
       const custPhoneClean = (cust.phone || '').toString().trim().replace(/[^0-9]/g, '');
 
-      const matchedUser = allUsers.find(u => {
-        if (!u) return false;
-        const uPhone = (u.phone || u.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
-        const uNameClean = (u.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-        const uEmailClean = (u.email || '').trim().toLowerCase();
-
-        if (custPhoneClean && uPhone && (custPhoneClean === uPhone || custPhoneClean.endsWith(uPhone) || uPhone.endsWith(custPhoneClean))) return true;
-        if (custNameClean && uNameClean && custNameClean === uNameClean && custNameClean !== 'customer' && custNameClean.length > 2) return true;
-        if (custEmailClean && uEmailClean && custEmailClean === uEmailClean && custEmailClean.includes('@')) return true;
-        return false;
-      });
+      // O(1) map lookups instead of O(n) array.find
+      const matchedUser = usersByEmail[custEmailClean] ||
+        usersByPhone[custPhoneClean] ||
+        (custPhoneClean.length >= 10 ? usersByPhone[custPhoneClean.slice(-10)] : null) ||
+        (custNameClean.length > 2 && custNameClean !== 'customer' ? usersByName[custNameClean] : null);
 
       if (matchedUser) {
         if (!cust.phone && (matchedUser.phone || matchedUser.mobileNumber)) {
