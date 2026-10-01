@@ -66,12 +66,12 @@ const getSubNavbarCategory = (baseVendorType, category) => {
 router.get('/products', async (req, res) => {
   try {
     // 1. Fetch all users from database
-    const allVendorUsers = await User.find({});
+    const allVendorUsers = await User.find({}).lean();
 
     const suspendedIds = new Set();
     const suspendedNames = new Set();
-    const suspendedCategoryKeys = new Set();
     const vendorMap = {};
+    const activeVendorKeyToUser = new Map();
 
     allVendorUsers.forEach(vendor => {
       const vStatus = (vendor.status || vendor.vendorStatus || '').toString().toLowerCase().trim();
@@ -126,6 +126,10 @@ router.get('/products', async (req, res) => {
           });
         }
       } else {
+        vendorKeys.forEach(k => {
+          activeVendorKeyToUser.set(k, vendor);
+        });
+
         // User is active, but check each business sub-document
         if (vendor.businesses && Array.isArray(vendor.businesses)) {
           vendor.businesses.forEach(biz => {
@@ -146,6 +150,10 @@ router.get('/products', async (req, res) => {
                 suspendedNames.add(biz.name.toLowerCase().trim());
               }
             } else if (biz._id) {
+              activeVendorKeyToUser.set(biz._id.toString(), vendor);
+              if (biz.businessName) activeVendorKeyToUser.set(biz.businessName.toLowerCase().trim(), vendor);
+              if (biz.name) activeVendorKeyToUser.set(biz.name.toLowerCase().trim(), vendor);
+
               const vCity = biz.city || vendor.city || vendor.bankCity || 'Bangalore';
               const bData = {
                 name: biz.businessName || vendor.businessName || vendor.name,
@@ -182,7 +190,7 @@ router.get('/products', async (req, res) => {
     });
 
     // 2. Fetch all products
-    const products = await Product.find({});
+    const products = await Product.find({}).lean();
 
     // Filter products: exclude any product belonging to a suspended vendor or marked suspended
     const activeProducts = products.filter(p => {
@@ -223,46 +231,17 @@ router.get('/products', async (req, res) => {
         return false;
       }
 
-      // 2. Cross-reference matching vendor user in allVendorUsers
-      const matchingVendorUser = allVendorUsers.find(v => {
-        const vId = v._id ? v._id.toString() : '';
-        const vPrimaryBizId = v.primaryBusinessId ? v.primaryBusinessId.toString() : '';
-        const vVenId = v.vendorId ? v.vendorId.toString() : '';
-        const vRegId = v.registrationId ? v.registrationId.toString() : '';
-        const vRegId2 = v.regId ? v.regId.toString() : '';
-        const vUser = v.username ? v.username.toLowerCase().trim() : '';
-        const vEmail = v.email ? v.email.toLowerCase().trim() : '';
-        const vPhone = v.phone ? v.phone.toString().replace(/\D/g, '') : '';
-        const vMob = v.mobileNumber ? v.mobileNumber.toString().replace(/\D/g, '') : '';
-        const vBiz = v.businessName ? v.businessName.toLowerCase().trim() : '';
-        const vName = v.name ? v.name.toLowerCase().trim() : '';
-
-        const vBizListKeys = [];
-        if (v.businesses && Array.isArray(v.businesses)) {
-          v.businesses.forEach(b => {
-            if (b._id) vBizListKeys.push(b._id.toString());
-            if (b.businessName) vBizListKeys.push(b.businessName.toLowerCase().trim());
-            if (b.name) vBizListKeys.push(b.name.toLowerCase().trim());
-          });
+      // 2. Cross-reference matching vendor user using O(1) Map lookup
+      let matchingVendorUser = null;
+      for (const k of productVendorKeys) {
+        if (activeVendorKeyToUser.has(k)) {
+          matchingVendorUser = activeVendorKeyToUser.get(k);
+          break;
         }
-
-        const allKeysForVendor = [vId, vPrimaryBizId, vVenId, vRegId, vRegId2, vUser, vEmail, vPhone, vMob, vBiz, vName, ...vBizListKeys].filter(Boolean);
-
-        return productVendorKeys.some(k => allKeysForVendor.includes(k));
-      });
+      }
 
       if (!matchingVendorUser) {
         // Exclude products that do not belong to any active registered vendor user in the system
-        return false;
-      }
-
-      const vStatus = (matchingVendorUser.status || matchingVendorUser.vendorStatus || '').toString().toLowerCase().trim();
-      const isSusp = ['suspended', 'inactive', 'rejected', 'deactivated', 'disabled', 'blocked'].includes(vStatus) || 
-                     matchingVendorUser.isActive === false || 
-                     matchingVendorUser.isApproved === false ||
-                     matchingVendorUser.isLocked === true || 
-                     matchingVendorUser.isSuspended === true;
-      if (isSusp) {
         return false;
       }
 
@@ -294,7 +273,7 @@ router.get('/products', async (req, res) => {
       }
       const finalImg = rawImg 
         ? (rawImg.startsWith('/uploads') ? `${baseUrl}${rawImg}` : rawImg)
-        : (subNavbarCategory === 'Services' 
+        : ((p.subNavbarCategory || req.query.subNavbarCategory) === 'Services' 
             ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
             : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60');
 
@@ -338,6 +317,8 @@ router.get('/products', async (req, res) => {
         boardingTime: p.boardingTime,
         dropPoint: p.dropPoint,
         arrivalTime: p.arrivalTime,
+        boardingPoints: p.boardingPoints || [],
+        droppingPoints: p.droppingPoints || [],
         distance: p.distance,
         busTiming: p.busTiming,
         stoppings: p.stoppings || [],
@@ -577,14 +558,27 @@ router.post('/orders', async (req, res) => {
       infants: req.body.infants || req.body.infantsCount,
       roomsCount: req.body.roomsCount || req.body.numberOfRooms || req.body.roomCount,
       nightsCount: req.body.nightsCount || req.body.numberOfNights || req.body.nights,
+      boardingPoint: req.body.boardingPoint || null,
+      droppingPoint: req.body.droppingPoint || null,
+      boardingPoints: req.body.boardingPoints || [],
+      droppingPoints: req.body.droppingPoints || [],
+      travelDate: req.body.travelDate || req.body.journeyDate || req.body.departureDate || appointmentDate || null,
+      journeyDate: req.body.journeyDate || req.body.travelDate || req.body.departureDate || appointmentDate || null,
+      departureDate: req.body.departureDate || req.body.travelDate || req.body.journeyDate || appointmentDate || null,
+      departureTime: req.body.departureTime || (req.body.boardingPoint && typeof req.body.boardingPoint === 'object' ? req.body.boardingPoint.time : null) || appointmentTimeSlot || null,
       roomName: req.body.roomName,
       roomType: req.body.roomType,
       roomCategory: req.body.roomCategory,
-      vehicleDetails: req.body.vehicleDetails || null,
+      vehicleDetails: {
+        ...(req.body.vehicleDetails || {}),
+        boardingPoint: req.body.boardingPoint || null,
+        droppingPoint: req.body.droppingPoint || null,
+        pickupDropInfo: req.body.pickupDropInfo || (typeof req.body.boardingPoint === 'string' ? req.body.boardingPoint : (req.body.boardingPoint?.name ? `${req.body.boardingPoint.name} (${req.body.boardingPoint.time || ''})` : null))
+      },
       travelType: req.body.travelType || (req.body.vehicleDetails && req.body.vehicleDetails.travelType) || null,
       vehicleType: req.body.vehicleType || (req.body.vehicleDetails && req.body.vehicleDetails.vehicleType) || null,
       vehicleNumber: req.body.vehicleNumber || (req.body.vehicleDetails && req.body.vehicleDetails.vehicleNumber) || null,
-      pickupDropInfo: req.body.pickupDropInfo || req.body.boardingPoint || null,
+      pickupDropInfo: req.body.pickupDropInfo || (typeof req.body.boardingPoint === 'string' ? req.body.boardingPoint : (req.body.boardingPoint?.name ? `${req.body.boardingPoint.name} (${req.body.boardingPoint.time || ''})` : null)) || null,
       specialRequests: req.body.specialRequests || req.body.guestSpecialNote || null,
       statusHistory: req.body.statusHistory || [{
         status: isJob ? 'APPLICATION RECEIVED' : (orderType === 'Stay' ? 'Confirmed' : (req.body.status || 'Order Received')),

@@ -219,10 +219,22 @@ const ProductSchema = new mongoose.Schema({
   department: { type: String },
 
   // Travel / Bus Booking fields
-  boardingPoint: { type: String },
-  boardingTime: { type: String },
-  dropPoint: { type: String },
-  arrivalTime: { type: String },
+  boardingPoint: { type: String }, // Legacy compatibility
+  boardingTime: { type: String },  // Legacy compatibility
+  dropPoint: { type: String },      // Legacy compatibility
+  arrivalTime: { type: String },    // Legacy compatibility
+  boardingPoints: [{
+    name: { type: String, required: true },
+    time: { type: String, required: true },
+    landmark: { type: String, default: '' },
+    active: { type: Boolean, default: true }
+  }],
+  droppingPoints: [{
+    name: { type: String, required: true },
+    time: { type: String, required: true },
+    landmark: { type: String, default: '' },
+    active: { type: Boolean, default: true }
+  }],
   distance: { type: String },
   busTiming: { type: String },
   stoppings: [{
@@ -281,6 +293,11 @@ const OrderSchema = new mongoose.Schema({
   travelDate: { type: String },
   journeyDate: { type: String },
   departureDate: { type: String },
+  departureTime: { type: String },
+  boardingPoint: { type: mongoose.Schema.Types.Mixed },
+  droppingPoint: { type: mongoose.Schema.Types.Mixed },
+  boardingPoints: [{ type: mongoose.Schema.Types.Mixed }],
+  droppingPoints: [{ type: mongoose.Schema.Types.Mixed }],
 
   // Stay booking fields
   checkInDate: { type: String },

@@ -331,6 +331,85 @@ const getVendorSubcategory = (user) => {
   return '';
 };
 
+const isValidTimeFormat = (timeStr) => {
+  if (!timeStr || typeof timeStr !== 'string') return false;
+  const trimmed = timeStr.trim();
+  // 24-hour format: HH:MM or H:MM (00:00 to 23:59)
+  const regex24 = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  // 12-hour format: HH:MM AM/PM or H:MM AM/PM or HH.MM AM/PM
+  const regex12 = /^(0?[1-9]|1[0-2])[:.][0-5][0-9]\s*(AM|PM|am|pm)$/;
+  return regex24.test(trimmed) || regex12.test(trimmed);
+};
+
+const validateAndNormalizeTravelPoints = (rawBps, rawDps) => {
+  const normalize = (list) => {
+    if (!Array.isArray(list)) return [];
+    return list.map(item => {
+      if (typeof item === 'string') {
+        return { name: item.trim(), time: '', landmark: '', active: true };
+      }
+      return {
+        name: (item.name || item.point || item.location || '').trim(),
+        time: (item.time || item.timing || '').trim(),
+        landmark: (item.landmark || item.address || '').trim(),
+        active: item.active !== false
+      };
+    }).filter(p => p.name || p.time);
+  };
+
+  const bps = normalize(rawBps);
+  const dps = normalize(rawDps);
+
+  if (bps.length === 0) {
+    return { valid: false, error: 'At least 1 boarding point is required for the travel route.' };
+  }
+  if (dps.length === 0) {
+    return { valid: false, error: 'At least 1 dropping point is required for the travel route.' };
+  }
+
+  // Validate required fields, duplicates, and time format for boarding points
+  const seenBp = new Set();
+  for (let i = 0; i < bps.length; i++) {
+    const bp = bps[i];
+    if (!bp.name) {
+      return { valid: false, error: `Boarding point #${i + 1} name is mandatory.` };
+    }
+    if (!bp.time) {
+      return { valid: false, error: `Boarding point "${bp.name}" time is mandatory.` };
+    }
+    if (!isValidTimeFormat(bp.time)) {
+      return { valid: false, error: `Invalid time format for boarding point "${bp.name}". Please use HH:MM (e.g. 21:30 or 09:30 PM).` };
+    }
+    const lower = bp.name.toLowerCase();
+    if (seenBp.has(lower)) {
+      return { valid: false, error: `Duplicate boarding point "${bp.name}". Each point name must be unique.` };
+    }
+    seenBp.add(lower);
+  }
+
+  // Validate required fields, duplicates, and time format for dropping points
+  const seenDp = new Set();
+  for (let i = 0; i < dps.length; i++) {
+    const dp = dps[i];
+    if (!dp.name) {
+      return { valid: false, error: `Dropping point #${i + 1} name is mandatory.` };
+    }
+    if (!dp.time) {
+      return { valid: false, error: `Dropping point "${dp.name}" time is mandatory.` };
+    }
+    if (!isValidTimeFormat(dp.time)) {
+      return { valid: false, error: `Invalid time format for dropping point "${dp.name}". Please use HH:MM (e.g. 07:00 or 07:00 AM).` };
+    }
+    const lower = dp.name.toLowerCase();
+    if (seenDp.has(lower)) {
+      return { valid: false, error: `Duplicate dropping point "${dp.name}". Each point name must be unique.` };
+    }
+    seenDp.add(lower);
+  }
+
+  return { valid: true, boardingPoints: bps, droppingPoints: dps };
+};
+
 // --- PRODUCTS / SERVICES CRUD ---
 // @desc    Create a product / doctor / room / service
 // @route   POST /api/vendor/products
@@ -345,6 +424,7 @@ const createProduct = async (req, res) => {
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
       qualification, linkedProfile, contactNumber, mailId, department,
       boardingPoint, boardingTime, dropPoint, arrivalTime, distance, busTiming, stoppings,
+      boardingPoints, droppingPoints,
       specifications, customFields
     } = req.body;
 
@@ -363,6 +443,41 @@ const createProduct = async (req, res) => {
       if (!validation.valid) {
         return res.status(400).json({ success: false, message: validation.error });
       }
+    }
+
+    let finalBoardingPoints = [];
+    let finalDroppingPoints = [];
+    let finalBoardingPoint = boardingPoint;
+    let finalBoardingTime = boardingTime;
+    let finalDropPoint = dropPoint;
+    let finalArrivalTime = arrivalTime;
+
+    const isTravelCategory = resolvedMainCat.toLowerCase() === 'travel' ||
+      ['Bus Booking', 'Travels', 'Travel', 'Bus', 'Car', 'Bike', 'Travel Ticket', 'Cabs', 'Transport'].some(c => c.toLowerCase() === finalCategory.toLowerCase()) ||
+      ['Sleeper Buses', 'Seater Buses', 'AC Buses', 'Non-AC Buses', 'Volvo Buses', 'Luxury Coaches', 'Intercity Buses'].some(sc => sc.toLowerCase() === (bodySubcategory || '').toLowerCase());
+
+    if (isTravelCategory) {
+      const bpsInput = Array.isArray(boardingPoints) && boardingPoints.length > 0
+        ? boardingPoints
+        : (boardingPoint ? [{ name: boardingPoint, time: boardingTime || '', landmark: '', active: true }] : []);
+      const dpsInput = Array.isArray(droppingPoints) && droppingPoints.length > 0
+        ? droppingPoints
+        : (dropPoint ? [{ name: dropPoint, time: arrivalTime || '', landmark: '', active: true }] : []);
+
+      const validation = validateAndNormalizeTravelPoints(bpsInput, dpsInput);
+      if (!validation.valid) {
+        return res.status(400).json({ success: false, message: validation.error });
+      }
+
+      finalBoardingPoints = validation.boardingPoints;
+      finalDroppingPoints = validation.droppingPoints;
+      finalBoardingPoint = finalBoardingPoints[0]?.name || '';
+      finalBoardingTime = finalBoardingPoints[0]?.time || '';
+      finalDropPoint = finalDroppingPoints[0]?.name || '';
+      finalArrivalTime = finalDroppingPoints[0]?.time || '';
+    } else {
+      if (Array.isArray(boardingPoints)) finalBoardingPoints = boardingPoints;
+      if (Array.isArray(droppingPoints)) finalDroppingPoints = droppingPoints;
     }
 
     const product = await Product.create({
@@ -405,10 +520,12 @@ const createProduct = async (req, res) => {
       contactNumber,
       mailId,
       department,
-      boardingPoint,
-      boardingTime,
-      dropPoint,
-      arrivalTime,
+      boardingPoint: finalBoardingPoint,
+      boardingTime: finalBoardingTime,
+      dropPoint: finalDropPoint,
+      arrivalTime: finalArrivalTime,
+      boardingPoints: finalBoardingPoints,
+      droppingPoints: finalDroppingPoints,
       distance,
       busTiming,
       stoppings: stoppings || [],
@@ -554,7 +671,8 @@ const updateProduct = async (req, res) => {
       availableSizes, availableColors,
       jobType, jobLocation, experience, skills, deadline, applicationTips, 
       qualification, linkedProfile, contactNumber, mailId, department,
-      boardingPoint, boardingTime, dropPoint, arrivalTime, distance, busTiming, stoppings
+      boardingPoint, boardingTime, dropPoint, arrivalTime, distance, busTiming, stoppings,
+      boardingPoints, droppingPoints
     } = req.body;
     const product = await Product.findById(req.params.id);
 
@@ -577,6 +695,43 @@ const updateProduct = async (req, res) => {
       if (!validation.valid) {
         return res.status(400).json({ success: false, message: validation.error });
       }
+    }
+
+    let updatedBoardingPoints = product.boardingPoints || [];
+    let updatedDroppingPoints = product.droppingPoints || [];
+    let updatedBoardingPoint = boardingPoint !== undefined ? boardingPoint : product.boardingPoint;
+    let updatedBoardingTime = boardingTime !== undefined ? boardingTime : product.boardingTime;
+    let updatedDropPoint = dropPoint !== undefined ? dropPoint : product.dropPoint;
+    let updatedArrivalTime = arrivalTime !== undefined ? arrivalTime : product.arrivalTime;
+
+    const isTravelCat = resolvedMainCat.toLowerCase() === 'travel' ||
+      (product.mainCategory && product.mainCategory.toLowerCase() === 'travel') ||
+      (product.subNavbarCategory && product.subNavbarCategory.toLowerCase() === 'travel') ||
+      ['Bus Booking', 'Travels', 'Travel', 'Bus', 'Car', 'Bike', 'Travel Ticket', 'Cabs', 'Transport'].some(c => c.toLowerCase() === finalCategory.toLowerCase() || c.toLowerCase() === (product.category || '').toLowerCase()) ||
+      ['Sleeper Buses', 'Seater Buses', 'AC Buses', 'Non-AC Buses', 'Volvo Buses', 'Luxury Coaches', 'Intercity Buses'].some(sc => sc.toLowerCase() === (bodySubcategory !== undefined ? bodySubcategory : product.subcategory || '').toLowerCase());
+
+    if (isTravelCat && (boardingPoints !== undefined || droppingPoints !== undefined || boardingPoint !== undefined || dropPoint !== undefined)) {
+      const bpsInput = Array.isArray(boardingPoints)
+        ? boardingPoints
+        : (boardingPoint ? [{ name: boardingPoint, time: boardingTime || product.boardingTime || '', landmark: '', active: true }] : (product.boardingPoints || []));
+      const dpsInput = Array.isArray(droppingPoints)
+        ? droppingPoints
+        : (dropPoint ? [{ name: dropPoint, time: arrivalTime || product.arrivalTime || '', landmark: '', active: true }] : (product.droppingPoints || []));
+
+      const validation = validateAndNormalizeTravelPoints(bpsInput, dpsInput);
+      if (!validation.valid) {
+        return res.status(400).json({ success: false, message: validation.error });
+      }
+
+      updatedBoardingPoints = validation.boardingPoints;
+      updatedDroppingPoints = validation.droppingPoints;
+      updatedBoardingPoint = updatedBoardingPoints[0]?.name || '';
+      updatedBoardingTime = updatedBoardingPoints[0]?.time || '';
+      updatedDropPoint = updatedDroppingPoints[0]?.name || '';
+      updatedArrivalTime = updatedDroppingPoints[0]?.time || '';
+    } else {
+      if (Array.isArray(boardingPoints)) updatedBoardingPoints = boardingPoints;
+      if (Array.isArray(droppingPoints)) updatedDroppingPoints = droppingPoints;
     }
 
     const updated = await Product.findByIdAndUpdate(req.params.id, {
@@ -619,10 +774,12 @@ const updateProduct = async (req, res) => {
         contactNumber: contactNumber !== undefined ? contactNumber : product.contactNumber,
         mailId: mailId !== undefined ? mailId : product.mailId,
         department: department !== undefined ? department : product.department,
-        boardingPoint: boardingPoint !== undefined ? boardingPoint : product.boardingPoint,
-        boardingTime: boardingTime !== undefined ? boardingTime : product.boardingTime,
-        dropPoint: dropPoint !== undefined ? dropPoint : product.dropPoint,
-        arrivalTime: arrivalTime !== undefined ? arrivalTime : product.arrivalTime,
+        boardingPoint: updatedBoardingPoint,
+        boardingTime: updatedBoardingTime,
+        dropPoint: updatedDropPoint,
+        arrivalTime: updatedArrivalTime,
+        boardingPoints: updatedBoardingPoints,
+        droppingPoints: updatedDroppingPoints,
         distance: distance !== undefined ? distance : product.distance,
         busTiming: busTiming !== undefined ? busTiming : product.busTiming,
         stoppings: stoppings !== undefined ? stoppings : product.stoppings,
@@ -1349,7 +1506,9 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     vehicleType: obj.vehicleType || obj.vehicleDetails?.vehicleType || null,
     vehicleNumber: obj.vehicleNumber || obj.vehicleDetails?.vehicleNumber || null,
     numberOfVehicles: obj.numberOfVehicles || obj.vehicleDetails?.numberOfVehicles || null,
-    pickupDropInfo: obj.pickupDropInfo || obj.boardingPoint || obj.droppingPoint || null
+    pickupDropInfo: obj.pickupDropInfo || obj.boardingPoint || obj.droppingPoint || null,
+    boardingPoint: obj.boardingPoint || obj.vehicleDetails?.boardingPoint || null,
+    droppingPoint: obj.droppingPoint || obj.vehicleDetails?.droppingPoint || null
   };
 
   // Status mapping for Stay: Replace product-like "Order Received" with proper hotel booking status
