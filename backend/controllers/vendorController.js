@@ -342,23 +342,36 @@ const isValidTimeFormat = (timeStr) => {
 };
 
 const validateAndNormalizeTravelPoints = (rawBps, rawDps) => {
-  const normalize = (list) => {
+  const normalize = (list, isBoarding = true) => {
     if (!Array.isArray(list)) return [];
-    return list.map(item => {
+    return list.map((item, idx) => {
       if (typeof item === 'string') {
-        return { name: item.trim(), time: '', landmark: '', active: true };
+        const timeVal = '';
+        return {
+          id: `pt_${Date.now()}_${idx}`,
+          name: item.trim(),
+          departureTime: isBoarding ? timeVal : undefined,
+          arrivalTime: !isBoarding ? timeVal : undefined,
+          time: timeVal,
+          landmark: '',
+          active: true
+        };
       }
+      const timeVal = (item.departureTime || item.arrivalTime || item.time || item.timing || '').trim();
       return {
+        id: item.id || item._id || `pt_${Date.now()}_${idx}`,
         name: (item.name || item.point || item.location || '').trim(),
-        time: (item.time || item.timing || '').trim(),
+        departureTime: isBoarding ? timeVal : undefined,
+        arrivalTime: !isBoarding ? timeVal : undefined,
+        time: timeVal,
         landmark: (item.landmark || item.address || '').trim(),
         active: item.active !== false
       };
     }).filter(p => p.name || p.time);
   };
 
-  const bps = normalize(rawBps);
-  const dps = normalize(rawDps);
+  const bps = normalize(rawBps, true);
+  const dps = normalize(rawDps, false);
 
   if (bps.length === 0) {
     return { valid: false, error: 'At least 1 boarding point is required for the travel route.' };
@@ -374,10 +387,11 @@ const validateAndNormalizeTravelPoints = (rawBps, rawDps) => {
     if (!bp.name) {
       return { valid: false, error: `Boarding point #${i + 1} name is mandatory.` };
     }
-    if (!bp.time) {
-      return { valid: false, error: `Boarding point "${bp.name}" time is mandatory.` };
+    const t = bp.departureTime || bp.time;
+    if (!t) {
+      return { valid: false, error: `Boarding point "${bp.name}" departure time is mandatory.` };
     }
-    if (!isValidTimeFormat(bp.time)) {
+    if (!isValidTimeFormat(t)) {
       return { valid: false, error: `Invalid time format for boarding point "${bp.name}". Please use HH:MM (e.g. 21:30 or 09:30 PM).` };
     }
     const lower = bp.name.toLowerCase();
@@ -394,10 +408,11 @@ const validateAndNormalizeTravelPoints = (rawBps, rawDps) => {
     if (!dp.name) {
       return { valid: false, error: `Dropping point #${i + 1} name is mandatory.` };
     }
-    if (!dp.time) {
-      return { valid: false, error: `Dropping point "${dp.name}" time is mandatory.` };
+    const t = dp.arrivalTime || dp.time;
+    if (!t) {
+      return { valid: false, error: `Dropping point "${dp.name}" arrival time is mandatory.` };
     }
-    if (!isValidTimeFormat(dp.time)) {
+    if (!isValidTimeFormat(t)) {
       return { valid: false, error: `Invalid time format for dropping point "${dp.name}". Please use HH:MM (e.g. 07:00 or 07:00 AM).` };
     }
     const lower = dp.name.toLowerCase();
@@ -459,10 +474,10 @@ const createProduct = async (req, res) => {
     if (isTravelCategory) {
       const bpsInput = Array.isArray(boardingPoints) && boardingPoints.length > 0
         ? boardingPoints
-        : (boardingPoint ? [{ name: boardingPoint, time: boardingTime || '', landmark: '', active: true }] : []);
+        : (boardingPoint ? [{ name: boardingPoint, departureTime: boardingTime || '', time: boardingTime || '', landmark: '', active: true }] : []);
       const dpsInput = Array.isArray(droppingPoints) && droppingPoints.length > 0
         ? droppingPoints
-        : (dropPoint ? [{ name: dropPoint, time: arrivalTime || '', landmark: '', active: true }] : []);
+        : (dropPoint ? [{ name: dropPoint, arrivalTime: arrivalTime || '', time: arrivalTime || '', landmark: '', active: true }] : []);
 
       const validation = validateAndNormalizeTravelPoints(bpsInput, dpsInput);
       if (!validation.valid) {
@@ -472,9 +487,9 @@ const createProduct = async (req, res) => {
       finalBoardingPoints = validation.boardingPoints;
       finalDroppingPoints = validation.droppingPoints;
       finalBoardingPoint = finalBoardingPoints[0]?.name || '';
-      finalBoardingTime = finalBoardingPoints[0]?.time || '';
+      finalBoardingTime = finalBoardingPoints[0]?.departureTime || finalBoardingPoints[0]?.time || '';
       finalDropPoint = finalDroppingPoints[0]?.name || '';
-      finalArrivalTime = finalDroppingPoints[0]?.time || '';
+      finalArrivalTime = finalDroppingPoints[0]?.arrivalTime || finalDroppingPoints[0]?.time || '';
     } else {
       if (Array.isArray(boardingPoints)) finalBoardingPoints = boardingPoints;
       if (Array.isArray(droppingPoints)) finalDroppingPoints = droppingPoints;
@@ -713,10 +728,10 @@ const updateProduct = async (req, res) => {
     if (isTravelCat && (boardingPoints !== undefined || droppingPoints !== undefined || boardingPoint !== undefined || dropPoint !== undefined)) {
       const bpsInput = Array.isArray(boardingPoints)
         ? boardingPoints
-        : (boardingPoint ? [{ name: boardingPoint, time: boardingTime || product.boardingTime || '', landmark: '', active: true }] : (product.boardingPoints || []));
+        : (boardingPoint ? [{ name: boardingPoint, departureTime: boardingTime || product.boardingTime || '', time: boardingTime || product.boardingTime || '', landmark: '', active: true }] : (product.boardingPoints || []));
       const dpsInput = Array.isArray(droppingPoints)
         ? droppingPoints
-        : (dropPoint ? [{ name: dropPoint, time: arrivalTime || product.arrivalTime || '', landmark: '', active: true }] : (product.droppingPoints || []));
+        : (dropPoint ? [{ name: dropPoint, arrivalTime: arrivalTime || product.arrivalTime || '', time: arrivalTime || product.arrivalTime || '', landmark: '', active: true }] : (product.droppingPoints || []));
 
       const validation = validateAndNormalizeTravelPoints(bpsInput, dpsInput);
       if (!validation.valid) {
@@ -726,9 +741,9 @@ const updateProduct = async (req, res) => {
       updatedBoardingPoints = validation.boardingPoints;
       updatedDroppingPoints = validation.droppingPoints;
       updatedBoardingPoint = updatedBoardingPoints[0]?.name || '';
-      updatedBoardingTime = updatedBoardingPoints[0]?.time || '';
+      updatedBoardingTime = updatedBoardingPoints[0]?.departureTime || updatedBoardingPoints[0]?.time || '';
       updatedDropPoint = updatedDroppingPoints[0]?.name || '';
-      updatedArrivalTime = updatedDroppingPoints[0]?.time || '';
+      updatedArrivalTime = updatedDroppingPoints[0]?.arrivalTime || updatedDroppingPoints[0]?.time || '';
     } else {
       if (Array.isArray(boardingPoints)) updatedBoardingPoints = boardingPoints;
       if (Array.isArray(droppingPoints)) updatedDroppingPoints = droppingPoints;

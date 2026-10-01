@@ -2809,14 +2809,11 @@ const VendorDashboard = () => {
       jobType: 'Full-time', jobLocation: '', experience: '', skills: '', qualification: '', linkedProfile: '', contactNumber: '', mailId: '', department: '',
       deadline: '', applicationTips: '',
       boardingPoint: '', boardingTime: '', dropPoint: '', arrivalTime: '',
-      boardingPoints: [], droppingPoints: [],
+      boardingPoints: [{ name: '', departureTime: '', time: '' }],
+      droppingPoints: [{ name: '', arrivalTime: '', time: '' }],
       distance: '', busTiming: '', stoppings: [],
       specifications: {}
     });
-    setIsAddingBp(false);
-    setEditingBpIdx(null);
-    setIsAddingDp(false);
-    setEditingDpIdx(null);
     setRoutePointError('');
     setIsEditItem(false);
     setIsItemModalOpen(true);
@@ -2891,20 +2888,28 @@ const VendorDashboard = () => {
       dropPoint: item.dropPoint || '',
       arrivalTime: item.arrivalTime || '',
       boardingPoints: Array.isArray(item.boardingPoints) && item.boardingPoints.length > 0 
-        ? item.boardingPoints.map(p => ({ name: p.name || '', time: p.time || '', landmark: p.landmark || '', active: p.active !== false }))
-        : (item.boardingPoint ? [{ name: item.boardingPoint, time: item.boardingTime || '', landmark: '', active: true }] : []),
+        ? item.boardingPoints.map(p => ({
+            id: p.id || p._id || undefined,
+            name: p.name || '',
+            departureTime: p.departureTime || p.time || '',
+            time: p.departureTime || p.time || '',
+            landmark: p.landmark || ''
+          }))
+        : (item.boardingPoint ? [{ name: item.boardingPoint, departureTime: item.boardingTime || item.busTiming || '', time: item.boardingTime || item.busTiming || '', landmark: '' }] : [{ name: '', departureTime: '', time: '' }]),
       droppingPoints: Array.isArray(item.droppingPoints) && item.droppingPoints.length > 0 
-        ? item.droppingPoints.map(p => ({ name: p.name || '', time: p.time || '', landmark: p.landmark || '', active: p.active !== false }))
-        : (item.dropPoint ? [{ name: item.dropPoint, time: item.arrivalTime || '', landmark: '', active: true }] : []),
+        ? item.droppingPoints.map(p => ({
+            id: p.id || p._id || undefined,
+            name: p.name || '',
+            arrivalTime: p.arrivalTime || p.time || '',
+            time: p.arrivalTime || p.time || '',
+            landmark: p.landmark || ''
+          }))
+        : (item.dropPoint ? [{ name: item.dropPoint, arrivalTime: item.arrivalTime || '', time: item.arrivalTime || '', landmark: '' }] : [{ name: '', arrivalTime: '', time: '' }]),
       distance: item.distance || '',
       busTiming: item.busTiming || '',
       stoppings: item.stoppings || [],
       specifications: item.specifications || item.customFields || {}
     });
-    setIsAddingBp(false);
-    setEditingBpIdx(null);
-    setIsAddingDp(false);
-    setEditingDpIdx(null);
     setRoutePointError('');
     setSelectedItemId(item._id);
     setIsEditItem(true);
@@ -3082,35 +3087,52 @@ const VendorDashboard = () => {
       ['Bus Booking', 'Travels', 'Travel', 'Bus', 'Car', 'Bike', 'Travel Ticket', 'Cabs', 'Transport'].some(c => c.toLowerCase() === (itemForm.category || '').toLowerCase()) ||
       ['Sleeper Buses', 'Seater Buses', 'AC Buses', 'Non-AC Buses', 'Volvo Buses', 'Luxury Coaches', 'Intercity Buses'].some(sc => sc.toLowerCase() === (itemForm.subcategory || '').toLowerCase());
 
-    if (isTravelRoute) {
-      const bps = itemForm.boardingPoints || [];
-      const dps = itemForm.droppingPoints || [];
+    const rawBps = itemForm.boardingPoints || [];
+    const rawDps = itemForm.droppingPoints || [];
 
-      if (bps.length < 1) {
+    const cleanBps = rawBps.map((bp, idx) => ({
+      id: bp.id || `bp_${idx + 1}_${Date.now()}`,
+      name: (bp.name || '').trim(),
+      departureTime: (bp.departureTime || bp.time || '').trim(),
+      time: (bp.departureTime || bp.time || '').trim(),
+      landmark: (bp.landmark || '').trim()
+    })).filter(bp => bp.name || bp.departureTime || bp.time);
+
+    const cleanDps = rawDps.map((dp, idx) => ({
+      id: dp.id || `dp_${idx + 1}_${Date.now()}`,
+      name: (dp.name || '').trim(),
+      arrivalTime: (dp.arrivalTime || dp.time || '').trim(),
+      time: (dp.arrivalTime || dp.time || '').trim(),
+      landmark: (dp.landmark || '').trim()
+    })).filter(dp => dp.name || dp.arrivalTime || dp.time);
+
+    if (isTravelRoute) {
+      if (cleanBps.length < 1) {
         setError('At least 1 boarding point is required for the travel route.');
         return;
       }
-      if (dps.length < 1) {
+      if (cleanDps.length < 1) {
         setError('At least 1 dropping point is required for the travel route.');
         return;
       }
 
       const seenBp = new Set();
-      for (let i = 0; i < bps.length; i++) {
-        const bp = bps[i];
-        if (!bp.name || !bp.name.trim()) {
+      for (let i = 0; i < cleanBps.length; i++) {
+        const bp = cleanBps[i];
+        if (!bp.name) {
           setError(`Boarding point #${i + 1} name is mandatory.`);
           return;
         }
-        if (!bp.time || !bp.time.trim()) {
-          setError(`Boarding point "${bp.name}" time is mandatory.`);
+        const timeVal = bp.departureTime || bp.time;
+        if (!timeVal) {
+          setError(`Boarding point "${bp.name}" departure time is mandatory.`);
           return;
         }
-        if (!isValidTimeFormat(bp.time)) {
+        if (!isValidTimeFormat(timeVal)) {
           setError(`Invalid time format for boarding point "${bp.name}". Please use HH:MM (e.g. 21:30 or 09:30 PM).`);
           return;
         }
-        const lower = bp.name.trim().toLowerCase();
+        const lower = bp.name.toLowerCase();
         if (seenBp.has(lower)) {
           setError(`Duplicate boarding point "${bp.name}". Each point name must be unique.`);
           return;
@@ -3119,21 +3141,22 @@ const VendorDashboard = () => {
       }
 
       const seenDp = new Set();
-      for (let i = 0; i < dps.length; i++) {
-        const dp = dps[i];
-        if (!dp.name || !dp.name.trim()) {
+      for (let i = 0; i < cleanDps.length; i++) {
+        const dp = cleanDps[i];
+        if (!dp.name) {
           setError(`Dropping point #${i + 1} name is mandatory.`);
           return;
         }
-        if (!dp.time || !dp.time.trim()) {
-          setError(`Dropping point "${dp.name}" time is mandatory.`);
+        const timeVal = dp.arrivalTime || dp.time;
+        if (!timeVal) {
+          setError(`Dropping point "${dp.name}" arrival time is mandatory.`);
           return;
         }
-        if (!isValidTimeFormat(dp.time)) {
+        if (!isValidTimeFormat(timeVal)) {
           setError(`Invalid time format for dropping point "${dp.name}". Please use HH:MM (e.g. 07:00 or 07:00 AM).`);
           return;
         }
-        const lower = dp.name.trim().toLowerCase();
+        const lower = dp.name.toLowerCase();
         if (seenDp.has(lower)) {
           setError(`Duplicate dropping point "${dp.name}". Each point name must be unique.`);
           return;
@@ -3142,16 +3165,14 @@ const VendorDashboard = () => {
       }
     }
 
-    const bps = itemForm.boardingPoints || [];
-    const dps = itemForm.droppingPoints || [];
     const payload = {
       ...itemForm,
-      boardingPoints: bps,
-      droppingPoints: dps,
-      boardingPoint: (bps[0]?.name) || itemForm.boardingPoint || '',
-      boardingTime: (bps[0]?.time) || itemForm.boardingTime || '',
-      dropPoint: (dps[0]?.name) || itemForm.dropPoint || '',
-      arrivalTime: (dps[0]?.time) || itemForm.arrivalTime || '',
+      boardingPoints: cleanBps,
+      droppingPoints: cleanDps,
+      boardingPoint: (cleanBps[0]?.name) || itemForm.boardingPoint || '',
+      boardingTime: (cleanBps[0]?.departureTime || cleanBps[0]?.time) || itemForm.boardingTime || '',
+      dropPoint: (cleanDps[0]?.name) || itemForm.dropPoint || '',
+      arrivalTime: (cleanDps[0]?.arrivalTime || cleanDps[0]?.time) || itemForm.arrivalTime || '',
       aboutProduct: itemForm.description || itemForm.aboutProduct,
       description: itemForm.description || itemForm.aboutProduct,
       subNavbarCategory: selectedMainCat || activeTab || 'Products',
@@ -10515,659 +10536,235 @@ required
               {/* Dynamic Repeatable Boarding Points Section */}
               <div className="space-y-3 pt-1">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <label className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                      BOARDING POINTS <span className="text-rose-500">*</span>
-                    </label>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500">Configure pickup locations and departure timings along the route</p>
-                  </div>
-                  {!isAddingBp && (
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                    BOARDING POINT (FROM) <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const currentBps = (itemForm.boardingPoints && itemForm.boardingPoints.length > 0)
+                        ? itemForm.boardingPoints
+                        : [{ name: itemForm.boardingPoint || '', departureTime: itemForm.boardingTime || itemForm.busTiming || '', time: itemForm.boardingTime || itemForm.busTiming || '' }];
+                      const updated = [...currentBps, { name: '', departureTime: '', time: '' }];
+                      setItemForm({
+                        ...itemForm,
+                        boardingPoints: updated,
+                        boardingPoint: updated[0]?.name || '',
+                        boardingTime: updated[0]?.departureTime || updated[0]?.time || ''
+                      });
+                    }}
+                    className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all flex items-center gap-1.5 border border-emerald-200/50 dark:border-emerald-800/40 shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Boarding Point
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {((itemForm.boardingPoints && itemForm.boardingPoints.length > 0)
+                    ? itemForm.boardingPoints
+                    : [{ name: itemForm.boardingPoint || '', departureTime: itemForm.boardingTime || '', time: itemForm.boardingTime || '' }]
+                  ).map((bp, bpIdx, arr) => (
+                    <div key={`bp-row-${bpIdx}`} className="space-y-1">
+                      {bpIdx === 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-1">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">Boarding Point</span>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">Boarding / Departure Time</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. Majestic"
+                          value={bp.name || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            const currentList = arr.map((item, i) => i === bpIdx ? { ...item, name: val } : item);
+                            setItemForm({
+                              ...itemForm,
+                              boardingPoints: currentList,
+                              boardingPoint: currentList[0]?.name || '',
+                              boardingTime: currentList[0]?.departureTime || currentList[0]?.time || ''
+                            });
+                          }}
+                          className="flex-1 glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                        />
+                        <input
+                          type="text"
+                          placeholder="e.g. 21:30"
+                          value={bp.departureTime || bp.time || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            const currentList = arr.map((item, i) => i === bpIdx ? { ...item, departureTime: val, time: val } : item);
+                            setItemForm({
+                              ...itemForm,
+                              boardingPoints: currentList,
+                              boardingPoint: currentList[0]?.name || '',
+                              boardingTime: currentList[0]?.departureTime || currentList[0]?.time || ''
+                            });
+                          }}
+                          className="w-36 sm:w-44 glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                        />
+                        {arr.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = arr.filter((_, i) => i !== bpIdx);
+                              setItemForm({
+                                ...itemForm,
+                                boardingPoints: updated,
+                                boardingPoint: updated[0]?.name || '',
+                                boardingTime: updated[0]?.departureTime || updated[0]?.time || ''
+                              });
+                            }}
+                            className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
+                            title="Delete Boarding Point"
+                          >
+                            <Trash2 className="w-4 h-4 text-rose-500" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="pt-0.5">
                     <button
                       type="button"
                       onClick={() => {
-                        setIsAddingBp(true);
-                        setEditingBpIdx(null);
-                        setNewBp({ name: '', time: '', landmark: '' });
-                        setRoutePointError('');
+                        const currentBps = (itemForm.boardingPoints && itemForm.boardingPoints.length > 0)
+                          ? itemForm.boardingPoints
+                          : [{ name: itemForm.boardingPoint || '', departureTime: itemForm.boardingTime || itemForm.busTiming || '', time: itemForm.boardingTime || itemForm.busTiming || '' }];
+                        const updated = [...currentBps, { name: '', departureTime: '', time: '' }];
+                        setItemForm({
+                          ...itemForm,
+                          boardingPoints: updated,
+                          boardingPoint: updated[0]?.name || '',
+                          boardingTime: updated[0]?.departureTime || updated[0]?.time || ''
+                        });
                       }}
-                      className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all flex items-center gap-1.5 border border-emerald-200/50 dark:border-emerald-800/40 shadow-xs cursor-pointer"
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors flex items-center gap-1 border border-emerald-200/40 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" /> Add Boarding Point
                     </button>
-                  )}
+                  </div>
                 </div>
-
-                {/* Inline Add Boarding Point Form */}
-                {isAddingBp && (
-                  <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700/60 shadow-xs space-y-3 animate-fadeIn">
-                    <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
-                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
-                        <Plus className="w-3.5 h-3.5" /> New Boarding Point
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => { setIsAddingBp(false); setRoutePointError(''); }}
-                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Point Name *</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Majestic / Silk Board"
-                          value={newBp.name}
-                          onChange={e => setNewBp({ ...newBp, name: e.target.value })}
-                          className="w-full glass-input rounded-lg px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Boarding Time *</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 21:30 or 09:30 PM"
-                          value={newBp.time}
-                          onChange={e => setNewBp({ ...newBp, time: e.target.value })}
-                          className="w-full glass-input rounded-lg px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Landmark / Address (Optional)</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Platform 1 / Bus Stand"
-                          value={newBp.landmark}
-                          onChange={e => setNewBp({ ...newBp, landmark: e.target.value })}
-                          className="w-full glass-input rounded-lg px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                        />
-                      </div>
-                    </div>
-                    {routePointError && routePointError.includes('boarding') && (
-                      <p className="text-[11px] font-semibold text-rose-500 pl-1">{routePointError}</p>
-                    )}
-                    <div className="flex justify-end gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => { setIsAddingBp(false); setRoutePointError(''); }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!newBp.name.trim()) {
-                            setRoutePointError('Boarding point name is mandatory.');
-                            return;
-                          }
-                          if (!newBp.time.trim()) {
-                            setRoutePointError('Boarding time is mandatory.');
-                            return;
-                          }
-                          if (!isValidTimeFormat(newBp.time.trim())) {
-                            setRoutePointError('Invalid time format for boarding point. Please use HH:MM (e.g. 21:30 or 09:30 PM).');
-                            return;
-                          }
-                          const currentBps = itemForm.boardingPoints || [];
-                          if (currentBps.some(p => p.name.trim().toLowerCase() === newBp.name.trim().toLowerCase())) {
-                            setRoutePointError(`Boarding point "${newBp.name.trim()}" already exists.`);
-                            return;
-                          }
-                          const updated = [...currentBps, {
-                            name: newBp.name.trim(),
-                            time: newBp.time.trim(),
-                            landmark: (newBp.landmark || '').trim(),
-                            active: true
-                          }];
-                          setItemForm({
-                            ...itemForm,
-                            boardingPoints: updated,
-                            boardingPoint: updated[0]?.name || '',
-                            boardingTime: updated[0]?.time || ''
-                          });
-                          setNewBp({ name: '', time: '', landmark: '' });
-                          setIsAddingBp(false);
-                          setRoutePointError('');
-                        }}
-                        className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer"
-                      >
-                        Save Point
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Boarding Points List */}
-                {(itemForm.boardingPoints || []).length === 0 ? (
-                  <div className="p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-dashed border-amber-200 dark:border-amber-900/40 text-center">
-                    <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                      No boarding points configured yet. Click "+ Add Boarding Point" to configure pickup stops.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {(itemForm.boardingPoints || []).map((bp, bpIdx) => {
-                      const isEditingThis = editingBpIdx === bpIdx;
-                      return (
-                        <div
-                          key={`bp-row-${bpIdx}`}
-                          className={`p-3 rounded-xl border transition-all ${
-                            isEditingThis
-                              ? 'bg-white dark:bg-slate-900 border-indigo-300 dark:border-indigo-700 shadow-sm'
-                              : 'bg-white/90 dark:bg-slate-900/80 border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                          }`}
-                        >
-                          {isEditingThis ? (
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
-                                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                                  Edit Boarding Point #{bpIdx + 1}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => { setEditingBpIdx(null); setRoutePointError(''); }}
-                                  className="text-slate-400 hover:text-slate-600 text-xs"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-500 uppercase">Point Name *</label>
-                                  <input
-                                    type="text"
-                                    value={editBp.name}
-                                    onChange={e => setEditBp({ ...editBp, name: e.target.value })}
-                                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-500 uppercase">Boarding Time *</label>
-                                  <input
-                                    type="text"
-                                    value={editBp.time}
-                                    onChange={e => setEditBp({ ...editBp, time: e.target.value })}
-                                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-500 uppercase">Landmark / Address</label>
-                                  <input
-                                    type="text"
-                                    value={editBp.landmark}
-                                    onChange={e => setEditBp({ ...editBp, landmark: e.target.value })}
-                                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                                  />
-                                </div>
-                              </div>
-                              {routePointError && (
-                                <p className="text-[11px] font-semibold text-rose-500">{routePointError}</p>
-                              )}
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => { setEditingBpIdx(null); setRoutePointError(''); }}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!editBp.name.trim()) {
-                                      setRoutePointError('Boarding point name is mandatory.');
-                                      return;
-                                    }
-                                    if (!editBp.time.trim()) {
-                                      setRoutePointError('Boarding time is mandatory.');
-                                      return;
-                                    }
-                                    if (!isValidTimeFormat(editBp.time.trim())) {
-                                      setRoutePointError('Invalid time format for boarding point. Please use HH:MM (e.g. 21:30 or 09:30 PM).');
-                                      return;
-                                    }
-                                    const currentBps = itemForm.boardingPoints || [];
-                                    if (currentBps.some((p, i) => i !== bpIdx && p.name.trim().toLowerCase() === editBp.name.trim().toLowerCase())) {
-                                      setRoutePointError(`Boarding point "${editBp.name.trim()}" already exists.`);
-                                      return;
-                                    }
-                                    const updated = [...currentBps];
-                                    updated[bpIdx] = {
-                                      ...updated[bpIdx],
-                                      name: editBp.name.trim(),
-                                      time: editBp.time.trim(),
-                                      landmark: (editBp.landmark || '').trim()
-                                    };
-                                    setItemForm({
-                                      ...itemForm,
-                                      boardingPoints: updated,
-                                      boardingPoint: updated[0]?.name || '',
-                                      boardingTime: updated[0]?.time || ''
-                                    });
-                                    setEditingBpIdx(null);
-                                    setRoutePointError('');
-                                  }}
-                                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs cursor-pointer"
-                                >
-                                  Update Point
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <span className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs flex items-center justify-center shrink-0">
-                                  {bpIdx + 1}
-                                </span>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-extrabold text-sm text-slate-900 dark:text-white truncate">
-                                      {bp.name}
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-bold shrink-0">
-                                      {bp.time}
-                                    </span>
-                                  </div>
-                                  {bp.landmark && (
-                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5 flex items-center gap-1">
-                                      <span className="text-slate-400 font-normal">Landmark:</span> {bp.landmark}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingBpIdx(bpIdx);
-                                    setEditBp({ name: bp.name || '', time: bp.time || '', landmark: bp.landmark || '' });
-                                    setIsAddingBp(false);
-                                    setRoutePointError('');
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors flex items-center gap-1 border border-slate-200 dark:border-slate-800"
-                                  title="Edit Boarding Point"
-                                >
-                                  <Edit2 className="w-3 h-3 text-indigo-500" /> Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if ((itemForm.boardingPoints || []).length <= 1) {
-                                      setRoutePointError('At least 1 boarding point is required for the route. Cannot delete.');
-                                      return;
-                                    }
-                                    const updated = (itemForm.boardingPoints || []).filter((_, i) => i !== bpIdx);
-                                    setItemForm({
-                                      ...itemForm,
-                                      boardingPoints: updated,
-                                      boardingPoint: updated[0]?.name || '',
-                                      boardingTime: updated[0]?.time || ''
-                                    });
-                                    if (editingBpIdx === bpIdx) setEditingBpIdx(null);
-                                    setRoutePointError('');
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors flex items-center gap-1 border border-slate-200 dark:border-slate-800"
-                                  title="Delete Boarding Point"
-                                >
-                                  <Trash2 className="w-3 h-3 text-rose-500" /> Delete
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    {!isAddingBp && (itemForm.boardingPoints || []).length > 0 && (
-                      <div className="pt-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAddingBp(true);
-                            setEditingBpIdx(null);
-                            setNewBp({ name: '', time: '', landmark: '' });
-                            setRoutePointError('');
-                          }}
-                          className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all flex items-center gap-1.5 border border-emerald-200/50 dark:border-emerald-800/40 shadow-xs cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" /> Add Boarding Point
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* Dynamic Repeatable Dropping Points Section */}
               <div className="space-y-3 pt-3 border-t border-slate-200/50 dark:border-slate-800">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <label className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
-                      DROPPING POINTS <span className="text-rose-500">*</span>
-                    </label>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500">Configure destination drop-off points and arrival timings along the route</p>
-                  </div>
-                  {!isAddingDp && (
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                    DROP POINT (TO) <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const currentDps = (itemForm.droppingPoints && itemForm.droppingPoints.length > 0)
+                        ? itemForm.droppingPoints
+                        : [{ name: itemForm.dropPoint || '', arrivalTime: itemForm.arrivalTime || '', time: itemForm.arrivalTime || '' }];
+                      const updated = [...currentDps, { name: '', arrivalTime: '', time: '' }];
+                      setItemForm({
+                        ...itemForm,
+                        droppingPoints: updated,
+                        dropPoint: updated[0]?.name || '',
+                        arrivalTime: updated[0]?.arrivalTime || updated[0]?.time || ''
+                      });
+                    }}
+                    className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-all flex items-center gap-1.5 border border-blue-200/50 dark:border-blue-800/40 shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Dropping Point
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {((itemForm.droppingPoints && itemForm.droppingPoints.length > 0)
+                    ? itemForm.droppingPoints
+                    : [{ name: itemForm.dropPoint || '', arrivalTime: itemForm.arrivalTime || '', time: itemForm.arrivalTime || '' }]
+                  ).map((dp, dpIdx, arr) => (
+                    <div key={`dp-row-${dpIdx}`} className="space-y-1">
+                      {dpIdx === 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-1">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">Drop Point</span>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">Drop / Arrival Time</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. Chennai Central"
+                          value={dp.name || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            const currentList = arr.map((item, i) => i === dpIdx ? { ...item, name: val } : item);
+                            setItemForm({
+                              ...itemForm,
+                              droppingPoints: currentList,
+                              dropPoint: currentList[0]?.name || '',
+                              arrivalTime: currentList[0]?.arrivalTime || currentList[0]?.time || ''
+                            });
+                          }}
+                          className="flex-1 glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                        />
+                        <input
+                          type="text"
+                          placeholder="e.g. 07:00"
+                          value={dp.arrivalTime || dp.time || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            const currentList = arr.map((item, i) => i === dpIdx ? { ...item, arrivalTime: val, time: val } : item);
+                            setItemForm({
+                              ...itemForm,
+                              droppingPoints: currentList,
+                              dropPoint: currentList[0]?.name || '',
+                              arrivalTime: currentList[0]?.arrivalTime || currentList[0]?.time || ''
+                            });
+                          }}
+                          className="w-36 sm:w-44 glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                        />
+                        {arr.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = arr.filter((_, i) => i !== dpIdx);
+                              setItemForm({
+                                ...itemForm,
+                                droppingPoints: updated,
+                                dropPoint: updated[0]?.name || '',
+                                arrivalTime: updated[0]?.arrivalTime || updated[0]?.time || ''
+                              });
+                            }}
+                            className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
+                            title="Delete Dropping Point"
+                          >
+                            <Trash2 className="w-4 h-4 text-rose-500" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="pt-0.5">
                     <button
                       type="button"
                       onClick={() => {
-                        setIsAddingDp(true);
-                        setEditingDpIdx(null);
-                        setNewDp({ name: '', time: '', landmark: '' });
-                        setRoutePointError('');
+                        const currentDps = (itemForm.droppingPoints && itemForm.droppingPoints.length > 0)
+                          ? itemForm.droppingPoints
+                          : [{ name: itemForm.dropPoint || '', arrivalTime: itemForm.arrivalTime || '', time: itemForm.arrivalTime || '' }];
+                        const updated = [...currentDps, { name: '', arrivalTime: '', time: '' }];
+                        setItemForm({
+                          ...itemForm,
+                          droppingPoints: updated,
+                          dropPoint: updated[0]?.name || '',
+                          arrivalTime: updated[0]?.arrivalTime || updated[0]?.time || ''
+                        });
                       }}
-                      className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-all flex items-center gap-1.5 border border-blue-200/50 dark:border-blue-800/40 shadow-xs cursor-pointer"
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors flex items-center gap-1 border border-blue-200/40 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" /> Add Dropping Point
                     </button>
-                  )}
+                  </div>
                 </div>
-
-                {/* Inline Add Dropping Point Form */}
-                {isAddingDp && (
-                  <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700/60 shadow-xs space-y-3 animate-fadeIn">
-                    <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
-                      <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1">
-                        <Plus className="w-3.5 h-3.5" /> New Dropping Point
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => { setIsAddingDp(false); setRoutePointError(''); }}
-                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Point Name *</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Chennai Central / Koyambedu"
-                          value={newDp.name}
-                          onChange={e => setNewDp({ ...newDp, name: e.target.value })}
-                          className="w-full glass-input rounded-lg px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Dropping Time *</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 07:00 or 07:00 AM"
-                          value={newDp.time}
-                          onChange={e => setNewDp({ ...newDp, time: e.target.value })}
-                          className="w-full glass-input rounded-lg px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Landmark / Address (Optional)</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Opposite Railway Station"
-                          value={newDp.landmark}
-                          onChange={e => setNewDp({ ...newDp, landmark: e.target.value })}
-                          className="w-full glass-input rounded-lg px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                        />
-                      </div>
-                    </div>
-                    {routePointError && routePointError.includes('dropping') && (
-                      <p className="text-[11px] font-semibold text-rose-500 pl-1">{routePointError}</p>
-                    )}
-                    <div className="flex justify-end gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => { setIsAddingDp(false); setRoutePointError(''); }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!newDp.name.trim()) {
-                            setRoutePointError('Dropping point name is mandatory.');
-                            return;
-                          }
-                          if (!newDp.time.trim()) {
-                            setRoutePointError('Dropping time is mandatory.');
-                            return;
-                          }
-                          if (!isValidTimeFormat(newDp.time.trim())) {
-                            setRoutePointError('Invalid time format for dropping point. Please use HH:MM (e.g. 07:00 or 07:00 AM).');
-                            return;
-                          }
-                          const currentDps = itemForm.droppingPoints || [];
-                          if (currentDps.some(p => p.name.trim().toLowerCase() === newDp.name.trim().toLowerCase())) {
-                            setRoutePointError(`Dropping point "${newDp.name.trim()}" already exists.`);
-                            return;
-                          }
-                          const updated = [...currentDps, {
-                            name: newDp.name.trim(),
-                            time: newDp.time.trim(),
-                            landmark: (newDp.landmark || '').trim(),
-                            active: true
-                          }];
-                          setItemForm({
-                            ...itemForm,
-                            droppingPoints: updated,
-                            dropPoint: updated[0]?.name || '',
-                            arrivalTime: updated[0]?.time || ''
-                          });
-                          setNewDp({ name: '', time: '', landmark: '' });
-                          setIsAddingDp(false);
-                          setRoutePointError('');
-                        }}
-                        className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer"
-                      >
-                        Save Point
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Dropping Points List */}
-                {(itemForm.droppingPoints || []).length === 0 ? (
-                  <div className="p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-dashed border-amber-200 dark:border-amber-900/40 text-center">
-                    <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                      No dropping points configured yet. Click "+ Add Dropping Point" to configure destination drop stops.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {(itemForm.droppingPoints || []).map((dp, dpIdx) => {
-                      const isEditingThis = editingDpIdx === dpIdx;
-                      return (
-                        <div
-                          key={`dp-row-${dpIdx}`}
-                          className={`p-3 rounded-xl border transition-all ${
-                            isEditingThis
-                              ? 'bg-white dark:bg-slate-900 border-indigo-300 dark:border-indigo-700 shadow-sm'
-                              : 'bg-white/90 dark:bg-slate-900/80 border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                          }`}
-                        >
-                          {isEditingThis ? (
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
-                                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                                  Edit Dropping Point #{dpIdx + 1}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => { setEditingDpIdx(null); setRoutePointError(''); }}
-                                  className="text-slate-400 hover:text-slate-600 text-xs"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-500 uppercase">Point Name *</label>
-                                  <input
-                                    type="text"
-                                    value={editDp.name}
-                                    onChange={e => setEditDp({ ...editDp, name: e.target.value })}
-                                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-500 uppercase">Dropping Time *</label>
-                                  <input
-                                    type="text"
-                                    value={editDp.time}
-                                    onChange={e => setEditDp({ ...editDp, time: e.target.value })}
-                                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-500 uppercase">Landmark / Address</label>
-                                  <input
-                                    type="text"
-                                    value={editDp.landmark}
-                                    onChange={e => setEditDp({ ...editDp, landmark: e.target.value })}
-                                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
-                                  />
-                                </div>
-                              </div>
-                              {routePointError && (
-                                <p className="text-[11px] font-semibold text-rose-500">{routePointError}</p>
-                              )}
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => { setEditingDpIdx(null); setRoutePointError(''); }}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!editDp.name.trim()) {
-                                      setRoutePointError('Dropping point name is mandatory.');
-                                      return;
-                                    }
-                                    if (!editDp.time.trim()) {
-                                      setRoutePointError('Dropping time is mandatory.');
-                                      return;
-                                    }
-                                    if (!isValidTimeFormat(editDp.time.trim())) {
-                                      setRoutePointError('Invalid time format for dropping point. Please use HH:MM (e.g. 07:00 or 07:00 AM).');
-                                      return;
-                                    }
-                                    const currentDps = itemForm.droppingPoints || [];
-                                    if (currentDps.some((p, i) => i !== dpIdx && p.name.trim().toLowerCase() === editDp.name.trim().toLowerCase())) {
-                                      setRoutePointError(`Dropping point "${editDp.name.trim()}" already exists.`);
-                                      return;
-                                    }
-                                    const updated = [...currentDps];
-                                    updated[dpIdx] = {
-                                      ...updated[dpIdx],
-                                      name: editDp.name.trim(),
-                                      time: editDp.time.trim(),
-                                      landmark: (editDp.landmark || '').trim()
-                                    };
-                                    setItemForm({
-                                      ...itemForm,
-                                      droppingPoints: updated,
-                                      dropPoint: updated[0]?.name || '',
-                                      arrivalTime: updated[0]?.time || ''
-                                    });
-                                    setEditingDpIdx(null);
-                                    setRoutePointError('');
-                                  }}
-                                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer"
-                                >
-                                  Update Point
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-extrabold text-xs flex items-center justify-center shrink-0">
-                                  {dpIdx + 1}
-                                </span>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-extrabold text-sm text-slate-900 dark:text-white truncate">
-                                      {dp.name}
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 font-mono text-[11px] font-bold shrink-0">
-                                      {dp.time}
-                                    </span>
-                                  </div>
-                                  {dp.landmark && (
-                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5 flex items-center gap-1">
-                                      <span className="text-slate-400 font-normal">Landmark:</span> {dp.landmark}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingDpIdx(dpIdx);
-                                    setEditDp({ name: dp.name || '', time: dp.time || '', landmark: dp.landmark || '' });
-                                    setIsAddingDp(false);
-                                    setRoutePointError('');
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors flex items-center gap-1 border border-slate-200 dark:border-slate-800"
-                                  title="Edit Dropping Point"
-                                >
-                                  <Edit2 className="w-3 h-3 text-indigo-500" /> Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if ((itemForm.droppingPoints || []).length <= 1) {
-                                      setRoutePointError('At least 1 dropping point is required for the route. Cannot delete.');
-                                      return;
-                                    }
-                                    const updated = (itemForm.droppingPoints || []).filter((_, i) => i !== dpIdx);
-                                    setItemForm({
-                                      ...itemForm,
-                                      droppingPoints: updated,
-                                      dropPoint: updated[0]?.name || '',
-                                      arrivalTime: updated[0]?.time || ''
-                                    });
-                                    if (editingDpIdx === dpIdx) setEditingDpIdx(null);
-                                    setRoutePointError('');
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors flex items-center gap-1 border border-slate-200 dark:border-slate-800"
-                                  title="Delete Dropping Point"
-                                >
-                                  <Trash2 className="w-3 h-3 text-rose-500" /> Delete
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    {!isAddingDp && (itemForm.droppingPoints || []).length > 0 && (
-                      <div className="pt-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAddingDp(true);
-                            setEditingDpIdx(null);
-                            setNewDp({ name: '', time: '', landmark: '' });
-                            setRoutePointError('');
-                          }}
-                          className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-all flex items-center gap-1.5 border border-blue-200/50 dark:border-blue-800/40 shadow-xs cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" /> Add Dropping Point
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* Distance & Bus Timing / Duration */}

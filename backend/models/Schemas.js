@@ -224,14 +224,18 @@ const ProductSchema = new mongoose.Schema({
   dropPoint: { type: String },      // Legacy compatibility
   arrivalTime: { type: String },    // Legacy compatibility
   boardingPoints: [{
+    id: { type: String },
     name: { type: String, required: true },
-    time: { type: String, required: true },
+    departureTime: { type: String },
+    time: { type: String },
     landmark: { type: String, default: '' },
     active: { type: Boolean, default: true }
   }],
   droppingPoints: [{
+    id: { type: String },
     name: { type: String, required: true },
-    time: { type: String, required: true },
+    arrivalTime: { type: String },
+    time: { type: String },
     landmark: { type: String, default: '' },
     active: { type: Boolean, default: true }
   }],
