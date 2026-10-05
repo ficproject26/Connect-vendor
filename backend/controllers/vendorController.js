@@ -2,9 +2,10 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
-const { Product, Order, Customer, DeliveryPartner, User, MembershipCard, PlatformConfig, Patient, Category } = require('../models/Schemas');
+const { Product, Order, Customer, DeliveryPartner, User, MembershipCard, PlatformConfig, Patient, Category, BusinessRequest } = require('../models/Schemas');
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
 const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES, cacheManager } = require('../realtime/realtimeManager');
+const { findPincodeAdmin, CATEGORY_DOC_RULES } = require('../utils/territoryRouting');
 
 // Helper to validate Stay category hierarchy against database
 const validateCatalogCategoryHierarchy = async (mainCategory, subCatName, childCatName) => {
@@ -3003,61 +3004,303 @@ const getBaseVendorTypeLocal = (vendorType, category, subcategory) => {
 const addBusiness = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
-    const { vendorType, category, subcategory, businessName, address, pincode, phone } = req.body;
-
-    if (!vendorType) {
-      return res.status(400).json({ success: false, message: 'Vendor Type / Product or Service is required' });
-    }
-
-    const finalCategory = category || vendorType;
-    const finalSubcategory = subcategory || vendorType;
-
     const user = await User.findById(parentUserId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    if (user.status === 'Assigned' || !['Pending', 'Approved', 'Rejected', 'Active'].includes(user.status)) {
-      user.status = 'Approved';
+    const {
+      vendorType,
+      category,
+      subcategory,
+      businessName,
+      // Separate Address Fields
+      doorNo,
+      village,
+      taluk,
+      district,
+      state,
+      pincode,
+      phone,
+      // Common Identity Details
+      panNo,
+      panDoc,
+      aadhaarNo,
+      aadhaarDoc,
+      gstNumber,
+      gstDoc,
+      // Category Specific Documents
+      categoryDocuments
+    } = req.body;
+
+    // 1. Validate Category
+    if (!vendorType) {
+      return res.status(400).json({ success: false, message: 'Business Category / Product or Service is required' });
     }
 
-    // Check if duplicate business exists
+    const finalCategory = category || vendorType;
+    const finalSubcategory = subcategory || vendorType;
+
+    // 2. Prevent duplicate business profile in same category (unless rejected)
     const duplicate = user.businesses && user.businesses.find(
-      b => b.vendorType === vendorType || b.category === finalCategory
+      b => (b.vendorType === vendorType || b.category === finalCategory) &&
+           !['Rejected', 'Pincode Rejected', 'KYC Rejected'].includes(b.status)
     );
     if (duplicate) {
       return res.status(400).json({ success: false, message: `You have already registered the ${vendorType} business profile.` });
     }
 
-    // Compute baseVendorType using local helper
-    const baseVendorType = getBaseVendorTypeLocal(vendorType, finalCategory, finalSubcategory);
+    // 3. Validate Separate Address Fields
+    const pinVal = String(pincode || req.body.pinCode || req.body.postalCode || '').trim();
+    if (!pinVal || !/^\d{6}$/.test(pinVal)) {
+      return res.status(400).json({ success: false, message: 'Pincode is required and must be exactly 6 numeric digits.' });
+    }
 
-    const mongoose = require('mongoose');
+    const cleanDoorNo = String(doorNo || '').trim();
+    const cleanVillage = String(village || '').trim();
+    const cleanTaluk = String(taluk || '').trim();
+    const cleanDistrict = String(district || '').trim();
+    const cleanState = String(state || '').trim();
+    const cleanPhone = String(phone || user.mobileNumber || user.telephone || '').trim();
+
+    if (!cleanDoorNo) {
+      return res.status(400).json({ success: false, message: 'Door Number / Building Number is required.' });
+    }
+    if (!cleanVillage) {
+      return res.status(400).json({ success: false, message: 'Village / Locality is required.' });
+    }
+    if (!cleanTaluk) {
+      return res.status(400).json({ success: false, message: 'Taluk is required.' });
+    }
+    if (!cleanDistrict) {
+      return res.status(400).json({ success: false, message: 'District is required.' });
+    }
+    if (!cleanState) {
+      return res.status(400).json({ success: false, message: 'State is required.' });
+    }
+    if (!cleanPhone) {
+      return res.status(400).json({ success: false, message: 'Phone Number is required.' });
+    }
+
+    const fullAddress = `${cleanDoorNo}, ${cleanVillage}, ${cleanTaluk}, ${cleanDistrict}, ${cleanState} - ${pinVal}`;
+
+    // 4. Validate Identity Details (Backend Mandatory Validation)
+    const cleanPanNo = String(panNo || user.panNo || '').trim().toUpperCase();
+    const cleanPanDoc = String(panDoc || user.panDoc || '').trim();
+    const cleanAadhaarNo = String(aadhaarNo || user.aadhaarNo || '').trim();
+    const cleanAadhaarDoc = String(aadhaarDoc || user.aadhaarDoc || '').trim();
+
+    if (!cleanPanNo) {
+      return res.status(400).json({ success: false, message: 'PAN Card Number is required.' });
+    }
+    if (!cleanPanDoc) {
+      return res.status(400).json({ success: false, message: 'PAN Card Document upload is required.' });
+    }
+    if (!cleanAadhaarNo) {
+      return res.status(400).json({ success: false, message: 'Aadhaar Number is required.' });
+    }
+    if (!cleanAadhaarDoc) {
+      return res.status(400).json({ success: false, message: 'Aadhaar Document upload is required.' });
+    }
+
+    // 5. Category-Specific Mandatory Documents Backend Validation
+    const catDocs = categoryDocuments || {};
+    const catLower = finalCategory.toLowerCase();
+
+    // Food / Grocery / Daily Needs
+    if (['food', 'restaurant', 'grocery', 'daily needs'].some(c => catLower.includes(c))) {
+      if (!catDocs.foodSafetyDoc || !String(catDocs.foodSafetyDoc).trim()) {
+        return res.status(400).json({ success: false, message: 'Food Safety License Document is required.' });
+      }
+      if (!catDocs.foodSafetyLicenseNo || !String(catDocs.foodSafetyLicenseNo).trim()) {
+        return res.status(400).json({ success: false, message: 'Food Safety License Number is required.' });
+      }
+    }
+
+    // Travel
+    if (catLower.includes('travel')) {
+      if (!catDocs.rcDoc || !String(catDocs.rcDoc).trim()) {
+        return res.status(400).json({ success: false, message: 'Vehicle RC is required.' });
+      }
+      if (!catDocs.fitnessDoc || !String(catDocs.fitnessDoc).trim()) {
+        return res.status(400).json({ success: false, message: 'Vehicle Fitness Certificate is required.' });
+      }
+      if (!catDocs.permitDoc || !String(catDocs.permitDoc).trim()) {
+        return res.status(400).json({ success: false, message: 'Transport Permit is required.' });
+      }
+    }
+
+    // Job
+    if (catLower.includes('job')) {
+      if (!catDocs.companyRegDoc || !String(catDocs.companyRegDoc).trim()) {
+        return res.status(400).json({ success: false, message: 'Company Registration Certificate is required.' });
+      }
+    }
+
+    // Electronics
+    if (catLower.includes('electronic')) {
+      if (!catDocs.bisDoc || !String(catDocs.bisDoc).trim()) {
+        return res.status(400).json({ success: false, message: 'BIS / CRS Certificate Document is required.' });
+      }
+    }
+
+    // 6. Find Responsible Pincode Admin based on submitted Pincode
+    const territoryInfo = { state: cleanState, district: cleanDistrict, taluk: cleanTaluk, pincode: pinVal };
+    const pincodeAdmin = await findPincodeAdmin(pinVal, territoryInfo);
+
+    // 7. Generate Business ID and Request ID
+    const newBusinessId = new mongoose.Types.ObjectId().toString();
+    const requestId = 'REQ-BIZ-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(1000 + Math.random() * 9000);
+
+    const initialStatus = 'Pending Pincode Admin Review';
+    const auditEntry = {
+      previousStatus: 'Draft',
+      newStatus: initialStatus,
+      actor: user.name || 'Vendor',
+      actorRole: 'Vendor',
+      action: 'Business Registration Request Submitted',
+      reason: 'Initial business registration with category-based documents',
+      timestamp: new Date()
+    };
+
+    // 8. Add Business to user.businesses (INACTIVE, PENDING REVIEW)
     const newBusiness = {
-      _id: new mongoose.Types.ObjectId().toString(),
+      _id: newBusinessId,
       vendorType,
       category: finalCategory,
       subcategory: finalSubcategory,
-      baseVendorType,
+      baseVendorType: getBaseVendorTypeLocal(vendorType, finalCategory, finalSubcategory),
       businessName: businessName || user.businessName || `${vendorType} Store`,
-      address: address || user.address || '',
-      pincode: pincode || req.body.pinCode || req.body.postalCode || '',
-      phone: phone || user.mobileNumber || user.telephone || '',
-      logo: user.logo || '',
-      businessLicense: user.businessLicense || '',
-      businessImages: user.businessImages || [],
-      status: 'Pending Approval',
-      isActive: false,
-      createdAt: new Date()
+      doorNo: cleanDoorNo,
+      village: cleanVillage,
+      taluk: cleanTaluk,
+      district: cleanDistrict,
+      state: cleanState,
+      pincode: pinVal,
+      address: fullAddress,
+      phone: cleanPhone,
+      panNo: cleanPanNo,
+      panDoc: cleanPanDoc,
+      aadhaarNo: cleanAadhaarNo,
+      aadhaarDoc: cleanAadhaarDoc,
+      gstNumber: gstNumber ? String(gstNumber).trim().toUpperCase() : '',
+      gstDoc: gstDoc ? String(gstDoc).trim() : '',
+      categoryDocuments: catDocs,
+      assignedAdminId: pincodeAdmin.id,
+      assignedAdminName: pincodeAdmin.name,
+      assignedAdminRole: pincodeAdmin.role,
+      assignedAdminPincode: pincodeAdmin.pincode,
+      assignedAt: new Date(),
+      status: initialStatus,
+      isActive: false, // NOT ACTIVE until approved!
+      auditTrail: [auditEntry],
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
 
-    if (!user.businesses) {
-      user.businesses = [];
-    }
+    if (!user.businesses) user.businesses = [];
     user.businesses.push(newBusiness);
     user.markModified('businesses');
-
     await user.save();
+
+    // 9. Create record in BusinessRequest / onboarding_requests
+    const requestData = {
+      requestId,
+      vendorId: parentUserId.toString(),
+      vendorName: user.name || user.businessName,
+      vendorEmail: user.email,
+      vendorPhone: cleanPhone,
+      businessId: newBusinessId,
+      businessName: newBusiness.businessName,
+      businessCategory: finalCategory,
+      vendorType,
+      subcategory: finalSubcategory,
+      phone: newBusiness.phone,
+      doorNo: newBusiness.doorNo,
+      village: newBusiness.village,
+      taluk: newBusiness.taluk,
+      district: newBusiness.district,
+      state: newBusiness.state,
+      pincode: pinVal,
+      address: fullAddress,
+      panNo: newBusiness.panNo,
+      panDoc: newBusiness.panDoc,
+      aadhaarNo: newBusiness.aadhaarNo,
+      aadhaarDoc: newBusiness.aadhaarDoc,
+      gstNumber: newBusiness.gstNumber,
+      gstDoc: newBusiness.gstDoc,
+      categoryDocuments: catDocs,
+      assignedAdminId: pincodeAdmin.id,
+      assignedAdminName: pincodeAdmin.name,
+      assignedAdminRole: pincodeAdmin.role,
+      assignedAdminPincode: pincodeAdmin.pincode,
+      assignedAt: new Date(),
+      status: initialStatus,
+      auditTrail: [auditEntry],
+      submittedDate: new Date()
+    };
+
+    await BusinessRequest.create(requestData);
+
+    // Also sync to kyc_records collection for KYC Team visibility
+    try {
+      const db = mongoose.connection.db;
+      await db.collection('kyc_records').insertOne({
+        _id: 'KYC-' + newBusinessId,
+        id: 'KYC-' + newBusinessId,
+        requestId,
+        vendorId: parentUserId.toString(),
+        businessId: newBusinessId,
+        businessName: newBusiness.businessName,
+        name: user.name,
+        vendorName: user.name,
+        phone: newBusiness.phone,
+        email: user.email,
+        category: finalCategory,
+        address: fullAddress,
+        doorNo: newBusiness.doorNo,
+        village: newBusiness.village,
+        taluk: newBusiness.taluk,
+        district: newBusiness.district,
+        state: newBusiness.state,
+        pincode: pinVal,
+        status: initialStatus,
+        assignedAdmin: pincodeAdmin,
+        documents: {
+          panNo: newBusiness.panNo,
+          panDoc: newBusiness.panDoc,
+          aadhaarNo: newBusiness.aadhaarNo,
+          aadhaarDoc: newBusiness.aadhaarDoc,
+          gstNumber: newBusiness.gstNumber,
+          gstDoc: newBusiness.gstDoc,
+          categoryDocuments: catDocs
+        },
+        submittedDate: new Date(),
+        type: 'Business Registration Request'
+      });
+    } catch (kErr) {
+      console.warn('KYC record sync warning:', kErr.message);
+    }
+
+    // 10. Audit log in auditlogs
+    try {
+      const db = mongoose.connection.db;
+      await db.collection('auditlogs').insertOne({
+        userId: parentUserId.toString(),
+        userEmail: user.email,
+        userRole: 'Vendor',
+        action: 'business_registration_requested',
+        status: 'success',
+        details: `Vendor submitted registration request for business: ${newBusiness.businessName} (${finalCategory}) at pincode ${pinVal}. Assigned to Pincode Admin: ${pincodeAdmin.name}`,
+        businessId: newBusinessId,
+        requestId,
+        pincode: pinVal,
+        assignedAdmin: pincodeAdmin,
+        timestamp: new Date()
+      });
+    } catch (aErr) {
+      console.warn('Audit log write warning:', aErr.message);
+    }
 
     const userResponse = user.toObject();
     delete userResponse.password;
@@ -3065,14 +3308,17 @@ const addBusiness = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'New business outlet request submitted successfully! It is currently pending Admin approval.',
+      message: `Business registration request submitted successfully! Assigned to Pincode Admin (${pincodeAdmin.name}) for review.`,
       isPendingApproval: true,
-      user: userResponse,
-      newBusinessId: newBusiness._id
+      status: initialStatus,
+      assignedAdmin: pincodeAdmin,
+      newBusinessId,
+      requestId,
+      user: userResponse
     });
   } catch (error) {
     console.error('Add Business Error:', error);
-    res.status(500).json({ success: false, message: 'Server error adding business: ' + (error.message || 'Unknown error') });
+    res.status(500).json({ success: false, message: 'Server error submitting business request: ' + (error.message || 'Unknown error') });
   }
 };
 
@@ -3279,6 +3525,353 @@ const updateBusiness = async (req, res) => {
   }
 };
 
+// @desc    Get Sales Payments across ALL categories for the vendor
+// @route   GET /api/vendor/payments/sales
+// @access  Private (Vendor)
+const getSalesPayments = async (req, res) => {
+  try {
+    const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const businessIds = [parentUserId.toString()];
+    if (user.businesses && Array.isArray(user.businesses)) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+      });
+    }
+
+    // Platform commission configuration
+    const config = await PlatformConfig.findOne({}) || { commissionRate: 0 };
+    const defaultRate = Number(config.commissionRate) || 0;
+
+    // Build base query across ALL vendor businesses and order categories
+    const query = {
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendor_id: { $in: businessIds } }
+      ]
+    };
+
+    // Category filter
+    if (req.query.category && !['All', 'all', ''].includes(String(req.query.category).trim())) {
+      const catParam = String(req.query.category).trim();
+      const catRegex = new RegExp(`^${catParam}$`, 'i');
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { type: catRegex },
+          { category: catRegex },
+          { subNavbarCategory: catRegex }
+        ]
+      });
+    }
+
+    // Search query
+    if (req.query.search && String(req.query.search).trim() !== '') {
+      const term = String(req.query.search).trim();
+      const searchRegex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { transactionId: searchRegex },
+          { order_number: searchRegex },
+          { id: searchRegex },
+          { memberName: searchRegex },
+          { customer_name: searchRegex },
+          { 'items.name': searchRegex },
+          { product_details: searchRegex }
+        ]
+      });
+    }
+
+    // Date range / Duration filter
+    const now = new Date();
+    const duration = req.query.duration || 'All';
+    let startDate = null;
+    let endDate = null;
+
+    if (duration === 'Today') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    } else if (duration === 'This Week') {
+      const day = now.getDay();
+      const diffToMonday = day === 0 ? 6 : day - 1;
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    } else if (duration === 'This Month') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else if (duration === 'This Year') {
+      startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+    } else if (duration === 'Custom') {
+      if (req.query.startDate) {
+        startDate = new Date(req.query.startDate);
+        startDate.setHours(0, 0, 0, 0);
+      }
+      if (req.query.endDate) {
+        endDate = new Date(req.query.endDate);
+        endDate.setHours(23, 59, 59, 999);
+      }
+    }
+
+    if (startDate || endDate) {
+      query.$and = query.$and || [];
+      const dateCond = {};
+      if (startDate) dateCond.$gte = startDate;
+      if (endDate) dateCond.$lte = endDate;
+      query.$and.push({
+        $or: [
+          { createdAt: dateCond },
+          { created_at: dateCond }
+        ]
+      });
+    }
+
+    // Fetch all matching orders
+    const allOrders = await Order.find(query).sort({ createdAt: -1, created_at: -1 }).lean();
+
+    // Map each order to standard Sales Payment record
+    const mappedRecords = allOrders.map((o) => {
+      const orderDate = o.createdAt || o.created_at || new Date();
+      const saleAmount = Number(o.totalAmount || o.finalAmount || o.amount || 0);
+      const discount = Number(o.discountApplied || o.discount || 0);
+      const effectiveRate = o.commissionRate !== undefined ? Number(o.commissionRate) : defaultRate;
+      const commissionAmount = o.commissionAmount !== undefined 
+        ? Number(o.commissionAmount) 
+        : Math.round(saleAmount * (effectiveRate / 100));
+      const vendorNet = saleAmount - commissionAmount - (o.otherDeductions || 0);
+
+      // Determine standardized payment status: 'Successful', 'Failed', 'Hold'
+      const rawPayStatus = (o.paymentStatus || o.payment_status || '').toLowerCase();
+      const rawStatus = (o.status || '').toLowerCase();
+      let paymentStatus = 'Successful';
+      if (rawPayStatus === 'failed' || ['cancelled', 'rejected', 'failed'].includes(rawStatus)) {
+        paymentStatus = 'Failed';
+      } else if (rawPayStatus === 'pending' || rawPayStatus === 'hold' || ['pending', 'processing', 'hold', 'on hold', 'interviewing', 'applied'].includes(rawStatus)) {
+        paymentStatus = 'Hold';
+      } else if (rawPayStatus === 'paid' || ['order received', 'delivered', 'checked out', 'completed', 'confirmed', 'accepted'].includes(rawStatus)) {
+        paymentStatus = 'Successful';
+      }
+
+      // Business category normalized
+      let category = o.type || o.category || 'Product';
+      if (/product/i.test(category)) category = 'Product';
+      else if (/food|restaurant/i.test(category)) category = 'Food';
+      else if (/daily/i.test(category)) category = 'Daily Needs';
+      else if (/service/i.test(category)) category = 'Services';
+      else if (/stay|hotel/i.test(category)) category = 'Stay';
+      else if (/travel/i.test(category)) category = 'Travel';
+      else if (/job/i.test(category)) category = 'Jobs';
+
+      // Item Name / Description
+      let itemName = 'Item Purchase';
+      if (o.items && Array.isArray(o.items) && o.items.length > 0) {
+        itemName = o.items.map(it => `${it.name}${it.quantity > 1 ? ` (x${it.quantity})` : ''}`).join(', ');
+      } else if (o.product_details) {
+        itemName = o.product_details;
+      } else if (o.doctorName) {
+        itemName = `Dr. ${o.doctorName} Consultation`;
+      } else if (o.roomNumber) {
+        itemName = `Room #${o.roomNumber} Booking`;
+      } else if (o.travelDate || o.departureDate) {
+        itemName = `Travel Booking (${o.boardingPoint || 'Station'} to ${o.dropPoint || 'Destination'})`;
+      } else if (o.jobLocation || o.candidateEmail) {
+        itemName = `Job Application Processing - ${o.jobLocation || 'Career'}`;
+      }
+
+      // Customer Reference
+      const custName = o.memberName || o.customer_name || 'Customer';
+      const custPhone = o.customer_phone || o.phone || '';
+      const maskedPhone = custPhone.length >= 4 
+        ? `${'*'.repeat(Math.max(0, custPhone.length - 4))}${custPhone.slice(-4)}`
+        : '';
+      const customerRef = o.customerDisplayId || (custPhone ? `${custName} (${maskedPhone})` : custName);
+
+      const txnId = o.transactionId || o.razorpayPaymentId || o.walletTxnId || ('TXN_' + (o.order_number || o.id || o._id).toString().slice(-8).toUpperCase());
+
+      return {
+        _id: o._id,
+        transactionId: txnId,
+        orderId: o.order_number || o.id || o._id,
+        saleDate: orderDate,
+        paymentDate: orderDate,
+        category,
+        itemName,
+        customerName: custName,
+        customerReference: customerRef,
+        saleAmount,
+        commission: commissionAmount,
+        commissionRate: effectiveRate,
+        deductions: discount,
+        vendorReceivedAmount: Math.max(0, vendorNet),
+        paymentStatus,
+        paymentMethod: o.paymentMethod || o.payment_method || 'Online (Wallet / UPI)',
+        rawStatus: o.status,
+        items: o.items || []
+      };
+    });
+
+    // Apply status filter if specified
+    const statusFilter = req.query.status || 'All';
+    let filteredRecords = mappedRecords;
+    if (statusFilter !== 'All') {
+      filteredRecords = mappedRecords.filter(r => r.paymentStatus.toLowerCase() === statusFilter.toLowerCase());
+    }
+
+    // Category-wise totals based on REAL vendor data
+    const categoryTotals = {};
+    filteredRecords.forEach(r => {
+      if (!categoryTotals[r.category]) {
+        categoryTotals[r.category] = {
+          category: r.category,
+          totalSales: 0,
+          totalCommission: 0,
+          totalVendorReceived: 0,
+          count: 0
+        };
+      }
+      categoryTotals[r.category].totalSales += r.saleAmount;
+      categoryTotals[r.category].totalCommission += r.commission;
+      categoryTotals[r.category].totalVendorReceived += r.vendorReceivedAmount;
+      categoryTotals[r.category].count += 1;
+    });
+
+    // Summary totals
+    const totalSales = filteredRecords.reduce((sum, r) => sum + r.saleAmount, 0);
+    const totalCommission = filteredRecords.reduce((sum, r) => sum + r.commission, 0);
+    const totalVendorReceived = filteredRecords.reduce((sum, r) => sum + r.vendorReceivedAmount, 0);
+
+    // Pagination
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit) || 20);
+    const totalCount = filteredRecords.length;
+    const totalPages = Math.ceil(totalCount / limit) || 1;
+    const paginatedRecords = filteredRecords.slice((page - 1) * limit, page * limit);
+
+    res.status(200).json({
+      success: true,
+      data: paginatedRecords,
+      totalCount,
+      page,
+      totalPages,
+      summary: {
+        totalSales,
+        totalCommission,
+        totalVendorReceived,
+        count: totalCount
+      },
+      categoryTotals: Object.values(categoryTotals),
+      period: {
+        duration,
+        startDate: startDate ? startDate.toISOString() : null,
+        endDate: endDate ? endDate.toISOString() : null
+      }
+    });
+  } catch (error) {
+    console.error('Get Sales Payments Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving sales payments: ' + error.message });
+  }
+};
+
+// @desc    Get Business Requests for logged in vendor
+// @route   GET /api/vendor/business-requests
+// @access  Private (Vendor)
+const getBusinessRequests = async (req, res) => {
+  try {
+    const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
+    const requests = await BusinessRequest.find({ vendorId: parentUserId.toString() }).sort({ submittedDate: -1 }).lean();
+    res.status(200).json({ success: true, data: requests });
+  } catch (error) {
+    console.error('Get Business Requests Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving requests: ' + error.message });
+  }
+};
+
+// @desc    Resubmit Business Request (when KYC changes required)
+// @route   PUT /api/vendor/business-requests/:id/resubmit
+// @access  Private (Vendor)
+const resubmitBusinessRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
+    const request = await BusinessRequest.findOne({
+      $or: [{ _id: id }, { businessId: id }, { requestId: id }],
+      vendorId: parentUserId.toString()
+    });
+
+    if (!request) {
+      return res.status(404).json({ success: false, message: 'Business request not found' });
+    }
+
+    const {
+      doorNo, village, taluk, district, state, pincode, phone,
+      panNo, panDoc, aadhaarNo, aadhaarDoc, gstNumber, gstDoc,
+      categoryDocuments
+    } = req.body;
+
+    if (doorNo) request.doorNo = doorNo;
+    if (village) request.village = village;
+    if (taluk) request.taluk = taluk;
+    if (district) request.district = district;
+    if (state) request.state = state;
+    if (pincode) request.pincode = pincode;
+    if (phone) request.phone = phone;
+    if (panNo) request.panNo = panNo;
+    if (panDoc) request.panDoc = panDoc;
+    if (aadhaarNo) request.aadhaarNo = aadhaarNo;
+    if (aadhaarDoc) request.aadhaarDoc = aadhaarDoc;
+    if (gstNumber !== undefined) request.gstNumber = gstNumber;
+    if (gstDoc !== undefined) request.gstDoc = gstDoc;
+    if (categoryDocuments) {
+      request.categoryDocuments = { ...(request.categoryDocuments || {}), ...categoryDocuments };
+    }
+
+    const previousStatus = request.status;
+    request.status = 'KYC Pending';
+    request.changesRequiredReason = '';
+    request.auditTrail.push({
+      previousStatus,
+      newStatus: 'KYC Pending',
+      actor: req.user.name || 'Vendor',
+      actorRole: 'Vendor',
+      action: 'Resubmitted with requested changes',
+      timestamp: new Date()
+    });
+
+    await request.save();
+
+    // Also update in User.businesses
+    const user = await User.findById(parentUserId);
+    if (user && user.businesses) {
+      const bIdx = user.businesses.findIndex(b => b._id.toString() === request.businessId.toString());
+      if (bIdx !== -1) {
+        user.businesses[bIdx].status = 'KYC Pending';
+        user.businesses[bIdx].changesRequiredReason = '';
+        if (panDoc) user.businesses[bIdx].panDoc = panDoc;
+        if (aadhaarDoc) user.businesses[bIdx].aadhaarDoc = aadhaarDoc;
+        if (categoryDocuments) {
+          user.businesses[bIdx].categoryDocuments = { ...(user.businesses[bIdx].categoryDocuments || {}), ...categoryDocuments };
+        }
+        user.markModified('businesses');
+        await user.save();
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Business documents resubmitted successfully! Returned to KYC queue for verification.',
+      data: request
+    });
+  } catch (error) {
+    console.error('Resubmit Business Request Error:', error);
+    res.status(500).json({ success: false, message: 'Server error resubmitting request: ' + error.message });
+  }
+};
+
 module.exports = {
   getVendorAnalytics,
   createProduct,
@@ -3307,5 +3900,8 @@ module.exports = {
   addPatientRecord,
   addBusiness,
   deleteBusiness,
-  updateBusiness
+  updateBusiness,
+  getSalesPayments,
+  getBusinessRequests,
+  resubmitBusinessRequest
 };

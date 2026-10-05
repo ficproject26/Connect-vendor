@@ -1,7 +1,7 @@
 import React from 'react';
 import { X } from 'lucide-react';
 
-const Modal = ({ isOpen, onClose, title, children, closeOnOutsideClick = true }) => {
+const Modal = ({ isOpen, onClose, title, children, closeOnOutsideClick = true, maxWidth = 'max-w-lg' }) => {
   if (!isOpen) return null;
 
   return (
@@ -13,7 +13,7 @@ const Modal = ({ isOpen, onClose, title, children, closeOnOutsideClick = true })
       />
 
       {/* Modal Container */}
-      <div className="relative w-full max-w-lg glass-card rounded-3xl overflow-hidden shadow-2xl z-10 transform transition-all">
+      <div className={`relative w-full ${maxWidth} glass-card rounded-3xl overflow-hidden shadow-2xl z-10 transform transition-all`}>
         
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/40">

@@ -13,6 +13,7 @@ import Modal from '../../components/common/Modal';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { updateUser, switchBusinessSuccess } from '../../store/authSlice';
 import { vendorTaxonomy } from '../../data/servicesData';
+import AddBusinessModal from '../../components/business/AddBusinessModal';
 
 const BusinessList = () => {
   const { user } = useSelector((state) => state.auth);
@@ -374,23 +375,64 @@ const BusinessList = () => {
                       <Trash2 size={12} />
                     </button>
                   )}
-                  {isActive ? (
-                    <span className="bg-[#faed26] text-slate-950 text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-wider">
-                      Active
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        dispatch(switchBusinessSuccess(biz._id));
-                        setMessage(`Switched business profile to ${biz.vendorType}!`);
-                      }}
-                      className="text-[#faed26] hover:underline font-bold transition-all"
-                    >
-                      Switch Profile &rarr;
-                    </button>
-                  )}
+                  {(() => {
+                    const bStatus = (biz.status || (biz.isPendingApproval ? 'Pending Pincode Admin Review' : 'Active')).trim();
+                    const isPendingPincode = ['pending', 'pending approval', 'pending pincode admin review', 'pending_approval'].includes(bStatus.toLowerCase());
+                    const isKycPending = ['pincode approved', 'kyc pending', 'under kyc review', 'under_verification'].includes(bStatus.toLowerCase());
+                    const isChangesRequired = ['changes required', 'kyc changes required'].includes(bStatus.toLowerCase());
+                    const isRejected = bStatus.toLowerCase().includes('rejected');
+
+                    if (isPendingPincode) {
+                      return (
+                        <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                          🟡 Pending Pincode Review
+                        </span>
+                      );
+                    }
+                    if (isKycPending) {
+                      return (
+                        <span className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                          🔵 KYC Review Pending
+                        </span>
+                      );
+                    }
+                    if (isChangesRequired) {
+                      return (
+                        <span className="bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                          🟠 Changes Required
+                        </span>
+                      );
+                    }
+                    if (isRejected) {
+                      return (
+                        <span className="bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                          🔴 Registration Rejected
+                        </span>
+                      );
+                    }
+
+                    if (isActive) {
+                      return (
+                        <span className="bg-[#faed26] text-slate-950 text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-wider">
+                          Active
+                        </span>
+                      );
+                    }
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dispatch(switchBusinessSuccess(biz._id));
+                          setMessage(`Switched business profile to ${biz.vendorType}!`);
+                        }}
+                        className="text-[#faed26] hover:underline font-bold transition-all"
+                      >
+                        Switch Profile &rarr;
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -416,93 +458,23 @@ const BusinessList = () => {
       </div>
 
       {/* Add Business Modal */}
-      <Modal isOpen={isAddBusinessModalOpen} onClose={() => setIsAddBusinessModalOpen(false)} title="+ Add Business">
-        <form onSubmit={handleAddBusinessSubmit} className="space-y-4 text-left">
-          {error && (
-            <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-xs font-semibold rounded-xl">
-              {error}
-            </div>
-          )}
+      <AddBusinessModal
+        isOpen={isAddBusinessModalOpen}
+        onClose={() => setIsAddBusinessModalOpen(false)}
+        user={user}
+        onSuccess={(data) => {
+          if (data?.user) {
+            dispatch(updateUser(data.user));
+          }
+          if (data?.message) {
+            setMessage(data.message);
+          }
+          if (typeof fetchDashboardData === 'function') {
+            fetchDashboardData();
+          }
+        }}
+      />
 
-          {/* Business Name */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Business Name (Optional)</label>
-            <input
-              type="text"
-              placeholder="Enter Business Name (defaults to main business)"
-              value={addBizForm.businessName}
-              onChange={(e) => setAddBizForm({ ...addBizForm, businessName: e.target.value })}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
-            />
-          </div>
-
-          {/* Product or Service or etc */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Product or Service or etc</label>
-            <select
-              required
-              value={addBizForm.vendorType}
-              onChange={(e) => setAddBizForm({ ...addBizForm, vendorType: e.target.value, category: e.target.value, subcategory: e.target.value })}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white [&>option]:bg-slate-50 dark:[&>option]:bg-slate-950"
-            >
-              <option value="" disabled>Select Product or Service or etc</option>
-              {Object.keys(vendorTaxonomy).map((type) => {
-                const isAlreadyRegistered = registeredTypes.has(type);
-                return (
-                  <option key={type} value={type} disabled={isAlreadyRegistered}>
-                    {type} {isAlreadyRegistered ? '(Already Registered)' : ''}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
-          {/* Address */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Address</label>
-            <input
-              type="text"
-              placeholder="Enter Street / Shop / Area Address"
-              value={addBizForm.address}
-              onChange={(e) => setAddBizForm({ ...addBizForm, address: e.target.value })}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
-            />
-          </div>
-
-          {/* Pincode & Phone */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Pincode</label>
-              <input
-                type="text"
-                maxLength={6}
-                placeholder="e.g. 636112"
-                value={addBizForm.pincode}
-                onChange={(e) => setAddBizForm({ ...addBizForm, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650 font-mono"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Phone Number</label>
-              <input
-                type="text"
-                placeholder="e.g. 9876543210"
-                value={addBizForm.phone}
-                onChange={(e) => setAddBizForm({ ...addBizForm, phone: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-650"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={addingBizLoading}
-            className="w-full bg-[#faed26] hover:bg-[#faed26]/90 disabled:bg-slate-350 dark:disabled:bg-slate-800 text-[#0b3c7b] disabled:text-slate-500 font-bold py-3 rounded-xl transition-all shadow-lg shadow-yellow-500/15 cursor-pointer disabled:cursor-not-allowed"
-          >
-            {addingBizLoading ? 'Saving Business...' : 'Save Business'}
-          </button>
-        </form>
-      </Modal>
 
       {/* Business Details Modal */}
       {selectedBusinessForModal && (

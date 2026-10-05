@@ -31,23 +31,26 @@ const {
   addPatientRecord,
   addBusiness,
   deleteBusiness,
-  updateBusiness
+  updateBusiness,
+  getSalesPayments,
+  getBusinessRequests,
+  resubmitBusinessRequest
 } = require('../controllers/vendorController');
 
 const { uploadToCloudinary } = require('../config/cloudinary');
 
-// Multer Config for Product Images using Memory Storage
+// Multer Config for Product/Document Uploads using Memory Storage
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|webp|gif/;
+    const filetypes = /jpeg|jpg|png|webp|gif|pdf/;
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = filetypes.test(file.mimetype);
+    const mimetype = filetypes.test(file.mimetype) || file.mimetype === 'application/pdf';
     if (extname && mimetype) {
       return cb(null, true);
     }
-    cb(new Error('Only images (JPEG/PNG/WEBP/GIF) are allowed'));
+    cb(new Error('Only images (JPEG/PNG/WEBP/GIF) and PDF documents are allowed'));
   }
 });
 
@@ -137,9 +140,14 @@ router.post('/reset-password-otp', resetPasswordOTP);
 router.post('/business', addBusiness);
 router.put('/business/:id', updateBusiness);
 router.delete('/business/:id', deleteBusiness);
+router.get('/business-requests', getBusinessRequests);
+router.put('/business-requests/:id/resubmit', resubmitBusinessRequest);
 router.get('/commission-config', getPlatformConfigReadOnly);
 
-// Settlement routes (Vendor)
+// Sales Payments Route (All categories)
+router.get('/payments/sales', getSalesPayments);
+
+// Settlement routes (Vendor Admin Payments)
 const { getVendorSettlements } = require('../controllers/settlementController');
 router.get('/settlements', getVendorSettlements);
 

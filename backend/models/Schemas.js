@@ -66,11 +66,41 @@ const UserSchema = new mongoose.Schema({
     logo: { type: String },
     businessLicense: { type: String },
     businessImages: [{ type: String }],
-    address: { type: String },
+    doorNo: { type: String },
+    village: { type: String },
+    taluk: { type: String },
+    district: { type: String },
+    state: { type: String },
     pincode: { type: String },
+    address: { type: String },
     phone: { type: String },
-    status: { type: String, default: 'Active' },
-    isActive: { type: Boolean, default: true }
+    panNo: { type: String },
+    panDoc: { type: String },
+    aadhaarNo: { type: String },
+    aadhaarDoc: { type: String },
+    gstNumber: { type: String },
+    gstDoc: { type: String },
+    categoryDocuments: { type: mongoose.Schema.Types.Mixed, default: {} },
+    assignedAdminId: { type: String },
+    assignedAdminName: { type: String },
+    assignedAdminRole: { type: String },
+    assignedAdminPincode: { type: String },
+    assignedAt: { type: Date },
+    status: { type: String, default: 'Pending Pincode Admin Review' },
+    rejectionReason: { type: String },
+    changesRequiredReason: { type: String },
+    isActive: { type: Boolean, default: false },
+    auditTrail: [{
+      previousStatus: { type: String },
+      newStatus: { type: String },
+      actor: { type: String },
+      actorRole: { type: String },
+      action: { type: String },
+      reason: { type: String },
+      timestamp: { type: Date, default: Date.now }
+    }],
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
   }],
   primaryBusinessId: { type: String }
 }, { timestamps: true });
@@ -396,8 +426,14 @@ const SettlementSchema = new mongoose.Schema({
   commissionRate: { type: Number, required: true },
   commissionDeducted: { type: Number, required: true },
   netAmount: { type: Number, required: true },
-  status: { type: String, enum: ['Pending', 'Processing', 'Completed'], default: 'Pending' }
-}, { timestamps: true });
+  status: { type: String, enum: ['Pending', 'Processing', 'Completed', 'Failed', 'Hold'], default: 'Pending' },
+  category: { type: String },
+  paymentType: { type: String, default: 'Direct Bank Settlement' },
+  referenceId: { type: String },
+  periodStart: { type: Date },
+  periodEnd: { type: Date },
+  processingDate: { type: Date }
+}, { timestamps: true, strict: false });
 
 SettlementSchema.index({ vendorId: 1, settlementDate: -1 });
 
@@ -586,6 +622,90 @@ const SubscriptionConfigSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 
+// --- BUSINESS REGISTRATION / ONBOARDING REQUEST SCHEMA ---
+const BusinessRequestSchema = new mongoose.Schema({
+  _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+  requestId: { type: String, index: true },
+  vendorId: { type: String, required: true, index: true },
+  vendorName: { type: String },
+  vendorEmail: { type: String },
+  vendorPhone: { type: String },
+  businessId: { type: String, required: true, index: true },
+  businessName: { type: String, required: true },
+  businessCategory: { type: String, required: true },
+  vendorType: { type: String },
+  subcategory: { type: String },
+  phone: { type: String },
+  
+  // Separate Address Fields
+  doorNo: { type: String },
+  village: { type: String },
+  taluk: { type: String },
+  district: { type: String },
+  state: { type: String },
+  pincode: { type: String, required: true, index: true },
+  address: { type: String },
+
+  // Identity Details
+  panNo: { type: String },
+  panDoc: { type: String },
+  aadhaarNo: { type: String },
+  aadhaarDoc: { type: String },
+  gstNumber: { type: String },
+  gstDoc: { type: String },
+
+  // Category Specific Documents
+  categoryDocuments: { type: mongoose.Schema.Types.Mixed, default: {} },
+
+  // Territory / Pincode Admin Routing
+  assignedAdminId: { type: String, index: true },
+  assignedAdminName: { type: String },
+  assignedAdminRole: { type: String },
+  assignedAdminPincode: { type: String },
+  assignedAt: { type: Date },
+
+  // KYC Review Details
+  kycReviewedBy: { type: String },
+  kycReviewedByName: { type: String },
+  kycReviewedAt: { type: Date },
+
+  // Status
+  status: {
+    type: String,
+    enum: [
+      'Pending Pincode Admin Review',
+      'Pincode Approved',
+      'Pincode Rejected',
+      'KYC Pending',
+      'Under KYC Review',
+      'KYC Approved',
+      'KYC Rejected',
+      'KYC Changes Required',
+      'Active'
+    ],
+    default: 'Pending Pincode Admin Review',
+    index: true
+  },
+  rejectionReason: { type: String },
+  changesRequiredReason: { type: String },
+
+  // Audit Trail
+  auditTrail: [{
+    previousStatus: { type: String },
+    newStatus: { type: String },
+    actor: { type: String },
+    actorRole: { type: String },
+    action: { type: String },
+    reason: { type: String },
+    timestamp: { type: Date, default: Date.now }
+  }],
+  submittedDate: { type: Date, default: Date.now }
+}, { timestamps: true, strict: false });
+
+BusinessRequestSchema.index({ vendorId: 1, businessId: 1 });
+BusinessRequestSchema.index({ pincode: 1, status: 1 });
+BusinessRequestSchema.index({ assignedAdminId: 1, status: 1 });
+
 // Compile and export models using the getModel wrapper
 module.exports = {
   User: getModel('User', UserSchema),
@@ -602,6 +722,8 @@ module.exports = {
   Category: getModel('Category', CategorySchema),
   Subscription: getModel('Subscription', SubscriptionSchema),
   SubscriptionPayment: getModel('SubscriptionPayment', SubscriptionPaymentSchema),
-  SubscriptionConfig: getModel('SubscriptionConfig', SubscriptionConfigSchema)
+  SubscriptionConfig: getModel('SubscriptionConfig', SubscriptionConfigSchema),
+  BusinessRequest: getModel('BusinessRequest', BusinessRequestSchema)
 };
+
 

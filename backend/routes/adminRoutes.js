@@ -14,7 +14,10 @@ const {
   getReports,
   getAllOrders,
   getPlatformConfig,
-  updatePlatformConfig
+  updatePlatformConfig,
+  getAdminBusinessRequests,
+  reviewBusinessByPincodeAdmin,
+  reviewBusinessByKYC
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -37,6 +40,11 @@ router.get('/reports', getReports);
 router.get('/orders', getAllOrders);
 router.get('/commission-config', getPlatformConfig);
 router.put('/commission-config', updatePlatformConfig);
+
+// Business Registration Requests (Territory Pincode Admin & KYC Review)
+router.get('/business-requests', getAdminBusinessRequests);
+router.put('/business-requests/:id/pincode-review', reviewBusinessByPincodeAdmin);
+router.put('/business-requests/:id/kyc-review', reviewBusinessByKYC);
 
 // Settlement routes (Admin)
 const { getAllSettlements, createSettlement, updateSettlementStatus } = require('../controllers/settlementController');

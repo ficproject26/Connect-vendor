@@ -1,4 +1,5 @@
-const { User, MembershipPlan, MembershipCard, Order, PlatformConfig } = require('../models/Schemas');
+const { User, MembershipPlan, MembershipCard, Order, PlatformConfig, BusinessRequest } = require('../models/Schemas');
+const mongoose = require('mongoose');
 
 // @desc    Get dashboard stats
 // @route   GET /api/admin/stats
@@ -368,6 +369,226 @@ const updatePlatformConfig = async (req, res) => {
   }
 };
 
+// @desc    Get all business onboarding requests (Admin/KYC queue)
+// @route   GET /api/admin/business-requests
+// @access  Private (Admin)
+const getAdminBusinessRequests = async (req, res) => {
+  try {
+    const { status, pincode } = req.query;
+    const query = {};
+    if (status && status !== 'All') query.status = status;
+    if (pincode) query.pincode = pincode;
+
+    const requests = await BusinessRequest.find(query).sort({ submittedDate: -1 }).lean();
+    res.status(200).json({ success: true, data: requests });
+  } catch (error) {
+    console.error('Get Admin Business Requests Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving business requests' });
+  }
+};
+
+// @desc    Pincode Admin review of business request (Accept / Reject)
+// @route   PUT /api/admin/business-requests/:id/pincode-review
+// @access  Private (Admin / Pincode Admin)
+const reviewBusinessByPincodeAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action, rejectionReason } = req.body; // action: 'ACCEPT' or 'REJECT'
+
+    if (!['ACCEPT', 'REJECT', 'APPROVE'].includes(String(action).toUpperCase())) {
+      return res.status(400).json({ success: false, message: 'Invalid action. Must be ACCEPT or REJECT.' });
+    }
+
+    const request = await BusinessRequest.findOne({
+      $or: [{ _id: id }, { businessId: id }, { requestId: id }]
+    });
+
+    if (!request) {
+      return res.status(404).json({ success: false, message: 'Business request not found' });
+    }
+
+    const isAccept = ['ACCEPT', 'APPROVE'].includes(String(action).toUpperCase());
+    if (!isAccept && (!rejectionReason || !String(rejectionReason).trim())) {
+      return res.status(400).json({ success: false, message: 'Rejection reason is mandatory.' });
+    }
+
+    const previousStatus = request.status;
+    const newStatus = isAccept ? 'KYC Pending' : 'Pincode Rejected';
+    const reasonText = isAccept ? 'Pincode Admin verified territory and approved' : String(rejectionReason).trim();
+
+    request.status = newStatus;
+    if (!isAccept) {
+      request.rejectionReason = reasonText;
+    }
+    request.auditTrail.push({
+      previousStatus,
+      newStatus,
+      actor: req.user.name || 'Pincode Admin',
+      actorRole: 'Pincode Admin',
+      action: isAccept ? 'Pincode Admin Approved' : 'Pincode Admin Rejected',
+      reason: reasonText,
+      timestamp: new Date()
+    });
+
+    await request.save();
+
+    // Update in User.businesses
+    const user = await User.findById(request.vendorId);
+    if (user && user.businesses) {
+      const bIdx = user.businesses.findIndex(b => b._id.toString() === request.businessId.toString());
+      if (bIdx !== -1) {
+        user.businesses[bIdx].status = newStatus;
+        if (!isAccept) {
+          user.businesses[bIdx].rejectionReason = reasonText;
+        }
+        user.businesses[bIdx].auditTrail.push({
+          previousStatus,
+          newStatus,
+          actor: req.user.name || 'Pincode Admin',
+          actorRole: 'Pincode Admin',
+          action: isAccept ? 'Pincode Admin Approved' : 'Pincode Admin Rejected',
+          reason: reasonText,
+          timestamp: new Date()
+        });
+        user.markModified('businesses');
+        await user.save();
+      }
+    }
+
+    // Sync to kyc_records
+    try {
+      const db = mongoose.connection.db;
+      await db.collection('kyc_records').updateOne(
+        { businessId: request.businessId },
+        { 
+          $set: { 
+            status: newStatus,
+            pincodeAdminReview: {
+              reviewedBy: req.user.name || 'Pincode Admin',
+              action: isAccept ? 'Approved' : 'Rejected',
+              reason: reasonText,
+              date: new Date()
+            }
+          } 
+        }
+      );
+    } catch (kErr) {}
+
+    res.status(200).json({
+      success: true,
+      message: isAccept ? 'Business request approved by Pincode Admin! Moved to KYC Team queue.' : 'Business request rejected by Pincode Admin.',
+      data: request
+    });
+  } catch (error) {
+    console.error('Pincode Admin Review Error:', error);
+    res.status(500).json({ success: false, message: 'Server error processing review: ' + error.message });
+  }
+};
+
+// @desc    KYC Team review of business request (Approve / Reject / Request Changes)
+// @route   PUT /api/admin/business-requests/:id/kyc-review
+// @access  Private (Admin / KYC Team)
+const reviewBusinessByKYC = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action, reason } = req.body; // action: 'APPROVE', 'REJECT', 'REQUEST_CHANGES'
+
+    if (!['APPROVE', 'REJECT', 'REQUEST_CHANGES', 'CHANGES_REQUIRED'].includes(String(action).toUpperCase())) {
+      return res.status(400).json({ success: false, message: 'Invalid action. Must be APPROVE, REJECT, or REQUEST_CHANGES.' });
+    }
+
+    const request = await BusinessRequest.findOne({
+      $or: [{ _id: id }, { businessId: id }, { requestId: id }]
+    });
+
+    if (!request) {
+      return res.status(404).json({ success: false, message: 'Business request not found' });
+    }
+
+    const cleanAction = String(action).toUpperCase();
+    const isApprove = cleanAction === 'APPROVE';
+    const isReject = cleanAction === 'REJECT';
+    const isChanges = ['REQUEST_CHANGES', 'CHANGES_REQUIRED'].includes(cleanAction);
+
+    if ((isReject || isChanges) && (!reason || !String(reason).trim())) {
+      return res.status(400).json({ success: false, message: isReject ? 'Rejection reason is mandatory.' : 'Explanation for requested changes is mandatory.' });
+    }
+
+    const previousStatus = request.status;
+    let newStatus = 'Active';
+    if (isReject) newStatus = 'KYC Rejected';
+    else if (isChanges) newStatus = 'KYC Changes Required';
+    else if (isApprove) newStatus = 'Active';
+
+    request.status = newStatus;
+    if (isReject) request.rejectionReason = String(reason).trim();
+    if (isChanges) request.changesRequiredReason = String(reason).trim();
+    request.kycReviewedBy = req.user._id ? req.user._id.toString() : 'KYC Team';
+    request.kycReviewedByName = req.user.name || 'KYC Team';
+    request.kycReviewedAt = new Date();
+
+    request.auditTrail.push({
+      previousStatus,
+      newStatus,
+      actor: req.user.name || 'KYC Team',
+      actorRole: 'KYC Team',
+      action: isApprove ? 'KYC Approved & Business Activated' : isReject ? 'KYC Rejected' : 'KYC Changes Requested',
+      reason: reason ? String(reason).trim() : 'Document verification complete',
+      timestamp: new Date()
+    });
+
+    await request.save();
+
+    // Update in User.businesses
+    const user = await User.findById(request.vendorId);
+    if (user && user.businesses) {
+      const bIdx = user.businesses.findIndex(b => b._id.toString() === request.businessId.toString());
+      if (bIdx !== -1) {
+        user.businesses[bIdx].status = newStatus;
+        user.businesses[bIdx].isActive = isApprove; // Activated upon KYC approval!
+        if (isReject) user.businesses[bIdx].rejectionReason = String(reason).trim();
+        if (isChanges) user.businesses[bIdx].changesRequiredReason = String(reason).trim();
+        user.businesses[bIdx].auditTrail.push({
+          previousStatus,
+          newStatus,
+          actor: req.user.name || 'KYC Team',
+          actorRole: 'KYC Team',
+          action: isApprove ? 'KYC Approved & Business Activated' : isReject ? 'KYC Rejected' : 'KYC Changes Requested',
+          reason: reason ? String(reason).trim() : 'Document verification complete',
+          timestamp: new Date()
+        });
+        user.markModified('businesses');
+        await user.save();
+      }
+    }
+
+    // Sync to kyc_records
+    try {
+      const db = mongoose.connection.db;
+      await db.collection('kyc_records').updateOne(
+        { businessId: request.businessId },
+        { 
+          $set: { 
+            status: newStatus,
+            verifiedBy: req.user.name || 'KYC Team',
+            verifiedDate: new Date(),
+            notes: reason || (isApprove ? 'KYC Approved' : '')
+          } 
+        }
+      );
+    } catch (kErr) {}
+
+    res.status(200).json({
+      success: true,
+      message: isApprove ? 'KYC Approved! Business is now ACTIVE.' : isReject ? 'Business KYC rejected.' : 'Requested changes sent to vendor.',
+      data: request
+    });
+  } catch (error) {
+    console.error('KYC Review Error:', error);
+    res.status(500).json({ success: false, message: 'Server error processing KYC review: ' + error.message });
+  }
+};
+
 module.exports = {
   getAdminStats,
   getPendingVendors,
@@ -382,5 +603,8 @@ module.exports = {
   getReports,
   getAllOrders,
   getPlatformConfig,
-  updatePlatformConfig
+  updatePlatformConfig,
+  getAdminBusinessRequests,
+  reviewBusinessByPincodeAdmin,
+  reviewBusinessByKYC
 };
