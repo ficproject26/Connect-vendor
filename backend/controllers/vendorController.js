@@ -3047,14 +3047,25 @@ const addBusiness = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Pincode is required and must be exactly 6 numeric digits.' });
     }
 
-    // Prevent duplicate business profile in same category AND same pincode (unless rejected)
-    const duplicate = user.businesses && user.businesses.find(
-      b => (b.vendorType === vendorType || b.category === finalCategory) &&
-           String(b.pincode || '').trim() === pinVal &&
-           !['Rejected', 'Pincode Rejected', 'KYC Rejected'].includes(b.status)
-    );
-    if (duplicate) {
-      return res.status(400).json({ success: false, message: `You have already registered a ${vendorType} business outlet for Pincode ${pinVal}.` });
+    // Prevent duplicate business category registration regardless of pincode.
+    // A duplicate exists if the vendor already has any business of the same category
+    // that is NOT in a fully-rejected state.
+    const REJECTED_STATUSES_LC = ['rejected', 'pincode rejected', 'kyc rejected'];
+    const existingCategoryBusiness = user.businesses && user.businesses.find(b => {
+      const bType = (b.vendorType || b.category || '').toLowerCase();
+      const reqType = (vendorType || '').toLowerCase();
+      const reqCat = (finalCategory || '').toLowerCase();
+      const bStatus = String(b.status || '').toLowerCase();
+      const matchesType = bType === reqType || bType === reqCat;
+      const isRejected = REJECTED_STATUSES_LC.includes(bStatus);
+      return matchesType && !isRejected;
+    });
+    if (existingCategoryBusiness) {
+      const existingStatus = existingCategoryBusiness.status || 'Active';
+      return res.status(400).json({
+        success: false,
+        message: `You already have a ${vendorType} business registration with status "${existingStatus}". You cannot register the same business category twice.`
+      });
     }
 
     const cleanDoorNo = String(doorNo || '').trim();

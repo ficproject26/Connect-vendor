@@ -384,17 +384,46 @@ export default function AddBusinessModal({
     }
   };
 
-  const registeredTypes = new Set();
+  // Build a map of category -> status for all existing vendor registrations
+  // A category is "registered" if it exists in any non-rejected state
+  const registeredCategoryMap = {}; // { [vendorType]: status }
   if (user) {
-    if (user.vendorType) registeredTypes.add(user.vendorType);
-    if (user.category) registeredTypes.add(user.category);
+    const REJECTED_STATUSES = ['rejected', 'pincode rejected', 'kyc rejected'];
+    const primaryType = user.vendorType || user.category;
+    if (primaryType) {
+      const primaryStatus = user.status || 'Active';
+      // Only count as registered if not rejected
+      if (!REJECTED_STATUSES.includes(String(primaryStatus).toLowerCase())) {
+        registeredCategoryMap[primaryType] = primaryStatus;
+      }
+    }
     if (user.businesses && Array.isArray(user.businesses)) {
       user.businesses.forEach(b => {
-        if (b.vendorType) registeredTypes.add(b.vendorType);
-        if (b.category) registeredTypes.add(b.category);
+        const bType = b.vendorType || b.category;
+        if (bType) {
+          const bStatus = b.status || 'Active';
+          if (!REJECTED_STATUSES.includes(String(bStatus).toLowerCase())) {
+            // If multiple businesses of same type exist, prefer the most "active" one
+            if (!registeredCategoryMap[bType]) {
+              registeredCategoryMap[bType] = bStatus;
+            }
+          }
+        }
       });
     }
   }
+
+  // Helper: get a user-friendly label for the registered status
+  const getRegisteredStatusLabel = (rawStatus) => {
+    if (!rawStatus) return 'Registered';
+    const s = String(rawStatus).toLowerCase();
+    if (s.includes('pending pincode') || s === 'pending_approval') return 'Pending Review';
+    if (s.includes('kyc') || s === 'under_verification') return 'KYC Review';
+    if (s.includes('changes required')) return 'Changes Required';
+    if (s === 'active' || s === 'approved') return 'Active';
+    if (s.includes('pending')) return 'Pending';
+    return 'Registered';
+  };
 
   return (
     <Modal
@@ -495,27 +524,83 @@ export default function AddBusinessModal({
             {/* STEP 1: BUSINESS & CATEGORY */}
             {/* ========================================================= */}
             {step === 1 && (
-              <div className="space-y-4">
-                <div className="space-y-1">
+              <div className="space-y-5">
+                <div className="space-y-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                     Business Category <span className="text-rose-500">*</span>
                   </label>
-                  <select
-                    id="business-category-select"
-                    value={formData.vendorType || ''}
-                    onChange={(e) => handleCategoryChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#faed26]/50 [&>option]:bg-white dark:[&>option]:bg-slate-900 [&>option]:text-slate-900 dark:[&>option]:text-white cursor-pointer"
-                  >
-                    <option value="" disabled>Select Business Category</option>
-                    {ALL_BUSINESS_CATEGORIES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-slate-400 pl-1">
-                    The category determines required certificates and regulatory documents.
+                  <p className="text-[11px] text-slate-400">
+                    Select the category for your new business outlet. Categories you have already registered are shown as disabled.
                   </p>
+
+                  {/* Card-based category picker */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-1">
+                    {ALL_BUSINESS_CATEGORIES.map((type) => {
+                      const isRegistered = !!registeredCategoryMap[type];
+                      const regStatus = isRegistered ? getRegisteredStatusLabel(registeredCategoryMap[type]) : null;
+                      const isSelected = formData.vendorType === type;
+
+                      // Emoji map
+                      const categoryEmojis = {
+                        Products: '📦', Services: '🛠️', Food: '🍔',
+                        'Daily Needs': '🛒', Stay: '🏨', Travel: '🚗',
+                        Jobs: '💼', Electronics: '⚡'
+                      };
+                      const emoji = categoryEmojis[type] || '🏢';
+
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          disabled={isRegistered}
+                          onClick={() => !isRegistered && handleCategoryChange(type)}
+                          className={`relative flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 transition-all duration-200 text-center
+                            ${
+                              isRegistered
+                                ? 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 opacity-60 cursor-not-allowed'
+                                : isSelected
+                                ? 'border-[#faed26] bg-[#faed26]/10 shadow-lg shadow-yellow-500/10 scale-[1.03]'
+                                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-[#faed26]/60 hover:bg-[#faed26]/5 cursor-pointer hover:scale-[1.02]'
+                            }`}
+                        >
+                          <span className="text-2xl">{emoji}</span>
+                          <span className={`text-xs font-bold leading-tight ${
+                            isRegistered
+                              ? 'text-slate-400 dark:text-slate-500'
+                              : isSelected
+                              ? 'text-[#0B3C7B] dark:text-[#faed26]'
+                              : 'text-slate-700 dark:text-slate-300'
+                          }`}>{type}</span>
+
+                          {/* Registered badge */}
+                          {isRegistered && (
+                            <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider leading-none">
+                              {regStatus}
+                            </span>
+                          )}
+
+                          {/* Selected checkmark */}
+                          {isSelected && !isRegistered && (
+                            <span className="absolute -top-1.5 -right-1.5 bg-[#faed26] text-slate-900 text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider leading-none">
+                              ✓
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {formData.vendorType && (
+                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold pl-1">
+                      ✓ Selected: <strong>{formData.vendorType}</strong> — The category determines required certificates and regulatory documents.
+                    </p>
+                  )}
+
+                  {Object.keys(registeredCategoryMap).length > 0 && (
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[11px] font-medium">
+                      <strong>Note:</strong> Greyed-out categories are already registered under your account in a non-rejected state. You cannot register the same business category twice.
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1">
