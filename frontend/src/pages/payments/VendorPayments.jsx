@@ -3,7 +3,8 @@ import axios from 'axios';
 import { 
   Search, Filter, Calendar, RefreshCw, Eye, ArrowUpRight, ArrowDownRight, 
   CheckCircle2, XCircle, Clock, AlertCircle, ChevronLeft, ChevronRight, 
-  CreditCard, Building2, Store, FileText, X, DollarSign, ArrowRight, ShieldCheck
+  CreditCard, Building2, Store, FileText, X, DollarSign, ArrowRight, ShieldCheck,
+  PauseCircle, Ban
 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import { getVendorBackendUrl } from '../../services/apiSetup';
@@ -74,6 +75,56 @@ const StatusBadge = ({ status }) => {
   );
 };
 
+const AdminStatusBadge = ({ status }) => {
+  const norm = String(status || '').toUpperCase();
+  if (norm === 'PAID' || norm === 'COMPLETED' || norm === 'SUCCESSFUL') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+        <CheckCircle2 size={12} />
+        PAID
+      </span>
+    );
+  }
+  if (norm === 'PENDING' || norm === 'PROCESSING') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+        <Clock size={12} />
+        PENDING
+      </span>
+    );
+  }
+  if (norm === 'HOLD' || norm === 'ON_HOLD') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+        <PauseCircle size={12} />
+        HOLD
+      </span>
+    );
+  }
+  if (norm === 'CANCELLED' || norm === 'CANCELED') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+        <Ban size={12} />
+        CANCELLED
+      </span>
+    );
+  }
+  if (norm === 'FAILED' || norm === 'REJECTED') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
+        <XCircle size={12} />
+        FAILED
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20">
+      <Clock size={12} />
+      {norm || 'PENDING'}
+    </span>
+  );
+};
+
 const CategoryBadge = ({ category }) => {
   const cat = String(category || 'General').toUpperCase();
   const colorMap = {
@@ -121,8 +172,8 @@ export default function VendorPayments() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [adminSearch, setAdminSearch] = useState('');
-  const [adminStatus, setAdminStatus] = useState('All'); // 'All' | 'Successful' | 'Failed' | 'Hold'
-  const [adminDuration, setAdminDuration] = useState('Today'); // 'Today' | 'This Week' | 'This Month' | 'This Year' | 'Custom'
+  const [adminStatus, setAdminStatus] = useState('All'); // 'All' | 'PAID' | 'PENDING' | 'HOLD' | 'CANCELLED' | 'FAILED'
+  const [adminDuration, setAdminDuration] = useState('All'); // 'All' | 'Today' | 'This Week' | 'This Month' | 'This Year' | 'Custom'
   const [adminFromDate, setAdminFromDate] = useState('');
   const [adminToDate, setAdminToDate] = useState('');
   const [adminDateError, setAdminDateError] = useState('');
@@ -210,6 +261,7 @@ export default function VendorPayments() {
         status: adminStatus,
         duration: adminDuration,
         category: adminCategory,
+        search: adminSearch.trim(),
         page: adminPage,
         limit: adminLimit
       };
@@ -227,9 +279,13 @@ export default function VendorPayments() {
           const s = adminSearch.trim().toLowerCase();
           filtered = rawList.filter(item => 
             (item.paymentId && String(item.paymentId).toLowerCase().includes(s)) ||
+            (item.transactionId && String(item.transactionId).toLowerCase().includes(s)) ||
             (item.referenceId && String(item.referenceId).toLowerCase().includes(s)) ||
+            (item.vendorName && String(item.vendorName).toLowerCase().includes(s)) ||
+            (item.vendorId && String(item.vendorId).toLowerCase().includes(s)) ||
+            (item.businessName && String(item.businessName).toLowerCase().includes(s)) ||
             (item.category && String(item.category).toLowerCase().includes(s)) ||
-            (item.vendorBusinessName && String(item.vendorBusinessName).toLowerCase().includes(s))
+            (item.purpose && String(item.purpose).toLowerCase().includes(s))
           );
         }
 
@@ -272,7 +328,7 @@ export default function VendorPayments() {
   const handleClearAdminFilters = () => {
     setAdminSearch('');
     setAdminStatus('All');
-    setAdminDuration('Today');
+    setAdminDuration('All');
     setAdminFromDate('');
     setAdminToDate('');
     setAdminDateError('');
@@ -282,6 +338,9 @@ export default function VendorPayments() {
 
   // Period label formatter
   const renderPeriodLabel = (duration, fromDate, toDate, periodInfo) => {
+    if (duration === 'All') {
+      return 'Payment Period: All Historical Records';
+    }
     if (duration === 'Custom') {
       const from = fromDate ? formatDateOnly(fromDate) : 'Start';
       const to = toDate ? formatDateOnly(toDate) : 'End';
@@ -632,7 +691,7 @@ export default function VendorPayments() {
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search by Payment ID, Reference ID..."
+                  placeholder="Search by Payment ID, Reference ID, Vendor, Business..."
                   value={adminSearch}
                   onChange={(e) => {
                     setAdminSearch(e.target.value);
@@ -653,9 +712,11 @@ export default function VendorPayments() {
                   className="w-full px-3 py-2 text-sm rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#faed26]/50"
                 >
                   <option value="All">Status: All</option>
-                  <option value="Successful">Successful</option>
-                  <option value="Failed">Failed</option>
-                  <option value="Hold">Hold</option>
+                  <option value="PAID">Paid</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="HOLD">Hold</option>
+                  <option value="CANCELLED">Cancelled</option>
+                  <option value="FAILED">Failed</option>
                 </select>
               </div>
 
@@ -669,6 +730,7 @@ export default function VendorPayments() {
                   }}
                   className="w-full px-3 py-2 text-sm rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#faed26]/50"
                 >
+                  <option value="All">All Duration</option>
                   <option value="Today">Today</option>
                   <option value="This Week">This Week</option>
                   <option value="This Month">This Month</option>
@@ -758,12 +820,12 @@ export default function VendorPayments() {
                   >
                     <div className="flex items-center justify-between">
                       <CategoryBadge category={catItem.category} />
-                      <span className="text-xs text-slate-400 font-medium">{catItem.count} settlement{catItem.count === 1 ? '' : 's'}</span>
+                      <span className="text-xs text-slate-400 font-medium">{catItem.count} payment{catItem.count === 1 ? '' : 's'}</span>
                     </div>
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
                       <div className="text-xs text-slate-500 dark:text-slate-400">Total Received from Admin:</div>
                       <div className="text-lg font-extrabold text-blue-600 dark:text-blue-400">
-                        {formatCurrency(catItem.totalReceived || catItem.totalNetAmount || catItem.totalSales)}
+                        {formatCurrency(catItem.totalReceived || catItem.totalNetAmount || catItem.totalGross)}
                       </div>
                     </div>
                   </div>
@@ -772,7 +834,7 @@ export default function VendorPayments() {
             </div>
           )}
 
-          {/* Admin Payments Table */}
+          {/* Admin Payments Table (13 Required Columns) */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
             {adminLoading ? (
               <div className="py-20 text-center space-y-3">
@@ -788,10 +850,14 @@ export default function VendorPayments() {
               <div className="py-20 px-4 text-center space-y-3">
                 <Building2 size={36} className="text-slate-400 mx-auto opacity-40" />
                 <p className="text-base font-semibold text-slate-700 dark:text-slate-300">
-                  No admin payments found for the selected filters.
+                  {(adminStatus !== 'All' || adminDuration !== 'All' || adminSearch.trim() || adminFromDate || adminToDate)
+                    ? 'No admin payments found for the selected filters.'
+                    : 'No admin payments found.'}
                 </p>
                 <p className="text-xs text-slate-400">
-                  Try adjusting the payment status or duration filters.
+                  {(adminStatus !== 'All' || adminDuration !== 'All' || adminSearch.trim() || adminFromDate || adminToDate)
+                    ? 'Try adjusting the payment status or duration filters.'
+                    : 'Admin disbursements and settlements will appear here once processed.'}
                 </p>
               </div>
             ) : (
@@ -799,15 +865,19 @@ export default function VendorPayments() {
                 <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-slate-50 dark:bg-slate-950/60 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                      <th className="py-3.5 px-4">S.No</th>
-                      <th className="py-3.5 px-4">Payment ID</th>
-                      <th className="py-3.5 px-4">Date</th>
-                      <th className="py-3.5 px-4">Category</th>
-                      <th className="py-3.5 px-4">Payment Type</th>
-                      <th className="py-3.5 px-4">Reference ID</th>
-                      <th className="py-3.5 px-4 text-right">Amount Received</th>
-                      <th className="py-3.5 px-4 text-center">Status</th>
-                      <th className="py-3.5 px-4 text-center">Action</th>
+                      <th className="py-3.5 px-3 text-center">S.No</th>
+                      <th className="py-3.5 px-3">Payment ID</th>
+                      <th className="py-3.5 px-3">Transaction / Reference ID</th>
+                      <th className="py-3.5 px-3">Vendor / Recipient</th>
+                      <th className="py-3.5 px-3">Business / Category</th>
+                      <th className="py-3.5 px-3">Payment Purpose</th>
+                      <th className="py-3.5 px-3">Payment Period</th>
+                      <th className="py-3.5 px-3">Payment Date</th>
+                      <th className="py-3.5 px-3 text-right">Gross Amount</th>
+                      <th className="py-3.5 px-3">Breakdown</th>
+                      <th className="py-3.5 px-3 text-right">Net Amount</th>
+                      <th className="py-3.5 px-3 text-center">Status</th>
+                      <th className="py-3.5 px-3 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
@@ -816,33 +886,91 @@ export default function VendorPayments() {
                       return (
                         <tr 
                           key={item._id || item.paymentId || index}
-                          className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                          className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors text-xs"
                         >
-                          <td className="py-3 px-4 font-mono text-xs text-slate-400 font-medium">
+                          {/* 1. S.No */}
+                          <td className="py-3.5 px-3 text-center font-mono text-slate-400 font-medium">
                             {serial}
                           </td>
-                          <td className="py-3 px-4 font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
-                            {item.paymentId || item.settlementId}
+
+                          {/* 2. PAYMENT ID */}
+                          <td className="py-3.5 px-3 font-mono font-bold text-slate-800 dark:text-slate-200">
+                            {item.paymentId || '-'}
                           </td>
-                          <td className="py-3 px-4 text-xs text-slate-500 dark:text-slate-400">
-                            {formatDate(item.paymentDate || item.settlementDate)}
+
+                          {/* 3. TRANSACTION / REFERENCE ID */}
+                          <td className="py-3.5 px-3 font-mono">
+                            <div className="font-semibold text-slate-700 dark:text-slate-300">
+                              {item.transactionId || item.referenceId || '-'}
+                            </div>
+                            {item.transactionId && item.referenceId && item.transactionId !== item.referenceId && (
+                              <div className="text-[11px] text-slate-400 font-normal">
+                                Ref: {item.referenceId}
+                              </div>
+                            )}
                           </td>
-                          <td className="py-3 px-4">
+
+                          {/* 4. VENDOR / RECIPIENT */}
+                          <td className="py-3.5 px-3">
+                            <div className="font-bold text-slate-900 dark:text-slate-100">
+                              {item.vendorName || '-'}
+                            </div>
+                            <div className="font-mono text-[11px] text-slate-400">
+                              {item.vendorId || '-'}
+                            </div>
+                          </td>
+
+                          {/* 5. BUSINESS / BUSINESS CATEGORY */}
+                          <td className="py-3.5 px-3 space-y-1">
+                            <div className="font-semibold text-slate-800 dark:text-slate-200">
+                              {item.businessName || '-'}
+                            </div>
                             <CategoryBadge category={item.category} />
                           </td>
-                          <td className="py-3 px-4 text-xs font-medium text-slate-700 dark:text-slate-300">
-                            {item.paymentType || 'Direct Settlement'}
+
+                          {/* 6. PAYMENT PURPOSE */}
+                          <td className="py-3.5 px-3 text-slate-700 dark:text-slate-300 max-w-[200px] truncate" title={item.purpose}>
+                            {item.purpose || 'Vendor Settlement'}
                           </td>
-                          <td className="py-3 px-4 font-mono text-xs text-slate-500">
-                            {item.referenceId || '-'}
+
+                          {/* 7. PAYMENT PERIOD / DURATION */}
+                          <td className="py-3.5 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                            {item.paymentPeriod || formatDateOnly(item.paymentDate)}
                           </td>
-                          <td className="py-3 px-4 text-right font-extrabold text-blue-600 dark:text-blue-400">
-                            {formatCurrency(item.amount || item.netAmount)}
+
+                          {/* 8. PAYMENT DATE */}
+                          <td className="py-3.5 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                            {formatDateOnly(item.paymentDate)}
                           </td>
-                          <td className="py-3 px-4 text-center">
-                            <StatusBadge status={item.status} />
+
+                          {/* 9. GROSS / TOTAL AMOUNT */}
+                          <td className="py-3.5 px-3 text-right font-bold text-slate-800 dark:text-slate-200">
+                            {formatCurrency(item.grossAmount)}
                           </td>
-                          <td className="py-3 px-4 text-center">
+
+                          {/* 10. BREAKDOWN */}
+                          <td className="py-3.5 px-3">
+                            <div className="text-[11px] space-y-0.5">
+                              <div className="text-slate-500">Gross: {formatCurrency(item.grossAmount)}</div>
+                              <div className="text-rose-500">Fee: -{formatCurrency(item.commissionDeducted || 0)}</div>
+                              {item.otherDeductions > 0 && (
+                                <div className="text-amber-500">Ded: -{formatCurrency(item.otherDeductions)}</div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 11. NET AMOUNT RECEIVED */}
+                          <td className="py-3.5 px-3 text-right font-extrabold text-blue-600 dark:text-blue-400">
+                            {formatCurrency(item.netAmount)}
+                          </td>
+
+                          {/* 12. PAYMENT STATUS */}
+                          <td className="py-3.5 px-3 text-center">
+                            <AdminStatusBadge status={item.status} />
+                          </td>
+
+                          {/* 13. ACTIONS */}
+                          <td className="py-3.5 px-3 text-center">
                             <button
                               type="button"
                               onClick={() => setSelectedAdminDetail(item)}
@@ -1009,76 +1137,211 @@ export default function VendorPayments() {
         <Modal
           isOpen={!!selectedAdminDetail}
           onClose={() => setSelectedAdminDetail(null)}
-          title="Admin Settlement Details"
-          maxWidth="max-w-2xl"
+          title="Admin Payment Details"
+          maxWidth="max-w-3xl"
         >
-          <div className="space-y-5 text-left text-slate-800 dark:text-slate-100">
-            {/* Top Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-blue-50/50 dark:bg-slate-950 border border-blue-100 dark:border-slate-800">
+          <div className="space-y-6 text-left text-slate-800 dark:text-slate-100">
+            {/* Top Bar Banner */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-blue-50/70 dark:bg-slate-950 border border-blue-100 dark:border-slate-800">
               <div>
-                <div className="text-xs text-slate-400 font-medium">Payment ID</div>
-                <div className="font-mono text-base font-bold text-slate-900 dark:text-white">
-                  {selectedAdminDetail.paymentId || selectedAdminDetail.settlementId}
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Payment ID</div>
+                <div className="font-mono text-lg font-extrabold text-slate-900 dark:text-white">
+                  {selectedAdminDetail.paymentId}
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <CategoryBadge category={selectedAdminDetail.category} />
-                <StatusBadge status={selectedAdminDetail.status} />
+                <AdminStatusBadge status={selectedAdminDetail.status} />
               </div>
             </div>
 
-            {/* Metadata Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80">
-                <div className="text-slate-400 font-medium mb-1">Disbursement Date</div>
-                <div className="font-semibold text-slate-800 dark:text-slate-200">
-                  {formatDate(selectedAdminDetail.paymentDate || selectedAdminDetail.settlementDate)}
-                </div>
+            {/* SECTION 1: PAYMENT INFORMATION */}
+            <div className="space-y-2">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <FileText size={14} className="text-blue-500" />
+                Payment Information
               </div>
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80">
-                <div className="text-slate-400 font-medium mb-1">Processing / Settlement Date</div>
-                <div className="font-semibold text-slate-800 dark:text-slate-200">
-                  {formatDate(selectedAdminDetail.processingDate || selectedAdminDetail.settlementDate)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Payment ID</div>
+                  <div className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                    {selectedAdminDetail.paymentId || '-'}
+                  </div>
                 </div>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80">
-                <div className="text-slate-400 font-medium mb-1">Settlement Period</div>
-                <div className="font-semibold text-slate-800 dark:text-slate-200">
-                  {formatDateOnly(selectedAdminDetail.periodStart)} – {formatDateOnly(selectedAdminDetail.periodEnd)}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Transaction ID</div>
+                  <div className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                    {selectedAdminDetail.transactionId || '-'}
+                  </div>
                 </div>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80">
-                <div className="text-slate-400 font-medium mb-1">Admin Reference ID</div>
-                <div className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                  {selectedAdminDetail.referenceId || '-'}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Reference ID</div>
+                  <div className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                    {selectedAdminDetail.referenceId || '-'}
+                  </div>
                 </div>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80 sm:col-span-2">
-                <div className="text-slate-400 font-medium mb-1">Payment Method / Channel</div>
-                <div className="font-semibold text-slate-800 dark:text-slate-200">
-                  {selectedAdminDetail.paymentType || 'Direct Bank Settlement (Admin)'}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Payment Status</div>
+                  <div>
+                    <AdminStatusBadge status={selectedAdminDetail.status} />
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Payment Date</div>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200">
+                    {formatDate(selectedAdminDetail.paymentDate)}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Payment Period / Duration</div>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedAdminDetail.paymentPeriod || formatDateOnly(selectedAdminDetail.paymentDate)}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Financial Card */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Admin Settlement Amount
+            {/* SECTION 2: RECIPIENT INFORMATION */}
+            <div className="space-y-2">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <Store size={14} className="text-purple-500" />
+                Recipient Information
               </div>
-              <div className="flex justify-between items-center text-sm pt-1">
-                <span className="text-slate-600 dark:text-slate-400">Total Net Amount Received from Admin:</span>
-                <span className="text-xl font-extrabold text-blue-600 dark:text-blue-400">
-                  {formatCurrency(selectedAdminDetail.amount || selectedAdminDetail.netAmount)}
-                </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Vendor Name</div>
+                  <div className="font-bold text-slate-900 dark:text-slate-100">
+                    {selectedAdminDetail.vendorName || '-'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Vendor ID</div>
+                  <div className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                    {selectedAdminDetail.vendorId || '-'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Business Name</div>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedAdminDetail.businessName || '-'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Business ID</div>
+                  <div className="font-mono text-slate-700 dark:text-slate-300">
+                    {selectedAdminDetail.businessId || '-'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Business Category</div>
+                  <div>
+                    <CategoryBadge category={selectedAdminDetail.category} />
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Payment Purpose</div>
+                  <div className="font-medium text-slate-800 dark:text-slate-200">
+                    {selectedAdminDetail.purpose || 'Vendor Settlement'}
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            {/* SECTION 3: PAYMENT BREAKDOWN (WATERFALL) */}
+            <div className="space-y-2">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <DollarSign size={14} className="text-emerald-500" />
+                Payment Breakdown Details
+              </div>
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-600 dark:text-slate-400">Payment Purpose:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedAdminDetail.purpose || 'Vendor Settlement'}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-200/60 dark:border-slate-800">
+                  <span className="text-slate-600 dark:text-slate-400">Gross Settlement Amount:</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{formatCurrency(selectedAdminDetail.grossAmount)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-rose-600 dark:text-rose-400">
+                    Platform Commission / Fee {selectedAdminDetail.commissionRate > 0 ? `(${selectedAdminDetail.commissionRate}%)` : ''}:
+                  </span>
+                  <span className="font-semibold text-rose-600 dark:text-rose-400">
+                    -{formatCurrency(selectedAdminDetail.commissionDeducted || 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-600 dark:text-slate-400">Other Deductions:</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    -{formatCurrency(selectedAdminDetail.otherDeductions || 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-sm pt-2 border-t-2 border-slate-200 dark:border-slate-700 font-bold">
+                  <span className="text-slate-900 dark:text-white">Net Vendor Payment Received:</span>
+                  <span className="text-lg font-extrabold text-blue-600 dark:text-blue-400">
+                    {formatCurrency(selectedAdminDetail.netAmount)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 4: SOURCE & DESTINATION ACCOUNT DETAILS */}
+            <div className="space-y-2">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <CreditCard size={14} className="text-sky-500" />
+                Payment Account & Source / Destination Details
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Source (Initiated By)</div>
+                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1">
+                    <Building2 size={13} className="text-blue-500" />
+                    Admin Settlement System (Super Admin)
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Recipient Vendor</div>
+                  <div className="font-bold text-slate-900 dark:text-slate-100">
+                    {selectedAdminDetail.vendorName} ({selectedAdminDetail.vendorId})
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Account Holder Name</div>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedAdminDetail.bankDetails?.accountHolderName || selectedAdminDetail.vendorName || '-'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Bank Name</div>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedAdminDetail.bankDetails?.bankName || 'Registered Settlement Bank'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Masked Account Number</div>
+                  <div className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                    {selectedAdminDetail.bankDetails?.maskedAccount || 'XXXXXX on file'}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 font-medium mb-1">Payment Method / Channel</div>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedAdminDetail.paymentType || 'Direct Bank Settlement (Admin)'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Read-only Security Notice & Close Button */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs">
+              <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                <ShieldCheck size={15} className="text-emerald-500" />
+                <span>Verified Admin Payment Record (Read-Only)</span>
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedAdminDetail(null)}
-                className="px-5 py-2.5 rounded-xl font-bold bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white text-sm transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white transition-colors cursor-pointer"
               >
                 Close
               </button>

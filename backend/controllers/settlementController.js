@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const { Settlement, User, PlatformConfig } = require('../models/Schemas');
 
 // Helper to seed mock settlements if none exist
@@ -67,65 +68,247 @@ const getVendorSettlements = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    const businessIds = [parentUserId.toString()];
-    const bizCategoryMap = {};
-    if (user.vendorType) bizCategoryMap[parentUserId.toString()] = user.vendorType;
-    if (user.category) bizCategoryMap[parentUserId.toString()] = user.category;
+    // Collect all vendor/business identifiers
+    const parentIdStr = parentUserId.toString();
+    const userObjIdStr = user._id.toString();
+    const businessIds = [parentIdStr, userObjIdStr];
+    const bizMap = {};
+    const allVendorBusinessNames = [user.businessName, user.name].filter(Boolean);
+
+    // Default business entry for user
+    const defaultBiz = {
+      _id: parentIdStr,
+      businessName: user.businessName || user.name,
+      category: user.vendorType || user.category || 'Product'
+    };
+    bizMap[parentIdStr] = defaultBiz;
+    bizMap[userObjIdStr] = defaultBiz;
+
+    if (user.vendorId) {
+      businessIds.push(user.vendorId);
+      bizMap[user.vendorId] = defaultBiz;
+    }
+    const shortUserVndId = `VND-${userObjIdStr.slice(-6).toUpperCase()}`;
+    businessIds.push(shortUserVndId);
+    bizMap[shortUserVndId] = defaultBiz;
 
     if (user.businesses && Array.isArray(user.businesses)) {
       user.businesses.forEach(b => {
-        if (b._id) {
+        if (b && b._id) {
           const bIdStr = b._id.toString();
           businessIds.push(bIdStr);
-          bizCategoryMap[bIdStr] = b.category || b.vendorType || 'Product';
+          const shortBizVndId = `VND-${bIdStr.slice(-6).toUpperCase()}`;
+          businessIds.push(shortBizVndId);
+          const bizEntry = {
+            _id: bIdStr,
+            businessName: b.businessName || user.businessName || user.name,
+            category: b.category || b.vendorType || user.vendorType || user.category || 'Product'
+          };
+          bizMap[bIdStr] = bizEntry;
+          bizMap[shortBizVndId] = bizEntry;
+          if (b.businessId) {
+            businessIds.push(b.businessId);
+            bizMap[b.businessId] = bizEntry;
+          }
+          if (b.businessName && !allVendorBusinessNames.includes(b.businessName)) {
+            allVendorBusinessNames.push(b.businessName);
+          }
         }
       });
     }
 
-    const rawSettlements = await Settlement.find({ vendorId: { $in: businessIds } }).lean();
+    // Query real settlement records for this vendor
+    const rawSettlements = await Settlement.find({
+      $or: [
+        { vendorId: { $in: businessIds } },
+        { vendorBusinessName: { $in: allVendorBusinessNames } }
+      ]
+    }).lean();
 
-    // Normalizing each settlement record
-    const mapped = rawSettlements.map((s, idx) => {
+    // Query real admin payments from payments collection if available
+    let rawPayments = [];
+    try {
+      const db = mongoose.connection.db;
+      if (db) {
+        rawPayments = await db.collection('payments').find({
+          $or: [
+            { recipientId: { $in: businessIds } },
+            { recipientName: { $in: allVendorBusinessNames } }
+          ]
+        }).toArray();
+      }
+    } catch (pErr) {
+      console.warn('Payments lookup notice:', pErr.message);
+    }
+
+    // Helper: Normalize Status strictly to PAID, PENDING, HOLD, CANCELLED, FAILED
+    const normalizeStatus = (raw) => {
+      const s = String(raw || '').trim().toLowerCase();
+      if (['completed', 'paid', 'successful', 'success'].includes(s)) return 'PAID';
+      if (['processing', 'pending', 'in_transit'].includes(s)) return 'PENDING';
+      if (['hold', 'on_hold', 'paused'].includes(s)) return 'HOLD';
+      if (['cancelled', 'canceled', 'void'].includes(s)) return 'CANCELLED';
+      if (['failed', 'rejected', 'error'].includes(s)) return 'FAILED';
+      return 'PENDING';
+    };
+
+    // Helper: Normalize Category
+    const normalizeCategory = (cat) => {
+      const c = String(cat || 'Product').trim();
+      if (/product/i.test(c)) return 'Product';
+      if (/service/i.test(c)) return 'Services';
+      if (/food|restaurant/i.test(c)) return 'Food';
+      if (/daily/i.test(c)) return 'Daily Needs';
+      if (/stay|hotel/i.test(c)) return 'Stay';
+      if (/travel/i.test(c)) return 'Travel';
+      if (/job/i.test(c)) return 'Jobs';
+      return c || 'Product';
+    };
+
+    // Helper: Mask Account Number safely
+    const maskAccount = (acc) => {
+      if (!acc) return 'Registered Bank Account';
+      const clean = String(acc).replace(/\s+/g, '');
+      if (clean.length <= 4) return clean;
+      return 'XXXXXX' + clean.slice(-4);
+    };
+
+    // Helper: Format Date
+    const formatDateStr = (d) => {
+      if (!d) return '-';
+      try {
+        const dateObj = new Date(d);
+        if (isNaN(dateObj.getTime())) return String(d);
+        const day = String(dateObj.getDate()).padStart(2, '0');
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${day} ${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
+      } catch (e) {
+        return String(d);
+      }
+    };
+
+    // Combine and reconcile settlements and payments to prevent duplicates
+    const combinedRecords = [];
+    const matchedPaymentIds = new Set();
+
+    rawSettlements.forEach((s) => {
+      const sIdStr = String(s._id);
+      const sIdSuffix = sIdStr.slice(-6).toUpperCase();
       const sDate = s.settlementDate || s.createdAt || new Date();
-      const rawStatus = (s.status || '').toLowerCase();
-      let normalizedStatus = 'Successful';
-      if (rawStatus === 'completed') normalizedStatus = 'Successful';
-      else if (rawStatus === 'failed') normalizedStatus = 'Failed';
-      else if (['pending', 'processing', 'hold'].includes(rawStatus)) normalizedStatus = 'Hold';
 
-      const bizCat = s.category || bizCategoryMap[String(s.vendorId)] || user.vendorType || user.category || 'Product';
+      // Find matching payment in payments collection if any
+      const matchedPayment = rawPayments.find(p => {
+        if (!p) return false;
+        const pIdStr = String(p.paymentId || '');
+        const pTxn = String(p.transactionReference || '');
+        const pSource = String(p.sourceId || '');
+        return pIdStr.includes(sIdSuffix) || pTxn.includes(sIdSuffix) || pSource === sIdStr;
+      });
 
-      // Standardize category label
-      let category = bizCat;
-      if (/product/i.test(category)) category = 'Product';
-      else if (/food|restaurant/i.test(category)) category = 'Food';
-      else if (/daily/i.test(category)) category = 'Daily Needs';
-      else if (/service/i.test(category)) category = 'Services';
-      else if (/stay|hotel/i.test(category)) category = 'Stay';
-      else if (/travel/i.test(category)) category = 'Travel';
-      else if (/job/i.test(category)) category = 'Jobs';
+      if (matchedPayment) {
+        matchedPaymentIds.add(String(matchedPayment._id));
+      }
 
-      return {
+      const activeRecord = matchedPayment || s;
+      const matchedBiz = bizMap[String(s.vendorId)] || bizMap[String(matchedPayment?.recipientId)] || defaultBiz;
+      const cat = normalizeCategory(s.category || matchedBiz?.category || user.vendorType || user.category);
+
+      const gross = Number(s.grossAmount || matchedPayment?.amount || 0);
+      const commRate = Number(s.commissionRate || 0);
+      const commDeducted = Number(s.commissionDeducted || (commRate > 0 ? Math.round(gross * (commRate / 100)) : 0));
+      const otherDeductions = Number(s.otherDeductions || matchedPayment?.deductions || 0);
+      const net = Number(s.netAmount || matchedPayment?.amount || (gross - commDeducted - otherDeductions));
+
+      // Build Payment ID & Reference traceable to database
+      const paymentId = matchedPayment?.paymentId || `PAY-${sIdSuffix}`;
+      const referenceId = s.referenceId || matchedPayment?.transactionReference || `SETTL-${sIdSuffix}`;
+      const transactionId = matchedPayment?.transactionReference || `TXN-${sIdSuffix}`;
+
+      // Period calculation
+      let periodLabel = '';
+      if (s.periodStart && s.periodEnd) {
+        periodLabel = `${formatDateStr(s.periodStart)} – ${formatDateStr(s.periodEnd)}`;
+      } else if (matchedPayment?.paymentPeriod) {
+        periodLabel = matchedPayment.paymentPeriod;
+      } else {
+        periodLabel = formatDateStr(sDate);
+      }
+
+      // Purpose
+      const purpose = s.purpose || s.paymentPurpose || (matchedPayment && matchedPayment.notes) || (s.vendorBusinessName ? `Store settlement for ${s.vendorBusinessName}` : 'Vendor Settlement');
+
+      combinedRecords.push({
         _id: s._id,
-        paymentId: s._id ? String(s._id).slice(-8).toUpperCase() : `ADM-PAY-${idx + 1}`,
-        settlementId: s._id,
+        paymentId,
+        transactionId,
+        referenceId,
+        vendorName: user.name,
+        vendorId: `VND-${String(matchedBiz?._id || user._id).slice(-6).toUpperCase()}`,
+        businessName: matchedBiz?.businessName || s.vendorBusinessName || user.businessName || user.name,
+        businessId: matchedBiz?._id ? String(matchedBiz._id) : String(user._id),
+        category: cat,
+        purpose,
+        paymentPeriod: periodLabel,
         paymentDate: sDate,
-        settlementDate: sDate,
-        processingDate: s.processingDate || sDate,
-        periodStart: s.periodStart || new Date(new Date(sDate).getTime() - 7 * 24 * 60 * 60 * 1000),
-        periodEnd: s.periodEnd || sDate,
-        category,
-        paymentType: s.paymentType || 'Direct Bank Settlement (Admin)',
-        grossAmount: Number(s.grossAmount || 0),
-        commissionRate: Number(s.commissionRate || 0),
-        commissionDeducted: Number(s.commissionDeducted || 0),
-        amount: Number(s.netAmount || s.grossAmount || 0),
-        netAmount: Number(s.netAmount || s.grossAmount || 0),
-        status: normalizedStatus,
-        rawStatus: s.status,
-        vendorBusinessName: s.vendorBusinessName || user.businessName || user.name,
-        referenceId: s.referenceId || `REF-${String(s._id).slice(-6).toUpperCase()}`
-      };
+        grossAmount: gross,
+        commissionRate: commRate,
+        commissionDeducted: commDeducted,
+        otherDeductions: otherDeductions,
+        netAmount: net,
+        status: normalizeStatus(matchedPayment ? matchedPayment.status : s.status),
+        paymentType: s.paymentType || matchedPayment?.paymentMethod || 'Direct Bank Settlement (Admin)',
+        bankDetails: {
+          accountHolderName: matchedPayment?.bankAccountHolder || user.accountHolderName || user.name,
+          bankName: matchedPayment?.bankName || user.bankName || 'Registered Settlement Bank',
+          maskedAccount: maskAccount(matchedPayment?.bankAccountNumber || user.accountNo),
+          maskedUpi: user.swiftCode || user.ifscCode ? `IFSC: ${user.ifscCode || user.swiftCode}` : 'Bank Direct Transfer',
+          paymentMethod: s.paymentType || matchedPayment?.paymentMethod || 'Direct Bank Settlement (Admin)',
+          transactionReference: transactionId
+        }
+      });
+    });
+
+    // Add standalone payments not linked to settlements
+    rawPayments.forEach((p) => {
+      if (matchedPaymentIds.has(String(p._id))) return; // Already merged
+      const pIdStr = String(p._id);
+      const pDate = p.paymentDate || p.createdAt || new Date();
+      const matchedBiz = bizMap[String(p.recipientId)] || defaultBiz;
+      const cat = normalizeCategory(matchedBiz?.category || user.vendorType || user.category);
+
+      const gross = Number(p.amount || 0);
+      const deductions = Number(p.deductions || 0);
+      const net = gross - deductions;
+
+      combinedRecords.push({
+        _id: p._id,
+        paymentId: p.paymentId || `PAY-${pIdStr.slice(-6).toUpperCase()}`,
+        transactionId: p.transactionReference || `TXN-${pIdStr.slice(-6).toUpperCase()}`,
+        referenceId: p.transactionReference || `REF-${pIdStr.slice(-6).toUpperCase()}`,
+        vendorName: user.name,
+        vendorId: `VND-${String(matchedBiz?._id || user._id).slice(-6).toUpperCase()}`,
+        businessName: matchedBiz?.businessName || p.recipientName || user.businessName || user.name,
+        businessId: matchedBiz?._id ? String(matchedBiz._id) : String(user._id),
+        category: cat,
+        purpose: p.notes || 'Direct Vendor Payment',
+        paymentPeriod: p.paymentPeriod || formatDateStr(pDate),
+        paymentDate: pDate,
+        grossAmount: gross,
+        commissionRate: 0,
+        commissionDeducted: 0,
+        otherDeductions: deductions,
+        netAmount: net,
+        status: normalizeStatus(p.status),
+        paymentType: p.paymentMethod || 'Direct Bank Settlement (Admin)',
+        bankDetails: {
+          accountHolderName: p.bankAccountHolder || user.accountHolderName || user.name,
+          bankName: p.bankName || user.bankName || 'Registered Settlement Bank',
+          maskedAccount: maskAccount(p.bankAccountNumber || user.accountNo),
+          maskedUpi: user.ifscCode ? `IFSC: ${user.ifscCode}` : 'Bank Direct Transfer',
+          paymentMethod: p.paymentMethod || 'Direct Bank Settlement (Admin)',
+          transactionReference: p.transactionReference || `TXN-${pIdStr.slice(-6).toUpperCase()}`
+        }
+      });
     });
 
     // Date range & duration filtering
@@ -159,7 +342,7 @@ const getVendorSettlements = async (req, res) => {
       }
     }
 
-    let filtered = mapped.filter(item => {
+    let filtered = combinedRecords.filter(item => {
       const itemTime = new Date(item.paymentDate).getTime();
       if (startDate && itemTime < startDate.getTime()) return false;
       if (endDate && itemTime > endDate.getTime()) return false;
@@ -168,8 +351,8 @@ const getVendorSettlements = async (req, res) => {
 
     // Status filter
     const statusFilter = req.query.status || 'All';
-    if (statusFilter !== 'All') {
-      filtered = filtered.filter(item => item.status.toLowerCase() === statusFilter.toLowerCase());
+    if (statusFilter && statusFilter.toUpperCase() !== 'ALL') {
+      filtered = filtered.filter(item => item.status.toUpperCase() === statusFilter.toUpperCase());
     }
 
     // Category filter
@@ -183,8 +366,13 @@ const getVendorSettlements = async (req, res) => {
       const term = String(req.query.search).trim().toLowerCase();
       filtered = filtered.filter(item => 
         (item.paymentId && item.paymentId.toLowerCase().includes(term)) ||
+        (item.transactionId && item.transactionId.toLowerCase().includes(term)) ||
         (item.referenceId && item.referenceId.toLowerCase().includes(term)) ||
-        (item.category && item.category.toLowerCase().includes(term))
+        (item.vendorName && item.vendorName.toLowerCase().includes(term)) ||
+        (item.vendorId && item.vendorId.toLowerCase().includes(term)) ||
+        (item.businessName && item.businessName.toLowerCase().includes(term)) ||
+        (item.category && item.category.toLowerCase().includes(term)) ||
+        (item.purpose && item.purpose.toLowerCase().includes(term))
       );
     }
 
@@ -192,22 +380,22 @@ const getVendorSettlements = async (req, res) => {
     filtered.sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
 
     // Category-wise totals based on real Admin payment records
-    const categoryBreakdown = {};
+    const categoryTotals = {};
     filtered.forEach(s => {
       const cat = s.category || 'Product';
-      if (!categoryBreakdown[cat]) {
-        categoryBreakdown[cat] = {
+      if (!categoryTotals[cat]) {
+        categoryTotals[cat] = {
           category: cat,
-          totalAmountReceived: 0,
-          totalGrossAmount: 0,
+          totalReceived: 0,
+          totalGross: 0,
           totalCommissionDeducted: 0,
           count: 0
         };
       }
-      categoryBreakdown[cat].totalAmountReceived += s.netAmount;
-      categoryBreakdown[cat].totalGrossAmount += s.grossAmount;
-      categoryBreakdown[cat].totalCommissionDeducted += s.commissionDeducted;
-      categoryBreakdown[cat].count += 1;
+      categoryTotals[cat].totalReceived += s.netAmount;
+      categoryTotals[cat].totalGross += s.grossAmount;
+      categoryTotals[cat].totalCommissionDeducted += s.commissionDeducted;
+      categoryTotals[cat].count += 1;
     });
 
     const totalReceived = filtered.reduce((sum, s) => sum + s.netAmount, 0);
@@ -233,7 +421,7 @@ const getVendorSettlements = async (req, res) => {
         totalCommissionDeducted,
         count: totalCount
       },
-      categoryBreakdown: Object.values(categoryBreakdown),
+      categoryTotals: Object.values(categoryTotals),
       period: {
         duration,
         startDate: startDate ? startDate.toISOString() : null,
