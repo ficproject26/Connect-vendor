@@ -3041,19 +3041,20 @@ const addBusiness = async (req, res) => {
     const finalCategory = category || vendorType;
     const finalSubcategory = subcategory || vendorType;
 
-    // 2. Prevent duplicate business profile in same category (unless rejected)
-    const duplicate = user.businesses && user.businesses.find(
-      b => (b.vendorType === vendorType || b.category === finalCategory) &&
-           !['Rejected', 'Pincode Rejected', 'KYC Rejected'].includes(b.status)
-    );
-    if (duplicate) {
-      return res.status(400).json({ success: false, message: `You have already registered the ${vendorType} business profile.` });
-    }
-
-    // 3. Validate Separate Address Fields
+    // 2. Validate Separate Address Fields
     const pinVal = String(pincode || req.body.pinCode || req.body.postalCode || '').trim();
     if (!pinVal || !/^\d{6}$/.test(pinVal)) {
       return res.status(400).json({ success: false, message: 'Pincode is required and must be exactly 6 numeric digits.' });
+    }
+
+    // Prevent duplicate business profile in same category AND same pincode (unless rejected)
+    const duplicate = user.businesses && user.businesses.find(
+      b => (b.vendorType === vendorType || b.category === finalCategory) &&
+           String(b.pincode || '').trim() === pinVal &&
+           !['Rejected', 'Pincode Rejected', 'KYC Rejected'].includes(b.status)
+    );
+    if (duplicate) {
+      return res.status(400).json({ success: false, message: `You have already registered a ${vendorType} business outlet for Pincode ${pinVal}.` });
     }
 
     const cleanDoorNo = String(doorNo || '').trim();

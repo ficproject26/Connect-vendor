@@ -21,6 +21,10 @@ const CATEGORY_DOC_CONFIG = {
     { key: 'bis_certificate', label: 'BIS / CRS / Product Certificate', required: false, numberPlaceholder: 'e.g. BIS-REG-1234' },
     { key: 'trade_license', label: 'Trade License', required: false, numberPlaceholder: 'e.g. TRD-45678' }
   ],
+  Products: [
+    { key: 'bis_certificate', label: 'BIS / CRS / Product Certificate', required: false, numberPlaceholder: 'e.g. BIS-REG-1234' },
+    { key: 'trade_license', label: 'Trade License', required: false, numberPlaceholder: 'e.g. TRD-45678' }
+  ],
   Electronics: [
     { key: 'bis_certificate', label: 'BIS / CRS Registration Certificate', required: true, numberPlaceholder: 'e.g. R-12345678' },
     { key: 'wpc_certificate', label: 'WPC / Equipment Certificate', required: false, numberPlaceholder: 'e.g. WPC-ETA-123' }
@@ -38,10 +42,41 @@ const CATEGORY_DOC_CONFIG = {
     { key: 'company_reg', label: 'Company Registration / Incorporation Certificate', required: true, numberPlaceholder: 'e.g. CIN / REG-12345' },
     { key: 'labour_license', label: 'Labour / Contract License', required: false, numberPlaceholder: 'e.g. LAB-56789' }
   ],
+  Job: [
+    { key: 'company_reg', label: 'Company Registration / Incorporation Certificate', required: true, numberPlaceholder: 'e.g. CIN / REG-12345' },
+    { key: 'labour_license', label: 'Labour / Contract License', required: false, numberPlaceholder: 'e.g. LAB-56789' }
+  ],
   Services: [
+    { key: 'service_cert', label: 'Service / Professional Certification', required: false, numberPlaceholder: 'e.g. CERT-SERVICE-12' }
+  ],
+  Service: [
     { key: 'service_cert', label: 'Service / Professional Certification', required: false, numberPlaceholder: 'e.g. CERT-SERVICE-12' }
   ]
 };
+
+const getCategoryDocRules = (category) => {
+  if (!category) return [];
+  if (CATEGORY_DOC_CONFIG[category]) return CATEGORY_DOC_CONFIG[category];
+  const singular = category.endsWith('s') && !['Daily Needs'].includes(category) 
+    ? category.slice(0, -1) 
+    : category;
+  if (CATEGORY_DOC_CONFIG[singular]) return CATEGORY_DOC_CONFIG[singular];
+  const plural = category + 's';
+  if (CATEGORY_DOC_CONFIG[plural]) return CATEGORY_DOC_CONFIG[plural];
+  return CATEGORY_DOC_CONFIG.Product || [];
+};
+
+const ALL_BUSINESS_CATEGORIES = [
+  'Products',
+  'Services',
+  'Food',
+  'Daily Needs',
+  'Stay',
+  'Travel',
+  'Jobs',
+  'Electronics'
+];
+
 
 export default function AddBusinessModal({ 
   isOpen, 
@@ -110,7 +145,8 @@ export default function AddBusinessModal({
 
   // When vendorType changes, initialize categoryDocs
   const handleCategoryChange = (selectedType) => {
-    const docRules = CATEGORY_DOC_CONFIG[selectedType] || CATEGORY_DOC_CONFIG.Product || [];
+    if (!selectedType) return;
+    const docRules = getCategoryDocRules(selectedType);
     const initialDocs = {};
     docRules.forEach(rule => {
       initialDocs[rule.key] = {
@@ -251,7 +287,7 @@ export default function AddBusinessModal({
 
     if (currentStep === 4) {
       // Check required category docs
-      const docRules = CATEGORY_DOC_CONFIG[formData.vendorType] || [];
+      const docRules = getCategoryDocRules(formData.vendorType);
       for (const rule of docRules) {
         if (rule.required) {
           const docItem = formData.categoryDocs[rule.key];
@@ -465,19 +501,17 @@ export default function AddBusinessModal({
                     Business Category <span className="text-rose-500">*</span>
                   </label>
                   <select
-                    value={formData.vendorType}
+                    id="business-category-select"
+                    value={formData.vendorType || ''}
                     onChange={(e) => handleCategoryChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#faed26]/50"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#faed26]/50 [&>option]:bg-white dark:[&>option]:bg-slate-900 [&>option]:text-slate-900 dark:[&>option]:text-white cursor-pointer"
                   >
                     <option value="" disabled>Select Business Category</option>
-                    {Object.keys(vendorTaxonomy).map((type) => {
-                      const isAlreadyRegistered = registeredTypes.has(type);
-                      return (
-                        <option key={type} value={type} disabled={isAlreadyRegistered}>
-                          {type} {isAlreadyRegistered ? '(Already Registered)' : ''}
-                        </option>
-                      );
-                    })}
+                    {ALL_BUSINESS_CATEGORIES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
                   </select>
                   <p className="text-[11px] text-slate-400 pl-1">
                     The category determines required certificates and regulatory documents.
@@ -752,12 +786,16 @@ export default function AddBusinessModal({
                   Required Documents for Category: <span className="text-[#0B3C7B] dark:text-[#faed26] font-extrabold">{formData.vendorType}</span>
                 </div>
 
-                {(!CATEGORY_DOC_CONFIG[formData.vendorType] || CATEGORY_DOC_CONFIG[formData.vendorType].length === 0) ? (
-                  <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                    No specialized regulatory certificates are mandatory for this category. Standard identity documents (PAN & Aadhaar) will be used for KYC.
-                  </div>
-                ) : (
-                  CATEGORY_DOC_CONFIG[formData.vendorType].map((rule) => {
+                {(() => {
+                  const docRules = getCategoryDocRules(formData.vendorType);
+                  if (!docRules || docRules.length === 0) {
+                    return (
+                      <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                        No specialized regulatory certificates are mandatory for this category. Standard identity documents (PAN & Aadhaar) will be used for KYC.
+                      </div>
+                    );
+                  }
+                  return docRules.map((rule) => {
                     const docState = formData.categoryDocs[rule.key] || {};
                     return (
                       <div 
@@ -819,8 +857,8 @@ export default function AddBusinessModal({
                         </div>
                       </div>
                     );
-                  })
-                )}
+                  });
+                })()}
               </div>
             )}
 
