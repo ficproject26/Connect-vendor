@@ -220,7 +220,7 @@ const getVendorSettlements = async (req, res) => {
       const net = Number(s.netAmount || matchedPayment?.amount || (gross - commDeducted - otherDeductions));
 
       // Build Payment ID & Reference traceable to database
-      const paymentId = matchedPayment?.paymentId || `PAY-${sIdSuffix}`;
+      const paymentId = matchedPayment?.paymentId || s.paymentId || `PAY-VND-${sIdSuffix}`;
       const referenceId = s.referenceId || matchedPayment?.transactionReference || `SETTL-${sIdSuffix}`;
       const transactionId = matchedPayment?.transactionReference || `TXN-${sIdSuffix}`;
 
@@ -255,7 +255,15 @@ const getVendorSettlements = async (req, res) => {
         commissionDeducted: commDeducted,
         otherDeductions: otherDeductions,
         netAmount: net,
-        status: normalizeStatus(matchedPayment ? matchedPayment.status : s.status),
+        status: normalizeStatus(matchedPayment ? matchedPayment.status : (s.paymentStatus || s.status)),
+        holdReason: matchedPayment?.holdReason || s.holdReason || '',
+        cancellationReason: matchedPayment?.cancellationReason || s.cancellationReason || '',
+        heldBy: matchedPayment?.heldBy || s.heldBy || '',
+        heldAt: matchedPayment?.heldAt || s.heldAt || null,
+        cancelledBy: matchedPayment?.cancelledBy || s.cancelledBy || '',
+        cancelledAt: matchedPayment?.cancelledAt || s.cancelledAt || null,
+        receiptNumber: matchedPayment?.receiptNumber || (normalizeStatus(matchedPayment ? matchedPayment.status : (s.paymentStatus || s.status)) === 'PAID' ? 'RCP-' + paymentId.replace(/[^A-Za-z0-9]/g, '').slice(-8) : ''),
+        processedBy: matchedPayment?.processedBy || s.processedBy || 'Admin',
         paymentType: s.paymentType || matchedPayment?.paymentMethod || 'Direct Bank Settlement (Admin)',
         bankDetails: {
           accountHolderName: matchedPayment?.bankAccountHolder || user.accountHolderName || user.name,
@@ -299,6 +307,14 @@ const getVendorSettlements = async (req, res) => {
         otherDeductions: deductions,
         netAmount: net,
         status: normalizeStatus(p.status),
+        holdReason: p.holdReason || '',
+        cancellationReason: p.cancellationReason || '',
+        heldBy: p.heldBy || '',
+        heldAt: p.heldAt || null,
+        cancelledBy: p.cancelledBy || '',
+        cancelledAt: p.cancelledAt || null,
+        receiptNumber: p.receiptNumber || (normalizeStatus(p.status) === 'PAID' ? 'RCP-' + (p.paymentId || pIdStr).replace(/[^A-Za-z0-9]/g, '').slice(-8) : ''),
+        processedBy: p.processedBy || 'Admin',
         paymentType: p.paymentMethod || 'Direct Bank Settlement (Admin)',
         bankDetails: {
           accountHolderName: p.bankAccountHolder || user.accountHolderName || user.name,

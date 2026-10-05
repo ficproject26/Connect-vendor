@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { 
   Search, Filter, Calendar, RefreshCw, Eye, ArrowUpRight, ArrowDownRight, 
@@ -244,7 +244,12 @@ export default function VendorPayments() {
   // ---------------------------------------------------------
   // Fetch Admin Payments
   // ---------------------------------------------------------
-  const fetchAdminPayments = useCallback(async () => {
+  const adminInFlightRef = useRef(false);
+
+  // ---------------------------------------------------------
+  // Fetch Admin Payments (with silent background polling support)
+  // ---------------------------------------------------------
+  const fetchAdminPayments = useCallback(async (isSilent = false) => {
     // Validate custom dates if selected
     if (adminDuration === 'Custom') {
       if (adminFromDate && adminToDate && adminFromDate > adminToDate) {
@@ -253,8 +258,13 @@ export default function VendorPayments() {
       }
     }
     setAdminDateError('');
-    setAdminLoading(true);
-    setAdminError('');
+    if (adminInFlightRef.current) return;
+    adminInFlightRef.current = true;
+
+    if (!isSilent) {
+      setAdminLoading(true);
+      setAdminError('');
+    }
 
     try {
       const params = {
@@ -294,16 +304,28 @@ export default function VendorPayments() {
         setAdminTotalPages(res.data.totalPages || 1);
         setAdminCategoryTotals(res.data.categoryTotals || []);
         setAdminPeriodInfo(res.data.period || null);
+
+        // Reconcile open modal item in-place without closing
+        setSelectedAdminDetail(prev => {
+          if (!prev) return null;
+          const found = filtered.find(item => (item.paymentId && item.paymentId === prev.paymentId) || String(item._id) === String(prev._id));
+          return found || prev;
+        });
       } else {
-        setAdminRecords([]);
-        setAdminTotalCount(0);
+        if (!isSilent) {
+          setAdminRecords([]);
+          setAdminTotalCount(0);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch admin settlements:', err);
-      setAdminError(err.response?.data?.message || err.message || 'Failed to load admin payments');
-      setAdminRecords([]);
+      if (!isSilent) {
+        setAdminError(err.response?.data?.message || err.message || 'Failed to load admin payments');
+        setAdminRecords([]);
+      }
     } finally {
-      setAdminLoading(false);
+      adminInFlightRef.current = false;
+      if (!isSilent) setAdminLoading(false);
     }
   }, [adminStatus, adminDuration, adminFromDate, adminToDate, adminCategory, adminPage, adminLimit, adminSearch]);
 
@@ -312,6 +334,37 @@ export default function VendorPayments() {
       fetchAdminPayments();
     }
   }, [fetchAdminPayments, mainTab]);
+
+  // Background Auto-Refresh Engine for Vendor Admin Payments (Every 6s, silent, tab-visibility aware)
+  useEffect(() => {
+    if (mainTab !== 'admin') return;
+
+    let lastFetch = Date.now();
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && (typeof navigator === 'undefined' || navigator.onLine)) {
+        lastFetch = Date.now();
+        fetchAdminPayments(true);
+      }
+    }, 6000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && (typeof navigator === 'undefined' || navigator.onLine)) {
+        if (Date.now() - lastFetch >= 5000) {
+          lastFetch = Date.now();
+          fetchAdminPayments(true);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+    };
+  }, [mainTab, fetchAdminPayments]);
 
   // Clear filters
   const handleClearSalesFilters = () => {
@@ -967,6 +1020,16 @@ export default function VendorPayments() {
                           {/* 12. PAYMENT STATUS */}
                           <td className="py-3.5 px-3 text-center">
                             <AdminStatusBadge status={item.status} />
+                            {item.status === 'HOLD' && item.holdReason && (
+                              <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium max-w-[140px] truncate mx-auto mt-1" title={item.holdReason}>
+                                {item.holdReason}
+                              </div>
+                            )}
+                            {item.status === 'CANCELLED' && item.cancellationReason && (
+                              <div className="text-[11px] text-rose-500 font-medium max-w-[140px] truncate mx-auto mt-1" title={item.cancellationReason}>
+                                {item.cancellationReason}
+                              </div>
+                            )}
                           </td>
 
                           {/* 13. ACTIONS */}
@@ -1154,6 +1217,42 @@ export default function VendorPayments() {
                 <AdminStatusBadge status={selectedAdminDetail.status} />
               </div>
             </div>
+
+            {/* Hold Reason Banner */}
+            {selectedAdminDetail.status === 'HOLD' && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300">
+                  <PauseCircle size={15} />
+                  PAYMENT ON HOLD
+                </div>
+                <div className="text-xs font-semibold">
+                  Reason: {selectedAdminDetail.holdReason || 'Administrative verification pending'}
+                </div>
+                {selectedAdminDetail.heldBy && (
+                  <div className="text-[11px] text-amber-700/80 dark:text-amber-300/80">
+                    Placed by: {selectedAdminDetail.heldBy} {selectedAdminDetail.heldAt ? `on ${formatDate(selectedAdminDetail.heldAt)}` : ''}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Cancellation Reason Banner */}
+            {selectedAdminDetail.status === 'CANCELLED' && (
+              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-900 dark:text-rose-200 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-300">
+                  <Ban size={15} />
+                  PAYMENT CANCELLED
+                </div>
+                <div className="text-xs font-semibold">
+                  Reason: {selectedAdminDetail.cancellationReason || 'Administrative cancellation'}
+                </div>
+                {selectedAdminDetail.cancelledBy && (
+                  <div className="text-[11px] text-rose-700/80 dark:text-rose-300/80">
+                    Cancelled by: {selectedAdminDetail.cancelledBy} {selectedAdminDetail.cancelledAt ? `on ${formatDate(selectedAdminDetail.cancelledAt)}` : ''}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* SECTION 1: PAYMENT INFORMATION */}
             <div className="space-y-2">
