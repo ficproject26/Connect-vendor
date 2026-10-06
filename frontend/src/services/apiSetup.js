@@ -141,6 +141,22 @@ axios.interceptors.response.use(
       config.url.includes('/api/auth/register')
     );
 
+    // Intercept 503 Service Unavailable / Suspended responses from Render
+    if (error.response?.status === 503) {
+      const rawBody = typeof error.response.data === 'string' ? error.response.data : '';
+      const isRenderSuspended = rawBody.includes('service has been suspended') || rawBody.includes('Service Suspended');
+      const errorMsg = isRenderSuspended
+        ? 'Backend service on Render is suspended. Please resume "connect-vendor" in the Render Dashboard (dashboard.render.com).'
+        : 'Backend server is temporarily unavailable (HTTP 503). Please try again in a moment or resume the Render service.';
+      
+      if (typeof error.response.data !== 'object' || !error.response.data) {
+        error.response.data = { success: false, message: errorMsg };
+      } else if (!error.response.data.message) {
+        error.response.data.message = errorMsg;
+      }
+      error.message = errorMsg;
+    }
+
     if (isAuthRoute) {
       return Promise.reject(error);
     }

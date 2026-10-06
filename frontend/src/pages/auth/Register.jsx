@@ -464,7 +464,12 @@ const Register = () => {
       }
     } catch (err) {
       console.error('Registration error details:', err);
-      setError(err.response?.data?.message || err.message || 'Registration failed. Check details and try again.');
+      const is503 = err.response?.status === 503 || (err.message && err.message.includes('503'));
+      if (is503) {
+        setError(err.response?.data?.message || 'Backend server is temporarily suspended or unavailable on Render (HTTP 503). Please resume "connect-vendor" in the Render Dashboard (dashboard.render.com).');
+      } else {
+        setError(err.response?.data?.message || err.message || 'Registration failed. Check details and try again.');
+      }
     } finally {
       setLoading(false);
     }
