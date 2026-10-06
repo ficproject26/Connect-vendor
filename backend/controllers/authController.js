@@ -6,12 +6,16 @@ const { uploadToCloudinary } = require('../config/cloudinary');
 
 // Helper function to generate JWT
 const generateToken = (id, email) => {
+  const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'super_secret_jwt_key_9999' : null);
+  if (!jwtSecret) {
+    throw new Error('JWT_SECRET is not configured on production server');
+  }
   return jwt.sign(
     { 
       id: id ? id.toString() : id,
       ...(email ? { email: String(email).toLowerCase().trim() } : {})
     },
-    process.env.JWT_SECRET || 'super_secret_jwt_key_9999',
+    jwtSecret,
     { expiresIn: '30d' }
   );
 };
@@ -368,41 +372,6 @@ const loginVendor = async (req, res) => {
     }
 
     if (!user) {
-      try {
-        const db = mongoose.connection.db;
-        if (db) {
-          const rawVendor = await db.collection('vendors').findOne({
-            $or: [
-              { email: cleanEmail },
-              { email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') } }
-            ]
-          });
-          if (rawVendor) {
-            const salt = await bcrypt.genSalt(10);
-            const defaultPassword = await bcrypt.hash(password || 'Vendor@12345', salt);
-            user = new User({
-              name: rawVendor.name || rawVendor.businessName || 'Vendor Merchant',
-              businessName: rawVendor.businessName || rawVendor.name || 'Vendor Store',
-              contactPerson: rawVendor.contactPerson || rawVendor.ownerName || 'Contact Person',
-              email: cleanEmail,
-              password: defaultPassword,
-              role: 'Vendor',
-              vendorType: rawVendor.category || 'General Store',
-              category: rawVendor.category || 'General Store',
-              status: rawVendor.status || 'Approved',
-              isActive: typeof rawVendor.isActive !== 'undefined' ? rawVendor.isActive : true,
-              isApproved: typeof rawVendor.isActive !== 'undefined' ? rawVendor.isActive : true,
-              createdAt: rawVendor.createdAt || new Date()
-            });
-            await user.save().catch(() => {});
-          }
-        }
-      } catch (fErr) {
-        console.warn('[Login Vendor Fallback Warning]:', fErr.message);
-      }
-    }
-
-    if (!user) {
       console.warn(`[Login Failed] No vendor user found for email: ${cleanEmail}`);
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
@@ -444,19 +413,10 @@ const loginVendor = async (req, res) => {
       }
     }
 
-    // Verify password
+    // Verify password strictly against hashed password
     let isMatch = false;
     if (user && user.password) {
       isMatch = await bcrypt.compare(password, user.password).catch(() => false);
-    }
-    if (!isMatch) {
-      const flexPasswords = ['Vendor@12345', 'vendor123', 'Sri123@', 'sri123', 'sri@123', 'Dhanush12@', '123456'];
-      if (!user.password || flexPasswords.includes(password) || flexPasswords.includes(password.trim())) {
-        isMatch = true;
-        const newSalt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(password, newSalt);
-        await user.save().catch(() => {});
-      }
     }
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -663,8 +623,13 @@ const sendTermsEmail = async (req, res) => {
   const path = require('path');
   const { email } = req.body;
 
-  if (!email) {
-    return res.status(400).json({ success: false, message: 'Email address is required' });
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({ success: false, message: 'Valid email address is required' });
+  }
+
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  if (!emailRegex.test(email.trim())) {
+    return res.status(400).json({ success: false, message: 'Invalid email address format' });
   }
 
   const termsText = `
@@ -783,8 +748,7 @@ The Connect App Team
         message: isRealSMTP 
           ? 'Terms and conditions email sent successfully to your inbox!'
           : 'Terms and conditions email sent successfully (Ethereal test mode)!',
-        previewUrl,
-        localBackup: filename
+        previewUrl
       });
     }
   } catch (err) {
@@ -804,8 +768,7 @@ The Connect App Team
     
     return res.status(200).json({
       success: true,
-      message: 'Terms and conditions saved locally (network offline mode).',
-      localBackup: filename
+      message: 'Terms and conditions saved locally (network offline mode).'
     });
   } catch (backupErr) {
     console.error('Local backup strategy failed:', backupErr.message);

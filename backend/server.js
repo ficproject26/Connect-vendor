@@ -157,11 +157,22 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-business-id', 'Accept', 'Origin']
 };
 
+app.set('trust proxy', 1);
+
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Global request body size limiting to prevent payload-based DoS
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// Global NoSQL injection sanitization middleware
+const { noSqlSanitizer } = require('./middleware/sanitize');
+app.use(noSqlSanitizer);
+
+// Global API rate limiting
+const { apiLimiter } = require('./middleware/rateLimiter');
+app.use('/api', apiLimiter);
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -194,19 +205,22 @@ app.get('/uploads/resumes/:filename', async (req, res, next) => {
       decodedFilename = rawFilename;
     }
 
-    // Check disk variations
+    // Path traversal defense: extract base filename only
+    const safeFilename = path.basename(decodedFilename);
+
+    // Check disk variations within strictly allowed directories
     const candidates = [
-      path.join(resumesDir, rawFilename),
-      path.join(resumesDir, decodedFilename),
-      path.join(resumesDir, decodedFilename.replace(/\s+/g, ' ')),
-      path.join(resumesDir, decodedFilename.replace(/\s+/g, '')),
-      path.join(uploadsDir, rawFilename),
-      path.join(uploadsDir, decodedFilename)
+      path.join(resumesDir, safeFilename),
+      path.join(resumesDir, safeFilename.replace(/\s+/g, ' ')),
+      path.join(resumesDir, safeFilename.replace(/\s+/g, '')),
+      path.join(uploadsDir, safeFilename)
     ];
     for (const cand of candidates) {
-      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+      const resolved = path.resolve(cand);
+      const isInsideAllowed = resolved.startsWith(path.resolve(resumesDir)) || resolved.startsWith(path.resolve(uploadsDir));
+      if (isInsideAllowed && fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
         res.setHeader('Content-Type', 'application/pdf');
-        return res.sendFile(path.resolve(cand));
+        return res.sendFile(resolved);
       }
     }
 
@@ -274,12 +288,17 @@ app.get('/', (req, res) => {
   res.json({ message: 'Welcome to the Vendor API' });
 });
 
-// Error handling middleware
+// Error handling middleware (production-safe error masking)
 app.use((err, req, res, next) => {
   console.error('Unhandled Error:', err.message);
-  res.status(err.status || 500).json({
+  const status = err.status || 500;
+  const message = isProduction && status >= 500
+    ? 'Internal Server Error'
+    : (err.message || 'Internal Server Error');
+
+  res.status(status).json({
     success: false,
-    message: err.message || 'Internal Server Error'
+    message
   });
 });
 

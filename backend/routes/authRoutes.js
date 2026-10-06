@@ -33,8 +33,10 @@ const uploadFields = upload.fields([
   { name: 'businessImages', maxCount: 5 }
 ]);
 
+const { authLimiter, emailLimiter } = require('../middleware/rateLimiter');
+
 // Auth Routes - wrap multer in error handler
-router.post('/register-vendor', (req, res, next) => {
+router.post('/register-vendor', authLimiter, (req, res, next) => {
   uploadFields(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
@@ -45,9 +47,9 @@ router.post('/register-vendor', (req, res, next) => {
     next();
   });
 }, registerVendor);
-router.post('/login-vendor', loginVendor);
-router.post('/register-member', registerMember);
-router.post('/login-member', loginMember);
-router.post('/send-terms-email', sendTermsEmail);
+router.post('/login-vendor', authLimiter, loginVendor);
+router.post('/register-member', authLimiter, registerMember);
+router.post('/login-member', authLimiter, loginMember);
+router.post('/send-terms-email', emailLimiter, sendTermsEmail);
 
 module.exports = router;

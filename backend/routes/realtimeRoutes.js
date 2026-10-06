@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { realtimeManager } = require('../realtime/realtimeManager');
 const { Order, Product, DeliveryPartner, User } = require('../models/Schemas');
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 
 // Public health check for real-time system
 router.get('/health', (req, res) => {
@@ -20,8 +20,8 @@ router.get('/health', (req, res) => {
   });
 });
 
-// Full system telemetry for admins / monitoring
-router.get('/stats', (req, res) => {
+// Full system telemetry for admins / monitoring (protected)
+router.get('/stats', protect, authorize('Admin'), (req, res) => {
   const diag = realtimeManager.getDiagnostics();
   res.status(200).json({
     success: true,

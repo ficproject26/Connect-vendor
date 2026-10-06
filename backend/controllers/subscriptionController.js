@@ -656,7 +656,7 @@ const verifySubscriptionPayment = async (req, res) => {
       });
     }
 
-    // Requirement 9: Signature Verification using Razorpay Secret
+    // Requirement 9: Cryptographic Signature Verification using Razorpay Secret
     const config = await getOrCreateConfig();
     const secret = (config && config.razorpayKeySecret) || process.env.RAZORPAY_KEY_SECRET || '';
     let isSignatureValid = false;
@@ -666,14 +666,20 @@ const verifySubscriptionPayment = async (req, res) => {
         const hmac = crypto.createHmac('sha256', secret);
         hmac.update(`${razorpay_order_id}|${razorpay_payment_id}`);
         const generatedSignature = hmac.digest('hex');
-        isSignatureValid = (generatedSignature === razorpay_signature);
+        const expectedBuffer = Buffer.from(generatedSignature, 'utf8');
+        const receivedBuffer = Buffer.from(String(razorpay_signature), 'utf8');
+        if (expectedBuffer.length === receivedBuffer.length) {
+          isSignatureValid = crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+        }
       } catch (cryptoErr) {
         console.error('HMAC computation error:', cryptoErr);
         isSignatureValid = false;
       }
-    } else {
-      // In development sandbox or mock-free test environments where test keys bypass signature
+    } else if (process.env.NODE_ENV !== 'production' && !secret) {
+      // Development sandbox only when secret is explicitly unconfigured
       isSignatureValid = Boolean(razorpay_payment_id);
+    } else {
+      isSignatureValid = false;
     }
 
     if (!isSignatureValid) {
@@ -865,13 +871,22 @@ const handleRazorpayWebhook = async (req, res) => {
     const signature = req.headers['x-razorpay-signature'];
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
 
-    if (webhookSecret && signature) {
-      const hmac = crypto.createHmac('sha256', webhookSecret);
-      hmac.update(JSON.stringify(req.body));
-      const expectedSig = hmac.digest('hex');
-      if (expectedSig !== signature) {
-        return res.status(400).json({ success: false, message: 'Invalid webhook signature' });
-      }
+    if (!webhookSecret || !signature) {
+      return res.status(400).json({ success: false, message: 'Missing webhook signature or webhook secret' });
+    }
+
+    const hmac = crypto.createHmac('sha256', webhookSecret);
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+    hmac.update(rawBody);
+    const expectedSig = hmac.digest('hex');
+    const expectedBuffer = Buffer.from(expectedSig, 'utf8');
+    const receivedBuffer = Buffer.from(String(signature), 'utf8');
+    let isSigValid = false;
+    if (expectedBuffer.length === receivedBuffer.length) {
+      isSigValid = crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+    }
+    if (!isSigValid) {
+      return res.status(400).json({ success: false, message: 'Invalid webhook signature' });
     }
 
     const event = req.body.event;

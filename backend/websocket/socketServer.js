@@ -28,9 +28,39 @@ class SocketServer {
   init(httpServer) {
     if (this.io) return this.io;
 
+    const allowedOrigins = [
+      'https://connect-vendor.vercel.app',
+      'https://connect-admin-96pc.onrender.com',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:3000',
+      'http://localhost:8002',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:8002'
+    ];
+    if (process.env.FRONTEND_URL) {
+      process.env.FRONTEND_URL.split(',').forEach(o => {
+        const t = o.trim();
+        if (t && !allowedOrigins.includes(t)) allowedOrigins.push(t);
+      });
+    }
+    if (process.env.ALLOWED_ORIGINS) {
+      process.env.ALLOWED_ORIGINS.split(',').forEach(o => {
+        const t = o.trim();
+        if (t && !allowedOrigins.includes(t)) allowedOrigins.push(t);
+      });
+    }
+
     this.io = new Server(httpServer, {
       cors: {
-        origin: true,
+        origin: function (origin, callback) {
+          if (!origin) return callback(null, true);
+          const isAllowed = allowedOrigins.includes(origin) || /^https:\/\/connect-vendor([a-z0-9-]*)\.vercel\.app$/.test(origin);
+          if (isAllowed) return callback(null, true);
+          return callback(new Error(`WebSocket connection denied by CORS: ${origin}`));
+        },
         credentials: true,
         methods: ['GET', 'POST']
       },
@@ -67,7 +97,13 @@ class SocketServer {
           return next();
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_key_9999');
+        const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'super_secret_jwt_key_9999' : null);
+        if (!jwtSecret) {
+          socket.user = { role: 'Guest', isGuest: true };
+          return next();
+        }
+
+        const decoded = jwt.verify(token, jwtSecret);
         let user = null;
 
         if (decoded.id) {
@@ -169,10 +205,59 @@ class SocketServer {
         this.stats.acksReceived++;
       });
 
-      // Dynamic room subscription (e.g. tracking specific entity)
+      // Dynamic room subscription (strict server-side authorization check)
       socket.on('subscribe_topic', (topic) => {
-        if (typeof topic === 'string' && topic.length < 100) {
-          socket.join(topic);
+        if (typeof topic !== 'string' || topic.length > 100) return;
+        const cleanTopic = topic.trim();
+
+        // 1. Public or public entity topics (catalog changes)
+        if (cleanTopic === 'public' || cleanTopic.startsWith('product:') || cleanTopic.startsWith('category:')) {
+          socket.join(cleanTopic);
+          return;
+        }
+
+        // 2. Role rooms: only authenticated users with that role
+        if (cleanTopic.startsWith('role:')) {
+          const reqRole = cleanTopic.slice(5);
+          if (socket.user && !socket.user.isGuest && socket.user.role === reqRole) {
+            socket.join(cleanTopic);
+          } else {
+            console.warn(`[Socket Security] Unauthorized role room subscription blocked: ${cleanTopic} by socket ${socket.id}`);
+          }
+          return;
+        }
+
+        // 3. User direct rooms: only that specific authenticated user
+        if (cleanTopic.startsWith('user:')) {
+          const reqUserId = cleanTopic.slice(5);
+          if (socket.user && !socket.user.isGuest && String(socket.user.id) === String(reqUserId)) {
+            socket.join(cleanTopic);
+          } else {
+            console.warn(`[Socket Security] Unauthorized user room subscription blocked: ${cleanTopic} by socket ${socket.id}`);
+          }
+          return;
+        }
+
+        // 4. Vendor/Business rooms: only authorized vendor owner
+        if (cleanTopic.startsWith('vendor:') || cleanTopic.startsWith('business:')) {
+          const targetId = cleanTopic.includes(':') ? cleanTopic.split(':')[1] : '';
+          const isOwner = socket.user && !socket.user.isGuest && (
+            socket.user.role === 'Admin' ||
+            String(socket.user.vendorId) === String(targetId) ||
+            String(socket.user.primaryBusinessId) === String(targetId) ||
+            (Array.isArray(socket.user.businesses) && socket.user.businesses.includes(String(targetId)))
+          );
+          if (isOwner) {
+            socket.join(cleanTopic);
+          } else {
+            console.warn(`[Socket Security] Unauthorized vendor room subscription blocked: ${cleanTopic} by socket ${socket.id}`);
+          }
+          return;
+        }
+
+        // 5. Default allow only for Admin role
+        if (socket.user && socket.user.role === 'Admin') {
+          socket.join(cleanTopic);
         }
       });
 

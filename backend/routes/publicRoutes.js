@@ -1,5 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
 const { Product, User, Order, Category, Customer } = require('../models/Schemas');
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
 
@@ -363,16 +364,7 @@ router.get('/products', async (req, res) => {
   }
 });
 
-// DELETE /api/public/products/delete-all
-router.delete('/products/delete-all', async (req, res) => {
-  try {
-    await Product.deleteMany({});
-    res.status(200).json({ success: true, message: 'All products and services deleted successfully' });
-  } catch (error) {
-    console.error('Delete all products error:', error);
-    res.status(500).json({ success: false, message: 'Server error deleting products' });
-  }
-});
+// (Removed dangerous unauthenticated delete-all products endpoint)
 
 // POST /api/public/orders
 router.post('/orders', async (req, res) => {
@@ -716,9 +708,37 @@ router.post('/orders', async (req, res) => {
 });
 
 // POST /api/public/orders/payment-sync
-// @desc  Sync payment details from customer backend to vendor order after payment completion
+// @desc  Sync payment details from customer backend to vendor order after payment completion (authenticated)
 router.post('/orders/payment-sync', async (req, res) => {
   try {
+    // Authenticate inter-backend or authenticated client request
+    const authHeader = req.headers['authorization'];
+    const serviceKey = req.headers['x-internal-service-key'] || req.headers['x-api-key'];
+    const configuredKey = process.env.INTERNAL_SERVICE_KEY || process.env.JWT_SECRET;
+    
+    let isAuthorized = false;
+    if (configuredKey && serviceKey && serviceKey === configuredKey) {
+      isAuthorized = true;
+    } else if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'super_secret_jwt_key_9999' : null);
+        if (jwtSecret) {
+          const decoded = jwt.verify(token, jwtSecret);
+          if (decoded && decoded.id) isAuthorized = true;
+        }
+      } catch (tokenErr) {
+        isAuthorized = false;
+      }
+    } else if (process.env.NODE_ENV !== 'production' && !process.env.INTERNAL_SERVICE_KEY) {
+      // In development fallback if service key is not configured
+      isAuthorized = true;
+    }
+
+    if (!isAuthorized) {
+      return res.status(401).json({ success: false, message: 'Unauthorized: Valid service key or auth token required' });
+    }
+
     const {
       orderId,
       order_number,

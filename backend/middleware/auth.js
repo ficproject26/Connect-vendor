@@ -12,7 +12,11 @@ const protect = async (req, res, next) => {
       token = req.headers.authorization.split(' ')[1];
 
       // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_key_9999');
+      const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'super_secret_jwt_key_9999' : null);
+      if (!jwtSecret) {
+        throw new Error('JWT_SECRET is not configured on production server');
+      }
+      const decoded = jwt.verify(token, jwtSecret);
 
       // Find user from database (supporting both String and ObjectId _id, with email fallback)
       let user = null;

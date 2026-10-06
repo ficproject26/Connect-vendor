@@ -1628,6 +1628,36 @@ const getOrderById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Booking / Order not found' });
     }
 
+    // IDOR Defense: verify order belongs to authenticated vendor's account or businesses
+    const businessIds = new Set([
+      (req.user.parentUserId || '').toString(),
+      (req.user._id || '').toString(),
+      (user._id || '').toString(),
+      (user.vendorId || '').toString(),
+      (user.registrationId || '').toString()
+    ]);
+    if (user.businesses && Array.isArray(user.businesses)) {
+      user.businesses.forEach(b => {
+        if (b && b._id) businessIds.add(b._id.toString());
+        if (b && b.id) businessIds.add(b.id.toString());
+      });
+    }
+
+    const orderVendorId = (order.vendorId || order.vendor_id || '').toString();
+    let isAuthorized = businessIds.has(orderVendorId);
+    if (!isAuthorized && order.items && order.items.length > 0) {
+      for (const item of order.items) {
+        if (item.vendorId && businessIds.has(item.vendorId.toString())) {
+          isAuthorized = true;
+          break;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return res.status(404).json({ success: false, message: 'Booking / Order not found or unauthorized' });
+    }
+
     const customerLookup = await buildCustomerLookupForOrders([order]);
 
     const prodId = (order.items && order.items[0]?.productId) || order.productId;
@@ -2125,12 +2155,45 @@ const getOrderResume = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Candidate Application not found' });
     }
 
+    // IDOR Defense: verify vendor authorization for this candidate application
+    const parentUserId = (req.user.parentUserId || req.user._id || req.user.id || '').toString();
+    const currentUserId = (req.user._id || req.user.id || '').toString();
+    const vendorUser = await User.findById(parentUserId);
+
+    const businessIds = new Set([parentUserId, currentUserId]);
+    if (vendorUser) {
+      if (vendorUser._id) businessIds.add(vendorUser._id.toString());
+      if (vendorUser.vendorId) businessIds.add(vendorUser.vendorId.toString());
+      if (vendorUser.registrationId) businessIds.add(vendorUser.registrationId.toString());
+      if (vendorUser.businesses && Array.isArray(vendorUser.businesses)) {
+        vendorUser.businesses.forEach(b => {
+          if (b && b._id) businessIds.add(b._id.toString());
+          if (b && b.id) businessIds.add(b.id.toString());
+        });
+      }
+    }
+
+    const orderVendorId = (order.vendorId || order.vendor_id || '').toString();
+    let isAuthorized = businessIds.has(orderVendorId);
+    if (!isAuthorized && order.items && order.items.length > 0) {
+      for (const item of order.items) {
+        if (item.vendorId && businessIds.has(item.vendorId.toString())) {
+          isAuthorized = true;
+          break;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return res.status(404).json({ success: false, message: 'Candidate Application not found or unauthorized' });
+    }
+
     const rawResume = (order.candidateResume || '').trim();
     const candidateName = order.candidateName || order.memberName || order.customer_name || 'Candidate';
     const filename = rawResume ? path.basename(rawResume) : `${candidateName}_Resume.pdf`;
     const isDownload = req.query.download === 'true' || req.query.download === '1';
 
-    // 1. Check if file physically exists on disk
+    // 1. Check if file physically exists on disk (Path Traversal Protected)
     const searchDirs = [
       path.join(__dirname, '..', 'uploads', 'resumes'),
       path.join(__dirname, '..', 'uploads')
@@ -2146,19 +2209,19 @@ const getOrderResume = async (req, res) => {
       } catch (e) {
         decodedBase = baseName;
       }
+      decodedBase = path.basename(decodedBase);
 
       for (const dir of searchDirs) {
         if (!fs.existsSync(dir)) continue;
+        const resolvedDir = path.resolve(dir);
         const candidates = [
-          path.join(dir, rawResume),
-          path.join(dir, cleanRaw),
-          path.join(dir, baseName),
-          path.join(dir, decodedBase),
-          path.join(dir, decodedBase.replace(/\s+/g, ' ')),
-          path.join(dir, decodedBase.replace(/\s+/g, ''))
+          path.resolve(dir, baseName),
+          path.resolve(dir, decodedBase),
+          path.resolve(dir, decodedBase.replace(/\s+/g, ' ')),
+          path.resolve(dir, decodedBase.replace(/\s+/g, ''))
         ];
         for (const cand of candidates) {
-          if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+          if (cand.startsWith(resolvedDir) && fs.existsSync(cand) && fs.statSync(cand).isFile()) {
             foundFilePath = cand;
             break;
           }
@@ -2507,7 +2570,15 @@ const updateDeliveryPartner = async (req, res) => {
   try {
     const partner = await DeliveryPartner.findById(req.params.id);
 
-    if (!partner || partner.vendorId !== req.user._id) {
+    const parentUserId = (req.user.parentUserId || req.user._id || '').toString();
+    const currentUserId = (req.user._id || '').toString();
+    const isOwner = partner && (
+      String(partner.vendorId) === parentUserId ||
+      String(partner.vendorId) === currentUserId ||
+      (req.user.businesses && req.user.businesses.some(b => String(b._id) === String(partner.vendorId) || String(b.id) === String(partner.vendorId)))
+    );
+
+    if (!partner || !isOwner) {
       return res.status(404).json({ success: false, message: 'Delivery partner not found or unauthorized' });
     }
 
@@ -2542,7 +2613,15 @@ const deleteDeliveryPartner = async (req, res) => {
   try {
     const partner = await DeliveryPartner.findById(req.params.id);
 
-    if (!partner || partner.vendorId !== req.user._id) {
+    const parentUserId = (req.user.parentUserId || req.user._id || '').toString();
+    const currentUserId = (req.user._id || '').toString();
+    const isOwner = partner && (
+      String(partner.vendorId) === parentUserId ||
+      String(partner.vendorId) === currentUserId ||
+      (req.user.businesses && req.user.businesses.some(b => String(b._id) === String(partner.vendorId) || String(b.id) === String(partner.vendorId)))
+    );
+
+    if (!partner || !isOwner) {
       return res.status(404).json({ success: false, message: 'Delivery partner not found or unauthorized' });
     }
 
@@ -2698,6 +2777,9 @@ const updateProfile = async (req, res) => {
 // @desc    Change Vendor Password
 // @route   PUT /api/vendor/change-password
 // @access  Private (Vendor)
+// @desc    Change Vendor Password
+// @route   PUT /api/vendor/change-password
+// @access  Private (Vendor)
 const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -2707,7 +2789,24 @@ const changePassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide current and new passwords' });
     }
 
+    // Enforce password complexity
+    const hasLowercase = /[a-z]/.test(newPassword);
+    const hasUppercase = /[A-Z]/.test(newPassword);
+    const hasDigit = /\d/.test(newPassword);
+    const hasSpecial = /[@$!%*?&#_.\-+=^~`/\\{}()|[\]:;\"'<>,?]/.test(newPassword);
+
+    if (newPassword.length < 6 || !hasLowercase || !hasUppercase || !hasDigit || !hasSpecial) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'New password must be at least 6 characters and contain uppercase letters, lowercase letters, numbers, and special characters.' 
+      });
+    }
+
     const user = await User.findById(vendorId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Current password is incorrect' });
@@ -2726,40 +2825,37 @@ const changePassword = async (req, res) => {
   }
 };
 
-// Helper function to send OTP email (mock log)
+// Helper function to send OTP email (secure dispatch without plaintext disk/console credential dumping)
 const sendOTPEmail = async (user, otp) => {
-  const emailContent = `
-========================================
-📧 CONNECT APP - OTP NOTIFICATION
-========================================
-To: ${user.email}
-Subject: Password Reset OTP
-Date: ${new Date().toISOString()}
-
-Dear ${user.name || 'Vendor Partner'},
-
-You have requested to reset your password. Please use the following 6-digit One-Time Password (OTP) to verify your request:
-
-🔑 OTP: ${otp}
-
-This OTP is valid for 10 minutes. If you did not request this, please ignore this email.
-
-Best regards,
-Connect App Platform
-========================================
-`;
-
-  console.log(emailContent);
-
   try {
-    const dataDir = path.join(__dirname, '../data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    const nodemailer = require('nodemailer');
+    const isRealSMTP = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+
+    let transporter;
+    if (isRealSMTP) {
+      transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || '587', 10),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        }
+      });
     }
-    const emailLogPath = path.join(dataDir, 'sent_emails.txt');
-    fs.appendFileSync(emailLogPath, emailContent + '\n\n');
+
+    if (transporter) {
+      const fromEmail = process.env.SMTP_FROM || '"Connect App" <no-reply@connectapp.com>';
+      await transporter.sendMail({
+        from: fromEmail,
+        to: user.email,
+        subject: 'Connect App - Password Reset OTP',
+        text: `Dear ${user.name || 'Vendor Partner'},\n\nYour OTP for password reset is: ${otp}\n\nThis OTP is valid for 10 minutes.\n\nBest regards,\nConnect App Platform`
+      });
+    }
+    console.log(`✉️ [OTP Service] Password reset OTP generated and dispatched to: ${user.email}`);
   } catch (err) {
-    console.error('Failed to write OTP email notification log:', err.message);
+    console.warn('[OTP Service] OTP email dispatch warning:', err.message);
   }
 };
 
@@ -2781,6 +2877,7 @@ const forgotPasswordOTP = async (req, res) => {
 
     user.otp = otp;
     user.otpExpires = otpExpires;
+    user.otpAttempts = 0;
     await user.save();
 
     await sendOTPEmail(user, otp);
@@ -2804,13 +2901,37 @@ const resetPasswordOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide OTP and new password' });
     }
 
+    // Enforce password complexity
+    const hasLowercase = /[a-z]/.test(newPassword);
+    const hasUppercase = /[A-Z]/.test(newPassword);
+    const hasDigit = /\d/.test(newPassword);
+    const hasSpecial = /[@$!%*?&#_.\-+=^~`/\\{}()|[\]:;\"'<>,?]/.test(newPassword);
+
+    if (newPassword.length < 6 || !hasLowercase || !hasUppercase || !hasDigit || !hasSpecial) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'New password must be at least 6 characters and contain uppercase letters, lowercase letters, numbers, and special characters.' 
+      });
+    }
+
     const user = await User.findById(vendorId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor not found' });
     }
 
+    // Prevent brute-force guessing of OTP
+    if ((user.otpAttempts || 0) >= 5) {
+      user.otp = undefined;
+      user.otpExpires = undefined;
+      user.otpAttempts = 0;
+      await user.save();
+      return res.status(429).json({ success: false, message: 'Too many invalid attempts. Please request a new OTP.' });
+    }
+
     // Check if OTP matches and has not expired
-    if (!user.otp || user.otp !== otp) {
+    if (!user.otp || user.otp !== String(otp).trim()) {
+      user.otpAttempts = (user.otpAttempts || 0) + 1;
+      await user.save();
       return res.status(400).json({ success: false, message: 'Invalid OTP' });
     }
 
@@ -2825,6 +2946,7 @@ const resetPasswordOTP = async (req, res) => {
     user.password = hashedPassword;
     user.otp = undefined;
     user.otpExpires = undefined;
+    user.otpAttempts = 0;
     await user.save();
 
     res.status(200).json({ success: true, message: 'Password reset successfully' });
@@ -2879,7 +3001,15 @@ const updatePatientNotes = async (req, res) => {
     const { hospitalNotes, followUpReminders, treatmentRemarks } = req.body;
     const patient = await Patient.findById(req.params.id);
 
-    if (!patient || patient.vendorId !== req.user._id) {
+    const parentUserId = (req.user.parentUserId || req.user._id || '').toString();
+    const currentUserId = (req.user._id || '').toString();
+    const isOwner = patient && (
+      String(patient.vendorId) === parentUserId ||
+      String(patient.vendorId) === currentUserId ||
+      (req.user.businesses && req.user.businesses.some(b => String(b._id) === String(patient.vendorId) || String(b.id) === String(patient.vendorId)))
+    );
+
+    if (!patient || !isOwner) {
       return res.status(404).json({ success: false, message: 'Patient not found or unauthorized' });
     }
 
@@ -2906,7 +3036,13 @@ const addPatientRecord = async (req, res) => {
     const { type, title, doctorName, fileName, fileUrl } = req.body;
     const patient = await Patient.findById(req.params.id);
 
-    if (!patient || patient.vendorId !== req.user._id) {
+    const isRecordOwner = patient && (
+      String(patient.vendorId) === parentUserId ||
+      String(patient.vendorId) === currentUserId ||
+      (req.user.businesses && req.user.businesses.some(b => String(b._id) === String(patient.vendorId) || String(b.id) === String(patient.vendorId)))
+    );
+
+    if (!patient || !isRecordOwner) {
       return res.status(404).json({ success: false, message: 'Patient not found or unauthorized' });
     }
 
