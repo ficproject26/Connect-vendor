@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { 
   Building2, MapPin, Shield, FileCheck, CheckCircle2, AlertCircle, 
@@ -8,7 +8,7 @@ import Modal from '../common/Modal';
 import { getVendorBackendUrl, formatImageUrl } from '../../services/apiSetup';
 import { vendorTaxonomy } from '../../data/servicesData';
 
-// Document requirements schema per category
+// Document requirements schema per category (Admin Main Categories only)
 const CATEGORY_DOC_CONFIG = {
   Food: [
     { key: 'fssai_license', label: 'Food Safety License (FSSAI)', required: true, numberPlaceholder: 'e.g. 10012345678901' }
@@ -24,10 +24,6 @@ const CATEGORY_DOC_CONFIG = {
   Products: [
     { key: 'bis_certificate', label: 'BIS / CRS / Product Certificate', required: false, numberPlaceholder: 'e.g. BIS-REG-1234' },
     { key: 'trade_license', label: 'Trade License', required: false, numberPlaceholder: 'e.g. TRD-45678' }
-  ],
-  Electronics: [
-    { key: 'bis_certificate', label: 'BIS / CRS Registration Certificate', required: true, numberPlaceholder: 'e.g. R-12345678' },
-    { key: 'wpc_certificate', label: 'WPC / Equipment Certificate', required: false, numberPlaceholder: 'e.g. WPC-ETA-123' }
   ],
   Travel: [
     { key: 'vehicle_rc', label: 'Vehicle Registration Certificate (RC)', required: true, numberPlaceholder: 'e.g. TN29AB1234' },
@@ -66,17 +62,16 @@ const getCategoryDocRules = (category) => {
   return CATEGORY_DOC_CONFIG.Product || [];
 };
 
-const ALL_BUSINESS_CATEGORIES = [
+// Admin Main Categories default fallback (only admin-configured main categories)
+const DEFAULT_ADMIN_CATEGORIES = [
   'Products',
   'Services',
   'Food',
   'Daily Needs',
   'Stay',
   'Travel',
-  'Jobs',
-  'Electronics'
+  'Jobs'
 ];
-
 
 export default function AddBusinessModal({ 
   isOpen, 
@@ -115,9 +110,31 @@ export default function AddBusinessModal({
     categoryDocs: {}
   });
 
-  // Reset form when modal opens
+  // Dynamic admin-added categories state
+  const [adminCategories, setAdminCategories] = useState(DEFAULT_ADMIN_CATEGORIES);
+
+  // Fetch admin-added main categories dynamically from backend
   useEffect(() => {
-    if (isOpen) {
+    let isMounted = true;
+    const fetchAdminCategories = async () => {
+      try {
+        const res = await axios.get(`${getVendorBackendUrl()}/api/public/categories/main`);
+        if (isMounted && res.data?.success && Array.isArray(res.data.categories) && res.data.categories.length > 0) {
+          setAdminCategories(res.data.categories);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch dynamic admin categories, falling back to defaults:', err);
+      }
+    };
+    fetchAdminCategories();
+    return () => { isMounted = false; };
+  }, []);
+
+  // Reset form ONLY when modal opens (transition from closed to open)
+  // NEVER depend on the user object reference to avoid resetting while vendor is typing or selecting
+  const prevIsOpenRef = useRef(false);
+  useEffect(() => {
+    if (isOpen && !prevIsOpenRef.current) {
       setStep(1);
       setFormError('');
       setSuccessInfo(null);
@@ -141,7 +158,8 @@ export default function AddBusinessModal({
         categoryDocs: {}
       });
     }
-  }, [isOpen, user]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen]);
 
   // When vendorType changes, initialize categoryDocs
   const handleCategoryChange = (selectedType) => {
@@ -386,32 +404,62 @@ export default function AddBusinessModal({
 
   // Build a map of category -> status for all existing vendor registrations
   // A category is "registered" if it exists in any non-rejected state
-  const registeredCategoryMap = {}; // { [vendorType]: status }
-  if (user) {
+  const registeredCategoryMap = useMemo(() => {
+    const map = {};
+    if (!user) return map;
     const REJECTED_STATUSES = ['rejected', 'pincode rejected', 'kyc rejected'];
-    const primaryType = user.vendorType || user.category;
-    if (primaryType) {
-      const primaryStatus = user.status || 'Active';
-      // Only count as registered if not rejected
-      if (!REJECTED_STATUSES.includes(String(primaryStatus).toLowerCase())) {
-        registeredCategoryMap[primaryType] = primaryStatus;
+
+    const registerEntry = (type, status) => {
+      if (!type) return;
+      const cleanType = String(type).trim();
+      const cleanStatus = status || 'Active';
+      if (!REJECTED_STATUSES.includes(String(cleanStatus).toLowerCase())) {
+        map[cleanType] = cleanStatus;
+        map[cleanType.toLowerCase()] = cleanStatus;
       }
-    }
+    };
+
+    const primaryType = user.vendorType || user.category;
+    if (primaryType) registerEntry(primaryType, user.status);
+
     if (user.businesses && Array.isArray(user.businesses)) {
       user.businesses.forEach(b => {
         const bType = b.vendorType || b.category;
-        if (bType) {
-          const bStatus = b.status || 'Active';
-          if (!REJECTED_STATUSES.includes(String(bStatus).toLowerCase())) {
-            // If multiple businesses of same type exist, prefer the most "active" one
-            if (!registeredCategoryMap[bType]) {
-              registeredCategoryMap[bType] = bStatus;
-            }
-          }
-        }
+        if (bType) registerEntry(bType, b.status);
       });
     }
-  }
+    return map;
+  }, [user]);
+
+  // Case-insensitive, singular/plural aware registration check
+  const isCategoryRegistered = (type) => {
+    if (!type) return false;
+    const t = String(type).trim();
+    const tLower = t.toLowerCase();
+    const singular = tLower.endsWith('s') && !['daily needs'].includes(tLower) ? tLower.slice(0, -1) : tLower;
+    const plural = tLower.endsWith('s') ? tLower : tLower + 's';
+    return Boolean(
+      registeredCategoryMap[t] ||
+      registeredCategoryMap[tLower] ||
+      registeredCategoryMap[singular] ||
+      registeredCategoryMap[plural]
+    );
+  };
+
+  const getCategoryStatus = (type) => {
+    if (!type) return null;
+    const t = String(type).trim();
+    const tLower = t.toLowerCase();
+    const singular = tLower.endsWith('s') && !['daily needs'].includes(tLower) ? tLower.slice(0, -1) : tLower;
+    const plural = tLower.endsWith('s') ? tLower : tLower + 's';
+    return (
+      registeredCategoryMap[t] ||
+      registeredCategoryMap[tLower] ||
+      registeredCategoryMap[singular] ||
+      registeredCategoryMap[plural] ||
+      null
+    );
+  };
 
   // Helper: get a user-friendly label for the registered status
   const getRegisteredStatusLabel = (rawStatus) => {
@@ -530,21 +578,31 @@ export default function AddBusinessModal({
                     Business Category <span className="text-rose-500">*</span>
                   </label>
                   <p className="text-[11px] text-slate-400">
-                    Select the category for your new business outlet. Categories you have already registered are shown as disabled.
+                    Select the main category for your new business outlet. Only Admin-approved main categories are available. Already registered categories are disabled.
                   </p>
 
                   {/* Card-based category picker */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-1">
-                    {ALL_BUSINESS_CATEGORIES.map((type) => {
-                      const isRegistered = !!registeredCategoryMap[type];
-                      const regStatus = isRegistered ? getRegisteredStatusLabel(registeredCategoryMap[type]) : null;
-                      const isSelected = formData.vendorType === type;
+                    {adminCategories.map((type) => {
+                      const isRegistered = isCategoryRegistered(type);
+                      const rawStatus = isRegistered ? getCategoryStatus(type) : null;
+                      const regStatus = isRegistered ? getRegisteredStatusLabel(rawStatus) : null;
+                      const isSelected = Boolean(
+                        formData.vendorType && (
+                          formData.vendorType.toLowerCase() === type.toLowerCase() ||
+                          formData.vendorType === type
+                        )
+                      );
 
-                      // Emoji map
+                      // Emoji map for Admin main categories
                       const categoryEmojis = {
-                        Products: '📦', Services: '🛠️', Food: '🍔',
-                        'Daily Needs': '🛒', Stay: '🏨', Travel: '🚗',
-                        Jobs: '💼', Electronics: '⚡'
+                        Products: '📦',
+                        Services: '🛠️',
+                        Food: '🍔',
+                        'Daily Needs': '🛒',
+                        Stay: '🏨',
+                        Travel: '🚗',
+                        Jobs: '💼'
                       };
                       const emoji = categoryEmojis[type] || '🏢';
 
@@ -552,37 +610,45 @@ export default function AddBusinessModal({
                         <button
                           key={type}
                           type="button"
+                          id={`category-card-${type.replace(/\s+/g, '-').toLowerCase()}`}
                           disabled={isRegistered}
-                          onClick={() => !isRegistered && handleCategoryChange(type)}
-                          className={`relative flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 transition-all duration-200 text-center
-                            ${
-                              isRegistered
-                                ? 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 opacity-60 cursor-not-allowed'
-                                : isSelected
-                                ? 'border-[#faed26] bg-[#faed26]/10 shadow-lg shadow-yellow-500/10 scale-[1.03]'
-                                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-[#faed26]/60 hover:bg-[#faed26]/5 cursor-pointer hover:scale-[1.02]'
-                            }`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!isRegistered) {
+                              handleCategoryChange(type);
+                            }
+                          }}
+                          className={`relative flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all duration-200 text-center select-none ${
+                            isRegistered
+                              ? 'border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-900/60 opacity-60 cursor-not-allowed'
+                              : isSelected
+                              ? 'border-[#faed26] bg-[#faed26]/20 dark:bg-[#faed26]/15 shadow-xl shadow-yellow-500/20 scale-[1.04] ring-2 ring-[#faed26]/60'
+                              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-yellow-400 hover:bg-yellow-500/5 cursor-pointer hover:scale-[1.02]'
+                          }`}
                         >
-                          <span className="text-2xl">{emoji}</span>
+                          <span className="text-3xl">{emoji}</span>
                           <span className={`text-xs font-bold leading-tight ${
                             isRegistered
                               ? 'text-slate-400 dark:text-slate-500'
                               : isSelected
-                              ? 'text-[#0B3C7B] dark:text-[#faed26]'
-                              : 'text-slate-700 dark:text-slate-300'
-                          }`}>{type}</span>
+                              ? 'text-slate-950 dark:text-[#faed26] font-extrabold'
+                              : 'text-slate-800 dark:text-slate-200'
+                          }`}>
+                            {type}
+                          </span>
 
                           {/* Registered badge */}
                           {isRegistered && (
-                            <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider leading-none">
+                            <span className="absolute -top-1.5 -right-1.5 bg-emerald-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
                               {regStatus}
                             </span>
                           )}
 
                           {/* Selected checkmark */}
                           {isSelected && !isRegistered && (
-                            <span className="absolute -top-1.5 -right-1.5 bg-[#faed26] text-slate-900 text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider leading-none">
-                              ✓
+                            <span className="absolute -top-1.5 -right-1.5 bg-[#faed26] text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-md ring-2 ring-white dark:ring-slate-900">
+                              ✓ Selected
                             </span>
                           )}
                         </button>
@@ -590,15 +656,50 @@ export default function AddBusinessModal({
                     })}
                   </div>
 
-                  {formData.vendorType && (
-                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold pl-1">
-                      ✓ Selected: <strong>{formData.vendorType}</strong> — The category determines required certificates and regulatory documents.
-                    </p>
+                  {/* Dropdown alternative selector to guarantee selection works in all environments */}
+                  <div className="pt-2">
+                    <label htmlFor="business-category-select" className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                      Or select from dropdown:
+                    </label>
+                    <select
+                      id="business-category-select"
+                      value={formData.vendorType || ''}
+                      onChange={(e) => handleCategoryChange(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#faed26]/50 cursor-pointer"
+                    >
+                      <option value="" disabled>-- Click a category card above or select here --</option>
+                      {adminCategories.map((type) => {
+                        const isRegistered = isCategoryRegistered(type);
+                        const rawStatus = isRegistered ? getCategoryStatus(type) : null;
+                        const regStatus = isRegistered ? getRegisteredStatusLabel(rawStatus) : null;
+                        return (
+                          <option key={type} value={type} disabled={isRegistered}>
+                            {type} {isRegistered ? `(${regStatus} - Already Registered)` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {/* Visual confirmation of selected category */}
+                  {formData.vendorType ? (
+                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>Selected Category: <strong className="text-emerald-950 dark:text-emerald-100">{formData.vendorType}</strong></span>
+                      </div>
+                      <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase font-black">Ready to proceed</span>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-500 text-xs flex items-center gap-2">
+                      <Info size={14} className="text-slate-400 shrink-0" />
+                      <span>Please click one of the available category cards above to select it.</span>
+                    </div>
                   )}
 
                   {Object.keys(registeredCategoryMap).length > 0 && (
                     <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[11px] font-medium">
-                      <strong>Note:</strong> Greyed-out categories are already registered under your account in a non-rejected state. You cannot register the same business category twice.
+                      <strong>Note:</strong> Greyed-out categories with an "Active/Registered" badge are already registered under your account. Duplicate registrations in the same category are restricted.
                     </div>
                   )}
                 </div>

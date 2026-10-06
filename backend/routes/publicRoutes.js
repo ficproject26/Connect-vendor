@@ -1050,6 +1050,46 @@ router.get('/categories/child-categories', async (req, res) => {
   }
 });
 
+// @route   GET /api/public/categories/main
+// @desc    Get strictly admin-added active main categories from MongoDB
+router.get('/categories/main', async (req, res) => {
+  try {
+    const dbCats = await Category.find({ isDeleted: { $ne: true } }).lean();
+    
+    // Find all level 'main' or top-level category documents created by admin
+    const mainDocs = dbCats.filter(c => 
+      (c.level === 'main' || (!c.parentId && !c.subcategory && !c.subSubcategory)) && 
+      c.isActive !== false
+    );
+
+    const seen = new Set();
+    const categories = [];
+    mainDocs.forEach(c => {
+      const name = String(c.name || '').trim();
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        categories.push(name);
+      }
+    });
+
+    const defaultMains = ['Products', 'Services', 'Food', 'Daily Needs', 'Stay', 'Travel', 'Jobs'];
+    const finalCategories = categories.length > 0 ? categories : defaultMains;
+
+    res.status(200).json({
+      success: true,
+      categories: finalCategories,
+      count: finalCategories.length
+    });
+  } catch (error) {
+    console.error('Get Main Categories Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      categories: ['Products', 'Services', 'Food', 'Daily Needs', 'Stay', 'Travel', 'Jobs'],
+      message: 'Server error fetching main categories' 
+    });
+  }
+});
+
 // @route   GET /api/public/categories
 // @desc    Get dynamic admin categories and base taxonomy, with strict mainCategory filtering support
 router.get('/categories', async (req, res) => {
