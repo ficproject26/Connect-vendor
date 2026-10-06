@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
@@ -10,14 +11,154 @@ dotenv.config();
 
 const app = express();
 
-// Configure CORS options
-app.use(cors({
-  origin: true, // Reflective origin matching for all clients
+// Determine environment
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Explicitly remove Express server fingerprinting header
+app.disable('x-powered-by');
+
+// ─── HELMET SECURITY HEADERS ──────────────────────────────────────────────────
+app.use(
+  helmet({
+    // Content-Security-Policy (CSP) tailored for FIS Vendor Architecture
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        fontSrc: [
+          "'self'",
+          "https://fonts.googleapis.com",
+          "https://fonts.gstatic.com",
+          "data:"
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'", // Required for dynamic styles (React inline styles / Tailwind CSS)
+          "https://fonts.googleapis.com"
+        ],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'", // Needed for inline scripts and external gateway integrations
+          "https://checkout.razorpay.com"
+        ],
+        scriptSrcAttr: ["'none'"],
+        imgSrc: [
+          "'self'",
+          "data:",
+          "blob:", // Used for local preview of images/files before upload
+          "https://res.cloudinary.com",
+          "https://*.cloudinary.com"
+        ],
+        connectSrc: [
+          "'self'",
+          "http://localhost:*",
+          "https://localhost:*",
+          "ws://localhost:*",
+          "wss://localhost:*",
+          "http://127.0.0.1:*",
+          "https://127.0.0.1:*",
+          "ws://127.0.0.1:*",
+          "wss://127.0.0.1:*",
+          "https://connect-vendor.vercel.app",
+          "https://*.vercel.app",
+          "https://connect-vendor.onrender.com",
+          "wss://connect-vendor.onrender.com",
+          "https://*.onrender.com",
+          "wss://*.onrender.com",
+          "https://api.razorpay.com",
+          "https://*.razorpay.com",
+          "https://res.cloudinary.com"
+        ],
+        frameSrc: [
+          "'self'",
+          "https://api.razorpay.com",
+          "https://checkout.razorpay.com"
+        ],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: isProduction ? [] : null
+      }
+    },
+    // Cross-Origin-Resource-Policy: cross-origin so uploaded static assets can be rendered by frontend
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    // Cross-Origin-Opener-Policy: allow popups for Razorpay payment modals and auth
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    // Cross-Origin-Embedder-Policy: false prevents breaking external embeds (Cloudinary, QR codes)
+    crossOriginEmbedderPolicy: false,
+    // HSTS: Enabled in production over HTTPS only (365 days, includeSubDomains)
+    hsts: isProduction
+      ? {
+          maxAge: 31536000,
+          includeSubDomains: true,
+          preload: false
+        }
+      : false,
+    // X-Content-Type-Options: nosniff
+    noSniff: true,
+    // X-Frame-Options: SAMEORIGIN
+    frameguard: { action: "sameorigin" },
+    // Referrer-Policy: strict-origin-when-cross-origin
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    // X-DNS-Prefetch-Control: off
+    dnsPrefetchControl: { allow: false },
+    // X-Download-Options: noopen
+    ieNoOpen: true,
+    // X-Permitted-Cross-Domain-Policies: none
+    permittedCrossDomainPolicies: { permittedPolicies: "none" },
+    // Origin-Agent-Cluster: ?1
+    originAgentCluster: true
+  })
+);
+
+// ─── CORS CONFIGURATION (EXPLICIT ALLOWLIST) ──────────────────────────────────
+const allowedOrigins = [
+  'https://connect-vendor.vercel.app',
+  'https://connect-admin-96pc.onrender.com',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  'http://localhost:8002',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:8002'
+];
+
+if (process.env.FRONTEND_URL) {
+  process.env.FRONTEND_URL.split(',').forEach((o) => {
+    const trimmed = o.trim();
+    if (trimmed && !allowedOrigins.includes(trimmed)) allowedOrigins.push(trimmed);
+  });
+}
+if (process.env.ALLOWED_ORIGINS) {
+  process.env.ALLOWED_ORIGINS.split(',').forEach((o) => {
+    const trimmed = o.trim();
+    if (trimmed && !allowedOrigins.includes(trimmed)) allowedOrigins.push(trimmed);
+  });
+}
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow non-browser requests (e.g. mobile apps, curl, server-to-server health checks)
+    if (!origin) return callback(null, true);
+
+    const isExplicitlyAllowed = allowedOrigins.includes(origin);
+    const isVercelPreview = /^https:\/\/connect-vendor([a-z0-9-]*)\.vercel\.app$/.test(origin);
+
+    if (isExplicitlyAllowed || isVercelPreview) {
+      return callback(null, true);
+    }
+
+    console.warn(`[CORS Blocked] Origin not in allowlist: ${origin}`);
+    return callback(new Error(`CORS policy does not allow access from origin: ${origin}`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-business-id', 'Accept', 'Origin']
-}));
-app.options('*', cors());
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
