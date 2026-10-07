@@ -13,6 +13,7 @@ import {
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
+import NotificationDropdown from '../components/common/NotificationDropdown';
 import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl, formatImageUrl } from '../services/apiSetup';
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
@@ -523,7 +524,7 @@ const VendorDashboard = () => {
     checkStatus();
     const intervalId = setInterval(checkStatus, 12000);
     return () => clearInterval(intervalId);
-  }, [user, dispatch]);
+  }, [user?._id, user?.role, dispatch]);
 
   const getActiveVendorType = () => {
     if (!user) return 'Store Vendor';
@@ -1360,6 +1361,9 @@ const VendorDashboard = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const notificationDropdownRef = useRef(null);
+  const mobileBellRef = useRef(null);
+  const desktopBellRef = useRef(null);
+  const [activeBellRef, setActiveBellRef] = useState(null);
   const prevOrdersRef = useRef([]);
 
   // Notifications and statuses
@@ -2457,16 +2461,7 @@ const VendorDashboard = () => {
     }
   }, [catalogFoodTypeFilter, catalog, catalogCategoryFilter, vendorType]);
 
-  // Handle click outside notification dropdown
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (notificationDropdownRef.current && !notificationDropdownRef.current.contains(event.target)) {
-        setShowHeaderNotifications(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  // Notification dropdown click-outside and keyboard dismissal is handled by NotificationDropdown
 
   // Theme synchronization and toggle
   useEffect(() => {
@@ -2531,7 +2526,7 @@ const VendorDashboard = () => {
     const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 5000;
     const interval = setInterval(fetchOrders, syncInterval);
     return () => clearInterval(interval);
-  }, [token, user]);
+  }, [token, user?._id, user?.role]);
 
   const DEFAULT_TIME_SLOTS = [
     '09:00 AM - 09:30 AM',
@@ -3574,11 +3569,16 @@ const VendorDashboard = () => {
         </div>
         <div className="flex items-center gap-2">
           {/* Notification Bell in Header */}
-          <div className="relative" ref={notificationDropdownRef}>
+          <div className="relative">
             <button
-              onClick={() => setShowHeaderNotifications(!showHeaderNotifications)}
+              ref={mobileBellRef}
+              onClick={() => {
+                setActiveBellRef(mobileBellRef);
+                setShowHeaderNotifications(prev => !prev);
+              }}
               className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors relative"
               title="Notifications"
+              aria-label="Notifications"
             >
               <Bell size={18} />
               {notifications.length > 0 && (
@@ -3587,28 +3587,6 @@ const VendorDashboard = () => {
                 </span>
               )}
             </button>
-            {showHeaderNotifications && (
-              <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-50 text-slate-800 dark:text-slate-100 animate-fadeIn">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800/80 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Notifications</span>
-                  {notifications.length > 0 && (
-                    <button type="button" onClick={() => setNotifications([])} className="text-[10px] text-[#0B3C7B] dark:text-[#faed26] hover:underline font-semibold">Clear All</button>
-                  )}
-                </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <div className="text-[11px] text-slate-400 dark:text-slate-500 text-center py-4 font-medium">No new notifications</div>
-                  ) : (
-                    notifications.map((n) => (
-                      <div key={n.id} className="flex items-start justify-between gap-3 text-[11px] leading-relaxed border-b border-slate-100 dark:border-slate-800/40 pb-2 last:border-b-0 last:pb-0">
-                        <span className="flex-1 text-left">{n.text}</span>
-                        <button type="button" onClick={() => handleRemoveNotification(n.id)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold px-1 transition-colors">✕</button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
           </div>
           {/* Theme Toggle in Header */}
           <button
@@ -4165,11 +4143,16 @@ const VendorDashboard = () => {
         {activeTab === 'dashboard' && (
           <div className="hidden md:flex items-center gap-3 absolute top-8 right-8 z-40">
             {/* Notifications Dropdown */}
-            <div className="relative" ref={notificationDropdownRef}>
+            <div className="relative">
               <button
-                onClick={() => setShowHeaderNotifications(!showHeaderNotifications)}
+                ref={desktopBellRef}
+                onClick={() => {
+                  setActiveBellRef(desktopBellRef);
+                  setShowHeaderNotifications(prev => !prev);
+                }}
                 className="p-2.5 rounded-2xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-800 shadow-sm relative focus:outline-none flex items-center justify-center active:scale-95"
                 title="Notifications"
+                aria-label="Notifications"
               >
                 <Bell size={18} />
                 {notifications.length > 0 && (
@@ -4178,43 +4161,6 @@ const VendorDashboard = () => {
                   </span>
                 )}
               </button>
-
-              {showHeaderNotifications && (
-                <div className="absolute right-0 mt-2 w-72 md:w-80 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-50 text-slate-800 dark:text-slate-100 animate-fadeIn">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800/80 mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Notifications</span>
-                    {notifications.length > 0 && (
-                      <button 
-                        type="button"
-                        onClick={() => setNotifications([])} 
-                        className="text-[10px] text-[#0B3C7B] dark:text-[#faed26] hover:underline font-semibold"
-                      >
-                        Clear All
-                      </button>
-                    )}
-                  </div>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="text-[11px] text-slate-400 dark:text-slate-500 text-center py-4 font-medium">
-                        No new notifications
-                      </div>
-                    ) : (
-                      notifications.map((n) => (
-                        <div key={n.id} className="flex items-start justify-between gap-3 text-[11px] leading-relaxed border-b border-slate-100 dark:border-slate-800/40 pb-2 last:border-b-0 last:pb-0">
-                          <span className="flex-1 text-left">{n.text}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveNotification(n.id)}
-                            className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold px-1 transition-colors"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Theme Toggle */}
@@ -14073,6 +14019,20 @@ required
           })()}
         </Modal>
       )}
+
+      {/* Universal Notification Dropdown */}
+      <NotificationDropdown
+        isOpen={showHeaderNotifications}
+        onClose={() => setShowHeaderNotifications(false)}
+        anchorRef={activeBellRef || (typeof window !== 'undefined' && window.innerWidth < 768 ? mobileBellRef : desktopBellRef)}
+        notifications={notifications}
+        onClearAll={() => setNotifications([])}
+        onRemoveItem={handleRemoveNotification}
+        onViewAll={() => {
+          setActiveTab('orders');
+          setShowHeaderNotifications(false);
+        }}
+      />
 
     </div>
   );

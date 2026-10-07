@@ -7,6 +7,7 @@ import {
   Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers
 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
+import NotificationDropdown from '../../components/common/NotificationDropdown';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 const Overview = () => {
@@ -197,42 +198,20 @@ const Overview = () => {
             )}
           </button>
 
-          {showHeaderNotifications && (
-            <div className="absolute right-0 mt-2 w-72 md:w-80 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-50 text-slate-800 dark:text-slate-100 animate-fadeIn">
-              <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800/80 mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Notifications</span>
-                {notifications.length > 0 && (
-                  <button 
-                    type="button"
-                    onClick={() => setNotifications([])} 
-                    className="text-[10px] text-[#0B3C7B] dark:text-[#faed26] hover:underline font-semibold"
-                  >
-                    Clear All
-                  </button>
-                )}
-              </div>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {notifications.length === 0 ? (
-                  <div className="text-[11px] text-slate-400 dark:text-slate-500 text-center py-4 font-medium">
-                    No new notifications
-                  </div>
-                ) : (
-                  notifications.map((n) => (
-                    <div key={n.id} className="flex items-start justify-between gap-3 text-[11px] leading-relaxed border-b border-slate-100 dark:border-slate-800/40 pb-2 last:border-b-0 last:pb-0">
-                      <span className="flex-1 text-left">{n.text}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveNotification(n.id)}
-                        className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold px-1 transition-colors"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
+          <NotificationDropdown
+            isOpen={showHeaderNotifications}
+            onClose={() => setShowHeaderNotifications(false)}
+            anchorRef={notificationDropdownRef}
+            notifications={notifications}
+            onClearAll={() => setNotifications([])}
+            onRemoveItem={handleRemoveNotification}
+            onViewAll={() => {
+              if (typeof setActiveTab === 'function') {
+                setActiveTab('orders');
+              }
+              setShowHeaderNotifications(false);
+            }}
+          />
         </div>
 
         {/* Theme Toggle */}

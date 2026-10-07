@@ -47,6 +47,9 @@ const CATEGORY_DOC_CONFIG = {
   ],
   Service: [
     { key: 'service_cert', label: 'Service / Professional Certification', required: false, numberPlaceholder: 'e.g. CERT-SERVICE-12' }
+  ],
+  Electronics: [
+    { key: 'trade_license', label: 'Trade / Shop License', required: false, numberPlaceholder: 'e.g. TRD-45678' }
   ]
 };
 
@@ -70,7 +73,8 @@ const DEFAULT_ADMIN_CATEGORIES = [
   'Daily Needs',
   'Stay',
   'Travel',
-  'Jobs'
+  'Jobs',
+  'Electronics'
 ];
 
 export default function AddBusinessModal({ 
@@ -84,6 +88,9 @@ export default function AddBusinessModal({
   const [uploadingField, setUploadingField] = useState(null);
   const [formError, setFormError] = useState('');
   const [successInfo, setSuccessInfo] = useState(null);
+
+  // Persistent reference for currently selected category to prevent any transient wipe or unselect
+  const selectedCategoryRef = useRef('');
 
   // Form State
   const [formData, setFormData] = useState({
@@ -120,7 +127,15 @@ export default function AddBusinessModal({
       try {
         const res = await axios.get(`${getVendorBackendUrl()}/api/public/categories/main`);
         if (isMounted && res.data?.success && Array.isArray(res.data.categories) && res.data.categories.length > 0) {
-          setAdminCategories(res.data.categories);
+          const fetched = res.data.categories;
+          // Merge fetched categories with default categories so no option ever disappears dynamically
+          const merged = [...fetched];
+          DEFAULT_ADMIN_CATEGORIES.forEach(c => {
+            if (!merged.some(m => m.toLowerCase() === c.toLowerCase())) {
+              merged.push(c);
+            }
+          });
+          setAdminCategories(merged);
         }
       } catch (err) {
         console.warn('Failed to fetch dynamic admin categories, falling back to defaults:', err);
@@ -130,14 +145,14 @@ export default function AddBusinessModal({
     return () => { isMounted = false; };
   }, []);
 
-  // Reset form ONLY when modal opens (transition from closed to open)
-  // NEVER depend on the user object reference to avoid resetting while vendor is typing or selecting
+  // Reset form ONLY when modal transitions from closed to open (never while open)
   const prevIsOpenRef = useRef(false);
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
       setStep(1);
       setFormError('');
       setSuccessInfo(null);
+      selectedCategoryRef.current = '';
       setFormData({
         businessName: '',
         vendorType: '',
@@ -157,13 +172,27 @@ export default function AddBusinessModal({
         gstDoc: '',
         categoryDocs: {}
       });
+    } else if (!isOpen) {
+      selectedCategoryRef.current = '';
     }
     prevIsOpenRef.current = isOpen;
   }, [isOpen]);
 
-  // When vendorType changes, initialize categoryDocs
+  // Keep formData.vendorType and selectedCategoryRef in lockstep
+  useEffect(() => {
+    if (selectedCategoryRef.current && !formData.vendorType) {
+      setFormData(prev => ({
+        ...prev,
+        vendorType: selectedCategoryRef.current,
+        category: selectedCategoryRef.current
+      }));
+    }
+  }, [formData.vendorType]);
+
+  // When vendorType changes, initialize categoryDocs and persist selected category
   const handleCategoryChange = (selectedType) => {
     if (!selectedType) return;
+    selectedCategoryRef.current = selectedType;
     const docRules = getCategoryDocRules(selectedType);
     const initialDocs = {};
     docRules.forEach(rule => {
@@ -578,7 +607,7 @@ export default function AddBusinessModal({
                     Business Category <span className="text-rose-500">*</span>
                   </label>
                   <p className="text-[11px] text-slate-400">
-                    Select the main category for your new business outlet. Only Admin-approved main categories are available. Already registered categories are disabled.
+                    Select the category for your new business outlet. Categories you have already registered are shown as disabled.
                   </p>
 
                   {/* Card-based category picker */}
@@ -587,10 +616,11 @@ export default function AddBusinessModal({
                       const isRegistered = isCategoryRegistered(type);
                       const rawStatus = isRegistered ? getCategoryStatus(type) : null;
                       const regStatus = isRegistered ? getRegisteredStatusLabel(rawStatus) : null;
+                      const effectiveSelected = formData.vendorType || selectedCategoryRef.current;
                       const isSelected = Boolean(
-                        formData.vendorType && (
-                          formData.vendorType.toLowerCase() === type.toLowerCase() ||
-                          formData.vendorType === type
+                        effectiveSelected && (
+                          effectiveSelected.toLowerCase() === type.toLowerCase() ||
+                          effectiveSelected === type
                         )
                       );
 
@@ -602,7 +632,8 @@ export default function AddBusinessModal({
                         'Daily Needs': '🛒',
                         Stay: '🏨',
                         Travel: '🚗',
-                        Jobs: '💼'
+                        Jobs: '💼',
+                        Electronics: '⚡'
                       };
                       const emoji = categoryEmojis[type] || '🏢';
 
@@ -656,50 +687,9 @@ export default function AddBusinessModal({
                     })}
                   </div>
 
-                  {/* Dropdown alternative selector to guarantee selection works in all environments */}
-                  <div className="pt-2">
-                    <label htmlFor="business-category-select" className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
-                      Or select from dropdown:
-                    </label>
-                    <select
-                      id="business-category-select"
-                      value={formData.vendorType || ''}
-                      onChange={(e) => handleCategoryChange(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#faed26]/50 cursor-pointer"
-                    >
-                      <option value="" disabled>-- Click a category card above or select here --</option>
-                      {adminCategories.map((type) => {
-                        const isRegistered = isCategoryRegistered(type);
-                        const rawStatus = isRegistered ? getCategoryStatus(type) : null;
-                        const regStatus = isRegistered ? getRegisteredStatusLabel(rawStatus) : null;
-                        return (
-                          <option key={type} value={type} disabled={isRegistered}>
-                            {type} {isRegistered ? `(${regStatus} - Already Registered)` : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-
-                  {/* Visual confirmation of selected category */}
-                  {formData.vendorType ? (
-                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <span>Selected Category: <strong className="text-emerald-950 dark:text-emerald-100">{formData.vendorType}</strong></span>
-                      </div>
-                      <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase font-black">Ready to proceed</span>
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-500 text-xs flex items-center gap-2">
-                      <Info size={14} className="text-slate-400 shrink-0" />
-                      <span>Please click one of the available category cards above to select it.</span>
-                    </div>
-                  )}
-
                   {Object.keys(registeredCategoryMap).length > 0 && (
                     <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[11px] font-medium">
-                      <strong>Note:</strong> Greyed-out categories with an "Active/Registered" badge are already registered under your account. Duplicate registrations in the same category are restricted.
+                      <strong>Note:</strong> Greyed-out categories are already registered under your account in a non-rejected state. You cannot register the same business category twice.
                     </div>
                   )}
                 </div>

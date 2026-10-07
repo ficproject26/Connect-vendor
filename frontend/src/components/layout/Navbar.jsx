@@ -5,6 +5,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { logout, toggleSidebar, switchBusinessSuccess } from '../../store/authSlice';
 import { LogOut, User, Store, Shield, CreditCard, Home, Sun, Moon, Activity, ChevronDown, Search, Settings, Bell, HelpCircle, Globe, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 import Modal from '../common/Modal';
+import NotificationDropdown from '../common/NotificationDropdown';
 import { vendorTaxonomy } from '../../data/servicesData';
 import { getVendorBackendUrl } from '../../services/apiSetup';
 
@@ -28,9 +29,6 @@ const Navbar = () => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsDropdownOpen(false);
-      }
-      if (notificationDropdownRef.current && !notificationDropdownRef.current.contains(event.target)) {
-        setShowHeaderNotifications(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -130,8 +128,9 @@ const Navbar = () => {
             </button>
 
             {isAuthenticated && (
-              <div className="relative" ref={notificationDropdownRef}>
+              <div className="relative">
                 <button
+                  ref={notificationDropdownRef}
                   onClick={() => setShowHeaderNotifications(!showHeaderNotifications)}
                   className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-800/80 shadow-sm relative focus:outline-none"
                   aria-label="Notifications"
@@ -144,41 +143,18 @@ const Navbar = () => {
                   )}
                 </button>
 
-                {showHeaderNotifications && (
-                  <div className="absolute right-0 mt-2.5 w-72 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-50 animate-fadeIn text-slate-800 dark:text-slate-100">
-                    <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800/80 mb-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Notifications</span>
-                      {notifications.length > 0 && (
-                        <button
-                          onClick={() => setNotifications([])}
-                          className="text-[11px] text-primary-600 dark:text-primary-400 hover:underline font-semibold"
-                        >
-                          Clear All
-                        </button>
-                      )}
-                    </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {notifications.length === 0 ? (
-                        <div className="text-xs text-slate-400 dark:text-slate-500 text-center py-4 font-medium">
-                          No new notifications
-                        </div>
-                      ) : (
-                        notifications.map((n) => (
-                          <div key={n.id} className="flex items-start justify-between gap-3 text-xs leading-relaxed border-b border-slate-100 dark:border-slate-850/40 pb-2 last:border-b-0 last:pb-0">
-                            <span className="flex-1 text-left">{n.text}</span>
-                            <button
-                              onClick={() => handleRemoveNotification(n.id)}
-                              className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold px-1 transition-colors"
-                              aria-label="Remove notification"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
+                <NotificationDropdown
+                  isOpen={showHeaderNotifications}
+                  onClose={() => setShowHeaderNotifications(false)}
+                  anchorRef={notificationDropdownRef}
+                  notifications={notifications}
+                  onClearAll={() => setNotifications([])}
+                  onRemoveItem={handleRemoveNotification}
+                  onViewAll={() => {
+                    navigate('/vendor/orders');
+                    setShowHeaderNotifications(false);
+                  }}
+                />
               </div>
             )}
 
