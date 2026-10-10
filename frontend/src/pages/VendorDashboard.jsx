@@ -1233,7 +1233,9 @@ const VendorDashboard = () => {
     appointmentDate: '',
     appointmentTimeSlot: '',
     finalAmount: '',
-    status: 'Accepted'
+    status: 'Accepted',
+    gender: '',
+    age: ''
   });
   const [loadingAddAppointment, setLoadingAddAppointment] = useState(false);
   const [isAddBookingModalOpen, setIsAddBookingModalOpen] = useState(false);
@@ -1245,7 +1247,10 @@ const VendorDashboard = () => {
     appointmentTimeSlot: '1',
     roomNumber: '',
     finalAmount: '',
-    status: 'Accepted'
+    status: 'Accepted',
+    gender: '',
+    age: '',
+    additionalGuests: []
   });
   const [loadingAddBooking, setLoadingAddBooking] = useState(false);
   const [calendarSelectedDate, setCalendarSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -2224,7 +2229,9 @@ const VendorDashboard = () => {
       appointmentDate: new Date().toISOString().split('T')[0],
       appointmentTimeSlot: '',
       finalAmount: '',
-      status: 'Accepted'
+      status: 'Accepted',
+      gender: '',
+      age: ''
     });
     setIsAddAppointmentModalOpen(true);
   };
@@ -2276,7 +2283,10 @@ const VendorDashboard = () => {
       roomNumber: '',
       quantity: 1,
       finalAmount: '',
-      status: terms.ordersName === 'Orders' ? 'Pending' : 'Accepted'
+      status: terms.ordersName === 'Orders' ? 'Pending' : 'Accepted',
+      gender: '',
+      age: '',
+      additionalGuests: []
     });
     setIsAddBookingModalOpen(true);
   };
@@ -2293,8 +2303,30 @@ const VendorDashboard = () => {
     setMessage('');
     try {
       const endpoint = terms.ordersName === 'Orders' ? 'orders' : 'bookings';
+      const guestListPayload = [
+        {
+          name: bookingForm.memberName,
+          fullName: bookingForm.memberName,
+          gender: bookingForm.gender || '',
+          age: bookingForm.age || '',
+          role: 'Primary / Booking Holder',
+          isPrimary: true
+        },
+        ...(Array.isArray(bookingForm.additionalGuests) ? bookingForm.additionalGuests.map((ag, i) => ({
+          name: ag.name || `Guest ${i + 2}`,
+          fullName: ag.name || `Guest ${i + 2}`,
+          gender: ag.gender || '',
+          age: ag.age || '',
+          role: 'Additional Guest',
+          isPrimary: false
+        })) : [])
+      ];
+
       const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/${endpoint}`, {
-        ...bookingForm
+        ...bookingForm,
+        guestList: guestListPayload,
+        guestDetails: guestListPayload,
+        guests: guestListPayload.length
       }, getAxiosConfig());
 
       if (res.data.success) {
@@ -3191,10 +3223,22 @@ const VendorDashboard = () => {
       }
     } catch (err) {
       console.warn('Image upload endpoint exception:', err);
+      // Revert temporary data URL so stale base64 is not saved
+      setItemForm(prev => {
+        const currentUrls = (prev.imageUrls || []).filter(u => u && !u.startsWith('data:') && !u.startsWith('blob:'));
+        return {
+          ...prev,
+          imageUrl: currentUrls.length > 0 ? currentUrls[0] : '',
+          imageUrls: currentUrls
+        };
+      });
       const errMsg = err.response?.data?.message || err.message || 'Failed to upload image. Please try again.';
       setError(errMsg);
     } finally {
       setImageUploading(false);
+      try {
+        if (e && e.target) e.target.value = '';
+      } catch (ignored) {}
     }
   };
 
@@ -10358,13 +10402,20 @@ required
                       <>
                         <img
                           src={previewSrc}
-                          alt=""
+                          alt="Product preview"
                           onError={(e) => {
                             e.currentTarget.onerror = null;
                             e.currentTarget.style.display = 'none';
+                            const el = document.getElementById('primary-img-error-badge');
+                            if (el) el.style.display = 'flex';
                           }}
                           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-102"
                         />
+                        <div id="primary-img-error-badge" style={{ display: 'none' }} className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400 p-4 text-center">
+                          <ImageIcon size={32} className="mb-2 text-slate-400" />
+                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Photo could not be loaded</span>
+                          <span className="text-[10px] text-slate-400 mt-1">Click below to upload a replacement photo</span>
+                        </div>
                         <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider shadow-sm bg-emerald-500/90 text-white pointer-events-none">
                           ✓ Custom Photo
                         </div>
@@ -10409,22 +10460,65 @@ required
                     )}
                   </div>
 
-                  {/* Additional uploaded images grid (if more than 1) */}
-                  {displayUrls.length > 1 && (
+                  {/* Uploaded images thumbnail grid */}
+                  {displayUrls.length > 0 && (
                     <div className="grid grid-cols-4 gap-2">
                       {displayUrls.map((url, idx) => {
                         const formattedUrl = formatPreviewImageUrl(url);
                         if (!formattedUrl) return null;
                         return (
-                          <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 group">
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              if (idx !== 0) {
+                                setItemForm(prev => {
+                                  const currentUrls = (prev.imageUrls && prev.imageUrls.length > 0
+                                    ? prev.imageUrls
+                                    : (prev.imageUrl ? [prev.imageUrl] : [])
+                                  ).filter(u => u && typeof u === 'string' && !u.toLowerCase().startsWith('preview'));
+                                  const selected = currentUrls[idx];
+                                  const remaining = currentUrls.filter((_, i) => i !== idx);
+                                  const reordered = [selected, ...remaining];
+                                  return {
+                                    ...prev,
+                                    imageUrl: selected,
+                                    imageUrls: reordered
+                                  };
+                                });
+                              }
+                            }}
+                            className={`relative aspect-square rounded-xl overflow-hidden border-2 bg-slate-50 dark:bg-slate-900 group cursor-pointer transition-all ${
+                              idx === 0 ? 'border-primary-500 shadow-sm' : 'border-slate-200 dark:border-slate-800 hover:border-slate-400'
+                            }`}
+                          >
                             <img
                               src={formattedUrl}
-                              alt="Photo thumbnail"
+                              alt={`Photo thumbnail ${idx + 1}`}
+                              onError={(e) => {
+                                e.currentTarget.onerror = null;
+                                e.currentTarget.style.display = 'none';
+                                const fb = document.getElementById(`thumb-err-${idx}`);
+                                if (fb) fb.style.display = 'flex';
+                              }}
                               className="w-full h-full object-cover"
                             />
+                            <div
+                              id={`thumb-err-${idx}`}
+                              style={{ display: 'none' }}
+                              className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400 p-1 text-center"
+                            >
+                              <ImageIcon size={18} className="text-slate-400" />
+                              <span className="text-[8px] font-bold text-slate-500 mt-0.5">Error</span>
+                            </div>
+                            {idx === 0 && (
+                              <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-primary-600/90 text-white text-[8px] font-bold rounded pointer-events-none">
+                                Main
+                              </div>
+                            )}
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setItemForm(prev => {
                                   const currentUrls = (prev.imageUrls && prev.imageUrls.length > 0
                                     ? prev.imageUrls
@@ -10438,7 +10532,8 @@ required
                                   };
                                 });
                               }}
-                              className="absolute top-0.5 right-0.5 bg-red-500 hover:bg-red-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-md cursor-pointer"
+                              title="Remove image"
+                              className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-md cursor-pointer transition-transform hover:scale-110 z-10"
                             >
                               ✕
                             </button>
@@ -10455,7 +10550,9 @@ required
                           className="absolute inset-0 opacity-0 cursor-pointer"
                         />
                         <ImageIcon size={16} className="text-slate-400 dark:text-slate-500" />
-                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-1">Add</span>
+                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-1">
+                          {imageUploading ? '...' : 'Add'}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -12509,14 +12606,16 @@ required
               displayStatus = selectedBillOrder.paymentStatus === 'Completed' ? 'Confirmed' : 'Booking Received';
             }
 
-            const holder = selectedBillOrder.bookingHolder || {
-              name: selectedBillOrder.memberName || selectedBillOrder.customer_name || 'Customer',
+            const holder = {
+              name: selectedBillOrder.bookingHolder?.name || selectedBillOrder.memberName || selectedBillOrder.customer_name || 'Customer',
               customerId: formatCustomerId(selectedBillOrder, customers),
-              phone: selectedBillOrder.customer_phone || selectedBillOrder.phone || '',
-              email: selectedBillOrder.customer_email || selectedBillOrder.email || '',
+              phone: selectedBillOrder.bookingHolder?.phone || selectedBillOrder.customer_phone || selectedBillOrder.phone || '',
+              email: selectedBillOrder.bookingHolder?.email || selectedBillOrder.customer_email || selectedBillOrder.email || '',
               address: getCustomerAddress(selectedBillOrder),
-              aadhaar: selectedBillOrder.aadhaar || '',
-              pan: selectedBillOrder.pan || ''
+              aadhaar: selectedBillOrder.bookingHolder?.aadhaar || selectedBillOrder.aadhaar || '',
+              pan: selectedBillOrder.bookingHolder?.pan || selectedBillOrder.pan || '',
+              gender: selectedBillOrder.bookingHolder?.gender || selectedBillOrder.gender || '',
+              age: selectedBillOrder.bookingHolder?.age || selectedBillOrder.age || ''
             };
 
             const adultsCount = Number(selectedBillOrder.adults || (selectedBillOrder.guestBreakdown && selectedBillOrder.guestBreakdown.adults) || 0);
@@ -12680,40 +12779,40 @@ required
                     <Store size={13} className="text-purple-500" />
                     3. Property & Room Information
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 text-xs">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+                    <div className="min-w-0 flex flex-col justify-start">
                       <span className="text-[10px] text-slate-400 font-semibold block">Hotel / Property Name</span>
-                      <span className="font-bold text-slate-900 dark:text-white">
+                      <span className="font-bold text-slate-900 dark:text-white break-words mt-0.5">
                         {selectedBillOrder.property?.name || selectedBillOrder.propertyName || selectedBillOrder.vendorName || user?.businessName || 'Not provided'}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0 flex flex-col justify-start">
                       <span className="text-[10px] text-slate-400 font-semibold block">Property ID</span>
-                      <span className="font-mono text-slate-700 dark:text-slate-300">
+                      <span className="font-mono text-slate-700 dark:text-slate-300 break-all select-all text-[11px] mt-0.5">
                         {selectedBillOrder.property?.propertyId || selectedBillOrder.propertyId || selectedBillOrder.vendorId || user?.businessId || 'Not provided'}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0 flex flex-col justify-start sm:col-span-2 md:col-span-1">
                       <span className="text-[10px] text-slate-400 font-semibold block">Property Address / City</span>
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300 break-words leading-relaxed mt-0.5">
                         {selectedBillOrder.property?.address || selectedBillOrder.propertyAddress || user?.businessAddress || selectedBillOrder.city || 'Not provided'}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0 flex flex-col justify-start">
                       <span className="text-[10px] text-slate-400 font-semibold block">Room Name & Type</span>
-                      <span className="font-extrabold text-purple-600 dark:text-purple-400">
+                      <span className="font-extrabold text-purple-600 dark:text-purple-400 break-words mt-0.5">
                         {selectedBillOrder.roomName || (selectedBillOrder.roomDetails && selectedBillOrder.roomDetails.name) || selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Deluxe Room'}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0 flex flex-col justify-start">
                       <span className="text-[10px] text-slate-400 font-semibold block">Room Number / Room ID</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                      <span className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
                         {selectedBillOrder.roomNumber ? `Room #${selectedBillOrder.roomNumber}` : (selectedBillOrder.roomId || 'Not assigned')}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0 flex flex-col justify-start">
                       <span className="text-[10px] text-slate-400 font-semibold block">Rooms & Nights</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                      <span className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
                         {selectedBillOrder.roomsCount || selectedBillOrder.roomCount || selectedBillOrder.numberOfRooms || 1} Room(s) • {selectedBillOrder.nightsCount || selectedBillOrder.numberOfNights || selectedBillOrder.nights || 1} Night(s)
                       </span>
                     </div>
@@ -12814,7 +12913,7 @@ required
                             <div>
                               <span className="text-[10px] text-slate-400 block font-semibold">Age / Gender</span>
                               <span className="font-medium text-slate-800 dark:text-slate-200">
-                                {g.age ? `${g.age} Yrs` : 'Not provided'} • {g.gender || 'Not provided'}
+                                {g.age ? `${g.age} Yrs` : (idx === 0 && (holder.age || selectedBillOrder.age) ? `${holder.age || selectedBillOrder.age} Yrs` : 'Not provided')} • {g.gender || (idx === 0 && (holder.gender || selectedBillOrder.gender)) || 'Not provided'}
                               </span>
                             </div>
                             <div>
@@ -12862,7 +12961,13 @@ required
                           Booking Holder / Guest
                         </span>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">Age / Gender</span>
+                          <span className="font-medium text-slate-800 dark:text-slate-200">
+                            {holder.age || selectedBillOrder.age ? `${holder.age || selectedBillOrder.age} Yrs` : 'Not provided'} • {holder.gender || selectedBillOrder.gender || 'Not provided'}
+                          </span>
+                        </div>
                         <div>
                           <span className="text-[10px] text-slate-400 block font-semibold">Mobile</span>
                           <span className="font-mono text-slate-800 dark:text-slate-200">{holder.phone || 'Not provided'}</span>
@@ -13090,30 +13195,34 @@ required
               </div>
 
               {/* Billing Identifiers & Timing details */}
-              <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-850 p-4 rounded-2xl grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs font-mono">
-                <div>
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">INVOICE ID:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{(selectedBillOrder._id || selectedBillOrder.id || '').toUpperCase()}</span>
+              <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800 p-4 rounded-2xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs font-mono">
+                <div className="min-w-0 flex flex-col justify-start">
+                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">INVOICE ID:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 break-all select-all leading-relaxed text-[11px] mt-0.5">
+                    {(selectedBillOrder._id || selectedBillOrder.id || '').toUpperCase()}
+                  </span>
                 </div>
-                <div>
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">TRANSACTION DATE:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                <div className="min-w-0 flex flex-col justify-start">
+                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">TRANSACTION DATE:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] mt-0.5">
                     {selectedBillOrder.createdAt || selectedBillOrder.created_at ? new Date(selectedBillOrder.createdAt || selectedBillOrder.created_at).toLocaleDateString() : 'N/A'}
                   </span>
                 </div>
-                <div>
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">ORDER STATUS:</span>
-                  <span className="font-extrabold text-emerald-600 dark:text-emerald-400 uppercase">{selectedBillOrder.status || 'Order Received'}</span>
+                <div className="min-w-0 flex flex-col justify-start">
+                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">ORDER STATUS:</span>
+                  <span className="font-extrabold text-emerald-600 dark:text-emerald-400 uppercase text-[11px] mt-0.5">
+                    {selectedBillOrder.status || 'Order Received'}
+                  </span>
                 </div>
-                <div>
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">PAYMENT METHOD:</span>
-                  <span className="font-bold text-primary-600 dark:text-primary-400">
+                <div className="min-w-0 flex flex-col justify-start">
+                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">PAYMENT METHOD:</span>
+                  <span className="font-bold text-primary-600 dark:text-primary-400 text-[11px] mt-0.5">
                     {selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || 'Connect Wallet'}
                   </span>
                 </div>
-                <div>
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">PAYMENT STATUS:</span>
-                  <span className={`font-bold ${
+                <div className="min-w-0 flex flex-col justify-start">
+                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">PAYMENT STATUS:</span>
+                  <span className={`font-bold text-[11px] mt-0.5 ${
                     (selectedBillOrder.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(selectedBillOrder.status) || (!String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cash') && !String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cod')))
                       ? 'text-emerald-600 dark:text-emerald-400'
                       : 'text-amber-600 dark:text-amber-400'
@@ -13121,9 +13230,9 @@ required
                     {(selectedBillOrder.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(selectedBillOrder.status) || (!String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cash') && !String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cod'))) ? 'PAID' : 'PENDING'}
                   </span>
                 </div>
-                <div>
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold">TRANSACTION ID:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 truncate block" title={selectedBillOrder.transactionId || selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId || ('TXN_' + (selectedBillOrder.order_number || selectedBillOrder.id || '').toUpperCase())}>
+                <div className="min-w-0 flex flex-col justify-start">
+                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">TRANSACTION ID:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 break-all select-all text-[11px] mt-0.5" title={selectedBillOrder.transactionId || selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId || ('TXN_' + (selectedBillOrder.order_number || selectedBillOrder.id || '').toUpperCase())}>
                     {selectedBillOrder.transactionId || selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId || ('TXN_' + (selectedBillOrder.order_number || selectedBillOrder.id || '').toUpperCase())}
                   </span>
                 </div>
@@ -13460,15 +13569,43 @@ required
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">Customer ID / Contact (Optional)</label>
-            <input
-              type="text"
-              placeholder="e.g. member@email.com or phone"
-              value={appointmentForm.memberId}
-              onChange={e => setAppointmentForm({ ...appointmentForm, memberId: e.target.value })}
-              className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5 sm:col-span-1">
+              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">Customer ID / Contact</label>
+              <input
+                type="text"
+                placeholder="e.g. phone or email"
+                value={appointmentForm.memberId}
+                onChange={e => setAppointmentForm({ ...appointmentForm, memberId: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+              />
+            </div>
+            <div className="space-y-1.5 sm:col-span-1">
+              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">Gender (Optional)</label>
+              <select
+                value={appointmentForm.gender || ''}
+                onChange={e => setAppointmentForm({ ...appointmentForm, gender: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-800 dark:text-slate-200"
+              >
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select>
+            </div>
+            <div className="space-y-1.5 sm:col-span-1">
+              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">Age (Optional)</label>
+              <input
+                type="number"
+                min="1"
+                max="120"
+                placeholder="e.g. 35"
+                value={appointmentForm.age || ''}
+                onChange={e => setAppointmentForm({ ...appointmentForm, age: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+              />
+            </div>
           </div>
 
           <div className="space-y-1.5">
@@ -13611,21 +13748,154 @@ required
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">
-              {(() => {
-                const customerSingular = terms.customersName.endsWith('s') ? terms.customersName.slice(0, -1) : terms.customersName;
-                return `${customerSingular} ID / Contact (Optional)`;
-              })()}
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. customer@email.com or phone"
-              value={bookingForm.memberId}
-              onChange={e => setBookingForm({ ...bookingForm, memberId: e.target.value })}
-              className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5 sm:col-span-1">
+              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">
+                {(() => {
+                  const customerSingular = terms.customersName.endsWith('s') ? terms.customersName.slice(0, -1) : terms.customersName;
+                  return `${customerSingular} Contact (Optional)`;
+                })()}
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. phone or email"
+                value={bookingForm.memberId}
+                onChange={e => setBookingForm({ ...bookingForm, memberId: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+              />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-1">
+              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">
+                Gender (Optional)
+              </label>
+              <select
+                value={bookingForm.gender || ''}
+                onChange={e => setBookingForm({ ...bookingForm, gender: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-800 dark:text-slate-200"
+              >
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-1">
+              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">
+                Age (Optional)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="120"
+                placeholder="e.g. 28"
+                value={bookingForm.age || ''}
+                onChange={e => setBookingForm({ ...bookingForm, age: e.target.value })}
+                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+              />
+            </div>
           </div>
+
+          {/* Optional Additional Guests section */}
+          {terms.ordersName !== 'Orders' && (
+            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Additional Guests (Optional)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBookingForm(prev => ({
+                    ...prev,
+                    additionalGuests: [...(prev.additionalGuests || []), { name: '', gender: '', age: '' }]
+                  }))}
+                  className="text-[11px] font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400 flex items-center gap-1 cursor-pointer"
+                >
+                  + Add Guest
+                </button>
+              </div>
+
+              {Array.isArray(bookingForm.additionalGuests) && bookingForm.additionalGuests.length > 0 && (
+                <div className="space-y-2">
+                  {bookingForm.additionalGuests.map((guest, gIdx) => (
+                    <div key={gIdx} className="grid grid-cols-12 gap-2 items-center bg-white dark:bg-slate-950 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800">
+                      <div className="col-span-5">
+                        <input
+                          type="text"
+                          placeholder={`Guest ${gIdx + 2} Name`}
+                          value={guest.name || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setBookingForm(prev => {
+                              const updated = [...(prev.additionalGuests || [])];
+                              updated[gIdx] = { ...updated[gIdx], name: val };
+                              return { ...prev, additionalGuests: updated };
+                            });
+                          }}
+                          className="w-full text-xs bg-transparent border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 focus:outline-none focus:border-primary-500"
+                        />
+                      </div>
+                      <div className="col-span-4">
+                        <select
+                          value={guest.gender || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setBookingForm(prev => {
+                              const updated = [...(prev.additionalGuests || [])];
+                              updated[gIdx] = { ...updated[gIdx], gender: val };
+                              return { ...prev, additionalGuests: updated };
+                            });
+                          }}
+                          className="w-full text-xs bg-transparent border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 focus:outline-none focus:border-primary-500 font-semibold"
+                        >
+                          <option value="">Gender</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
+                          <option value="Prefer not to say">Prefer not to say</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <input
+                          type="number"
+                          min="1"
+                          max="120"
+                          placeholder="Age"
+                          value={guest.age || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setBookingForm(prev => {
+                              const updated = [...(prev.additionalGuests || [])];
+                              updated[gIdx] = { ...updated[gIdx], age: val };
+                              return { ...prev, additionalGuests: updated };
+                            });
+                          }}
+                          className="w-full text-xs bg-transparent border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 focus:outline-none focus:border-primary-500"
+                        />
+                      </div>
+                      <div className="col-span-1 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBookingForm(prev => ({
+                              ...prev,
+                              additionalGuests: (prev.additionalGuests || []).filter((_, i) => i !== gIdx)
+                            }));
+                          }}
+                          className="text-red-500 hover:text-red-700 text-xs font-bold cursor-pointer"
+                          title="Remove guest"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block">

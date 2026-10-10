@@ -89,7 +89,8 @@ export default function AddBusinessModal({
   const [formError, setFormError] = useState('');
   const [successInfo, setSuccessInfo] = useState(null);
 
-  // Persistent reference for currently selected category to prevent any transient wipe or unselect
+  // Persistent state & ref for currently selected category to prevent any transient wipe or unselect
+  const [selectedCategory, setSelectedCategory] = useState('');
   const selectedCategoryRef = useRef('');
 
   // Form State
@@ -135,6 +136,11 @@ export default function AddBusinessModal({
               merged.push(c);
             }
           });
+          // Ensure any currently selected category remains in the list
+          const active = selectedCategoryRef.current;
+          if (active && !merged.some(m => m.toLowerCase() === active.toLowerCase())) {
+            merged.push(active);
+          }
           setAdminCategories(merged);
         }
       } catch (err) {
@@ -152,6 +158,7 @@ export default function AddBusinessModal({
       setStep(1);
       setFormError('');
       setSuccessInfo(null);
+      setSelectedCategory('');
       selectedCategoryRef.current = '';
       setFormData({
         businessName: '',
@@ -173,25 +180,28 @@ export default function AddBusinessModal({
         categoryDocs: {}
       });
     } else if (!isOpen) {
+      setSelectedCategory('');
       selectedCategoryRef.current = '';
     }
     prevIsOpenRef.current = isOpen;
   }, [isOpen]);
 
-  // Keep formData.vendorType and selectedCategoryRef in lockstep
+  // Keep formData.vendorType and selectedCategory synchronized across re-renders
   useEffect(() => {
-    if (selectedCategoryRef.current && !formData.vendorType) {
+    const active = selectedCategory || selectedCategoryRef.current;
+    if (active && (!formData.vendorType || formData.vendorType !== active)) {
       setFormData(prev => ({
         ...prev,
-        vendorType: selectedCategoryRef.current,
-        category: selectedCategoryRef.current
+        vendorType: active,
+        category: active
       }));
     }
-  }, [formData.vendorType]);
+  }, [selectedCategory, formData.vendorType]);
 
   // When vendorType changes, initialize categoryDocs and persist selected category
   const handleCategoryChange = (selectedType) => {
     if (!selectedType) return;
+    setSelectedCategory(selectedType);
     selectedCategoryRef.current = selectedType;
     const docRules = getCategoryDocRules(selectedType);
     const initialDocs = {};
@@ -264,13 +274,16 @@ export default function AddBusinessModal({
     }
   };
 
-  // Validations per step
   const validateStep = (currentStep) => {
     setFormError('');
     if (currentStep === 1) {
-      if (!formData.vendorType) {
+      const active = selectedCategory || formData.vendorType || selectedCategoryRef.current;
+      if (!active) {
         setFormError('Please select a Business Category');
         return false;
+      }
+      if (!formData.vendorType) {
+        setFormData(prev => ({ ...prev, vendorType: active, category: active }));
       }
       return true;
     }
@@ -334,7 +347,8 @@ export default function AddBusinessModal({
 
     if (currentStep === 4) {
       // Check required category docs
-      const docRules = getCategoryDocRules(formData.vendorType);
+      const activeCat = selectedCategory || formData.vendorType || selectedCategoryRef.current;
+      const docRules = getCategoryDocRules(activeCat);
       for (const rule of docRules) {
         if (rule.required) {
           const docItem = formData.categoryDocs[rule.key];
@@ -376,6 +390,7 @@ export default function AddBusinessModal({
     setFormError('');
 
     try {
+      const chosenCategory = selectedCategory || formData.vendorType || selectedCategoryRef.current;
       // Transform categoryDocs to array
       const categoryDocuments = Object.entries(formData.categoryDocs)
         .filter(([_, doc]) => doc.docUrl || doc.docNumber)
@@ -388,9 +403,9 @@ export default function AddBusinessModal({
         }));
 
       const payload = {
-        businessName: formData.businessName.trim() || formData.vendorType,
-        vendorType: formData.vendorType,
-        category: formData.vendorType,
+        businessName: formData.businessName.trim() || chosenCategory,
+        vendorType: chosenCategory,
+        category: chosenCategory,
         doorNo: formData.doorNo.trim(),
         village: formData.village.trim(),
         taluk: formData.taluk.trim(),
@@ -616,7 +631,7 @@ export default function AddBusinessModal({
                       const isRegistered = isCategoryRegistered(type);
                       const rawStatus = isRegistered ? getCategoryStatus(type) : null;
                       const regStatus = isRegistered ? getRegisteredStatusLabel(rawStatus) : null;
-                      const effectiveSelected = formData.vendorType || selectedCategoryRef.current;
+                      const effectiveSelected = selectedCategory || formData.vendorType || selectedCategoryRef.current;
                       const isSelected = Boolean(
                         effectiveSelected && (
                           effectiveSelected.toLowerCase() === type.toLowerCase() ||
@@ -1059,8 +1074,8 @@ export default function AddBusinessModal({
                     Summary of Submitted Information
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-slate-600 dark:text-slate-300">
-                    <div><span className="font-semibold text-slate-400">Category:</span> {formData.vendorType}</div>
-                    <div><span className="font-semibold text-slate-400">Outlet Name:</span> {formData.businessName || formData.vendorType}</div>
+                    <div><span className="font-semibold text-slate-400">Category:</span> {selectedCategory || formData.vendorType || selectedCategoryRef.current}</div>
+                    <div><span className="font-semibold text-slate-400">Outlet Name:</span> {formData.businessName || selectedCategory || formData.vendorType}</div>
                     <div><span className="font-semibold text-slate-400">Pincode:</span> {formData.pincode}</div>
                     <div><span className="font-semibold text-slate-400">Taluk / District:</span> {formData.taluk}, {formData.district}</div>
                     <div><span className="font-semibold text-slate-400">PAN Number:</span> {formData.panNo}</div>

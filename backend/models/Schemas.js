@@ -341,6 +341,14 @@ const OrderSchema = new mongoose.Schema({
   bookingDate: { type: String },
   bookingTime: { type: String },
 
+  // Guest / Customer demographic fields
+  gender: { type: String },
+  age: { type: mongoose.Schema.Types.Mixed },
+  guestDetails: [{ type: mongoose.Schema.Types.Mixed }],
+  guestList: [{ type: mongoose.Schema.Types.Mixed }],
+  resolvedGuestList: [{ type: mongoose.Schema.Types.Mixed }],
+  bookingHolder: { type: mongoose.Schema.Types.Mixed },
+
   // Stock tracking
   stockReduced: { type: Boolean, default: false }
 }, { timestamps: true, strict: false });

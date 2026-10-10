@@ -433,7 +433,10 @@ export const DashboardProvider = ({ children }) => {
     appointmentTimeSlot: '1',
     roomNumber: '',
     finalAmount: '',
-    status: 'Accepted'
+    status: 'Accepted',
+    gender: '',
+    age: '',
+    additionalGuests: []
   });
   const [loadingAddBooking, setLoadingAddBooking] = useState(false);
   const [calendarSelectedDate, setCalendarSelectedDate] = useState(new Date().toISOString().split('T')[0]);

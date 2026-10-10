@@ -48,7 +48,11 @@ app.use(
           "data:",
           "blob:", // Used for local preview of images/files before upload
           "https://res.cloudinary.com",
-          "https://*.cloudinary.com"
+          "https://*.cloudinary.com",
+          "https://vendor.ficapp.in",
+          "https://*.ficapp.in",
+          "https://connect-vendor.onrender.com",
+          "https://*.onrender.com"
         ],
         connectSrc: [
           "'self'",
@@ -60,6 +64,8 @@ app.use(
           "https://127.0.0.1:*",
           "ws://127.0.0.1:*",
           "wss://127.0.0.1:*",
+          "https://vendor.ficapp.in",
+          "https://*.ficapp.in",
           "https://connect-vendor.vercel.app",
           "https://*.vercel.app",
           "https://connect-vendor.onrender.com",
@@ -112,6 +118,8 @@ app.use(
 
 // ─── CORS CONFIGURATION (EXPLICIT ALLOWLIST) ──────────────────────────────────
 const allowedOrigins = [
+  'https://vendor.ficapp.in',
+  'http://vendor.ficapp.in',
   'https://connect-vendor.vercel.app',
   'https://connect-admin-96pc.onrender.com',
   'http://localhost:5173',
@@ -144,8 +152,9 @@ const corsOptions = {
 
     const isExplicitlyAllowed = allowedOrigins.includes(origin);
     const isVercelPreview = /^https:\/\/connect-vendor([a-z0-9-]*)\.vercel\.app$/.test(origin);
+    const isFicappDomain = /^https?:\/\/([a-z0-9-]+\.)*ficapp\.in(:[0-9]+)?$/.test(origin);
 
-    if (isExplicitlyAllowed || isVercelPreview) {
+    if (isExplicitlyAllowed || isVercelPreview || isFicappDomain) {
       return callback(null, true);
     }
 
@@ -190,9 +199,18 @@ if (!fs.existsSync(resumesDir)) {
   fs.mkdirSync(resumesDir, { recursive: true });
 }
 
-// Serve uploaded files statically
-app.use('/uploads/resumes', express.static(resumesDir));
-app.use('/uploads', express.static(uploadsDir));
+// Serve uploaded files statically with cross-origin headers
+app.use('/uploads/resumes', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(resumesDir));
+
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(uploadsDir));
 
 // Smart fallback handler for candidate resumes if static file is missing from ephemeral disk
 app.get('/uploads/resumes/:filename', async (req, res, next) => {

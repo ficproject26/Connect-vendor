@@ -108,6 +108,10 @@ const sanitizeResponseUrls = (val, backendUrl) => {
     if (val.includes('trycloudflare.com')) {
       return val.replace(/^https?:\/\/[^/]+/, backendUrl || '');
     }
+    if (val.includes('vendor.ficapp.in/uploads/')) {
+      const activeB = (backendUrl && backendUrl.startsWith('http')) ? backendUrl : 'https://connect-vendor.onrender.com';
+      return val.replace(/^https?:\/\/vendor\.ficapp\.in/, activeB);
+    }
     return val;
   }
   if (Array.isArray(val)) {
@@ -270,16 +274,12 @@ export const formatImageUrl = (url) => {
   let clean = url.trim();
   if (!clean || clean.toLowerCase().startsWith('preview')) return '';
 
-  if (clean.startsWith('data:')) {
+  if (clean.startsWith('data:') || clean.startsWith('blob:')) {
     return clean;
   }
-  if (clean.startsWith('blob:')) {
-    try {
-      if (typeof window !== 'undefined' && clean.includes(window.location.host)) {
-        return clean;
-      }
-    } catch (e) {}
-    return '';
+
+  if (clean.includes('res.cloudinary.com')) {
+    return clean;
   }
 
   let backend = getBackendUrl();
@@ -288,6 +288,12 @@ export const formatImageUrl = (url) => {
   }
   if (backend.endsWith('/api')) {
     backend = backend.substring(0, backend.length - 4);
+  }
+
+  // If URL contains /uploads/, guarantee it resolves to backend server
+  if (clean.includes('/uploads/')) {
+    const uploadPath = clean.substring(clean.indexOf('/uploads/'));
+    return `${backend}${uploadPath}`;
   }
 
   // If already an absolute HTTP/HTTPS URL

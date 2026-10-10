@@ -7,7 +7,7 @@ const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES } = require('../realtime
 const createAppointment = async (req, res) => {
   try {
     const vendorId = req.user._id;
-    const { memberName, memberId, productId, appointmentDate, appointmentTimeSlot, finalAmount, status } = req.body;
+    const { memberName, memberId, productId, appointmentDate, appointmentTimeSlot, finalAmount, status, gender, age } = req.body;
 
     if (!memberName || !productId || !appointmentDate || !appointmentTimeSlot) {
       return res.status(400).json({ success: false, message: 'Patient name, doctor, date, and time slot are required' });
@@ -59,6 +59,15 @@ const createAppointment = async (req, res) => {
       status: status || 'Accepted',
       appointmentDate,
       appointmentTimeSlot,
+      gender: gender || null,
+      age: age || null,
+      bookingHolder: {
+        name: memberName,
+        phone: memberId && !memberId.includes('@') ? memberId : '',
+        email: memberId && memberId.includes('@') ? memberId : '',
+        gender: gender || null,
+        age: age || null
+      },
       doctorName: product.name
     };
 
@@ -109,7 +118,21 @@ const createAppointment = async (req, res) => {
 const createBooking = async (req, res) => {
   try {
     const vendorId = req.user._id;
-    const { memberName, memberId, productId, appointmentDate, appointmentTimeSlot, roomNumber, finalAmount, status } = req.body;
+    const { 
+      memberName, 
+      memberId, 
+      productId, 
+      appointmentDate, 
+      appointmentTimeSlot, 
+      roomNumber, 
+      finalAmount, 
+      status,
+      gender,
+      age,
+      guestDetails,
+      guestList,
+      additionalGuests
+    } = req.body;
 
     if (!memberName || !productId || !appointmentDate) {
       return res.status(400).json({ success: false, message: 'Guest name, room, and check-in date are required' });
@@ -123,6 +146,63 @@ const createBooking = async (req, res) => {
 
     const price = finalAmount !== undefined && finalAmount !== '' ? Number(finalAmount) : product.price;
     const guestId = memberId || `WALKIN-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // Build structured guest list associating each guest with their own name, age, and gender
+    let formattedGuestList = [];
+    if (Array.isArray(guestDetails) && guestDetails.length > 0) {
+      formattedGuestList = guestDetails.map((g, idx) => ({
+        guestNumber: idx + 1,
+        isPrimary: idx === 0,
+        name: g.name || g.fullName || (idx === 0 ? memberName : `Guest ${idx + 1}`),
+        fullName: g.fullName || g.name || (idx === 0 ? memberName : `Guest ${idx + 1}`),
+        gender: g.gender || (idx === 0 ? (gender || null) : null),
+        age: g.age || (idx === 0 ? (age || null) : null),
+        phone: g.phone || g.phoneNumber || (idx === 0 ? (memberId && !memberId.includes('@') ? memberId : '') : ''),
+        role: idx === 0 ? 'Primary / Booking Holder' : 'Additional Guest'
+      }));
+    } else if (Array.isArray(guestList) && guestList.length > 0) {
+      formattedGuestList = guestList.map((g, idx) => ({
+        guestNumber: idx + 1,
+        isPrimary: idx === 0,
+        name: g.name || g.fullName || (idx === 0 ? memberName : `Guest ${idx + 1}`),
+        fullName: g.fullName || g.name || (idx === 0 ? memberName : `Guest ${idx + 1}`),
+        gender: g.gender || (idx === 0 ? (gender || null) : null),
+        age: g.age || (idx === 0 ? (age || null) : null),
+        phone: g.phone || g.phoneNumber || (idx === 0 ? (memberId && !memberId.includes('@') ? memberId : '') : ''),
+        role: idx === 0 ? 'Primary / Booking Holder' : 'Additional Guest'
+      }));
+    } else {
+      // Primary guest
+      formattedGuestList.push({
+        guestNumber: 1,
+        isPrimary: true,
+        name: memberName,
+        fullName: memberName,
+        gender: gender || null,
+        age: age || null,
+        phone: memberId && !memberId.includes('@') ? memberId : '',
+        role: 'Primary / Booking Holder'
+      });
+      // Append any additional guests if provided
+      if (Array.isArray(additionalGuests) && additionalGuests.length > 0) {
+        additionalGuests.forEach((ag, idx) => {
+          if (ag && (ag.name || ag.gender || ag.age)) {
+            formattedGuestList.push({
+              guestNumber: idx + 2,
+              isPrimary: false,
+              name: ag.name || `Guest ${idx + 2}`,
+              fullName: ag.name || `Guest ${idx + 2}`,
+              gender: ag.gender || null,
+              age: ag.age || null,
+              phone: ag.phone || '',
+              role: 'Additional Guest'
+            });
+          }
+        });
+      }
+    }
+
+    const primaryGuest = formattedGuestList[0] || {};
 
     const orderData = {
       vendorId,
@@ -141,7 +221,20 @@ const createBooking = async (req, res) => {
       status: status || 'Accepted',
       appointmentDate,
       appointmentTimeSlot: appointmentTimeSlot || '1', // nights
-      roomNumber: roomNumber || ''
+      roomNumber: roomNumber || '',
+      gender: gender || primaryGuest.gender || null,
+      age: age || primaryGuest.age || null,
+      guestDetails: formattedGuestList,
+      guestList: formattedGuestList,
+      resolvedGuestList: formattedGuestList,
+      guests: formattedGuestList.length,
+      bookingHolder: {
+        name: memberName,
+        phone: memberId && !memberId.includes('@') ? memberId : '',
+        email: memberId && memberId.includes('@') ? memberId : '',
+        gender: gender || primaryGuest.gender || null,
+        age: age || primaryGuest.age || null
+      }
     };
 
     const booking = await Order.create(orderData);

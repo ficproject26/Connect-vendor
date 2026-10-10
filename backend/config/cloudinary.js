@@ -15,7 +15,7 @@ const uploadToCloudinary = async (fileBuffer, folder = 'connect_uploads', filena
       const cloudinaryUrl = await new Promise((resolve) => {
         let resolved = false;
         const uploadStream = cloudinary.uploader.upload_stream(
-          { folder, timeout: 5000 },
+          { folder, timeout: 60000 },
           (error, result) => {
             if (resolved) return;
             resolved = true;

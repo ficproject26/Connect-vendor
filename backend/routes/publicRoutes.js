@@ -549,6 +549,8 @@ router.post('/orders', async (req, res) => {
       customer_address: req.body.customer_address || req.body.address || req.body.deliveryAddress,
       deliveryAddress: req.body.deliveryAddress || req.body.customer_address || req.body.address,
       customer_phone: req.body.customer_phone || req.body.phone,
+      gender: req.body.gender || req.body.customer_gender || (Array.isArray(req.body.guestList) && req.body.guestList[0]?.gender) || null,
+      age: req.body.age || req.body.customer_age || (Array.isArray(req.body.guestList) && req.body.guestList[0]?.age) || null,
       // Stay specific fields
       checkInDate: req.body.checkInDate || req.body.check_in_date || appointmentDate,
       checkInTime: req.body.checkInTime || req.body.check_in_time,
