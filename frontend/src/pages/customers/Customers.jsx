@@ -108,7 +108,7 @@ const Customers = () => {
                       <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
                         <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
                           <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Visits</span>
-                          <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">{c.ordersCount || 0} times</span>
+                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400" title="Visit tracking unavailable">Unavailable</span>
                         </div>
                         <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
                           <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">

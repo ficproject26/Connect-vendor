@@ -8,6 +8,35 @@ import {
   ExternalLink, Layers, Building2, Store, Briefcase, Utensils, Hotel, Truck, HeartHandshake
 } from 'lucide-react';
 import wsClient from '../../realtime/wsClient';
+import { formatImageUrl } from '../../services/apiSetup';
+
+// Professional Business Logo Avatar with verified URL formatting and First-Letter Fallback
+const BusinessLogoAvatar = ({ logo, businessName }) => {
+  const [hasError, setHasError] = useState(false);
+  const trimmedName = (businessName || '').trim();
+  const initial = trimmedName ? trimmedName.charAt(0).toUpperCase() : 'B';
+  const formattedUrl = logo ? formatImageUrl(logo) : '';
+
+  if (!formattedUrl || hasError) {
+    return (
+      <div 
+        className="w-full h-full rounded-2xl bg-gradient-to-br from-[#0b3c7b]/10 to-[#faed26]/20 dark:from-slate-800 dark:to-yellow-400/20 text-[#0b3c7b] dark:text-yellow-400 font-black text-xl flex items-center justify-center select-none shadow-inner"
+        title={trimmedName || 'Business'}
+      >
+        {initial}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={formattedUrl}
+      alt={trimmedName || 'Business'}
+      onError={() => setHasError(true)}
+      className="w-full h-full object-cover rounded-2xl"
+    />
+  );
+};
 
 // Helper to dynamically load official Razorpay script
 const loadRazorpayScript = () => {
@@ -569,12 +598,8 @@ const SubscriptionManagementContent = ({ user: propUser, setMessage: propSetMess
                     {/* Header: Icon, Name & Status Badge */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-800/60 flex items-center justify-center text-[#0b3c7b] dark:text-yellow-400 border border-slate-200/60 dark:border-slate-700/60 shrink-0">
-                          {biz.logo ? (
-                            <img src={biz.logo} alt={biz.businessName} className="w-full h-full object-cover rounded-2xl" />
-                          ) : (
-                            <BizIcon size={22} />
-                          )}
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-800/60 flex items-center justify-center text-[#0b3c7b] dark:text-yellow-400 border border-slate-200/60 dark:border-slate-700/60 shrink-0 overflow-hidden">
+                          <BusinessLogoAvatar logo={biz.logo} businessName={biz.businessName} />
                         </div>
                         <div>
                           <h3 className="font-bold text-slate-900 dark:text-white text-base leading-tight">

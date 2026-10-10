@@ -1,13 +1,12 @@
 
 const formatCustomerId = (c, customersList = null) => {
-  if (!c) return 'FIC-CUST-100001';
+  if (!c) return 'N/A';
   if (typeof c === 'object') {
-    if (c.customerDisplayId && String(c.customerDisplayId).startsWith('FIC-CUST-')) return String(c.customerDisplayId);
-    if (c.customerId && String(c.customerId).startsWith('FIC-CUST-')) return String(c.customerId);
-    if (c.registrationId && String(c.registrationId).startsWith('FIC-CUST-')) return String(c.registrationId);
-    if (c.memberId && String(c.memberId).startsWith('FIC-CUST-')) return String(c.memberId);
-    if (c.id && String(c.id).startsWith('FIC-CUST-')) return String(c.id);
-    if (c._id && String(c._id).startsWith('FIC-CUST-')) return String(c._id);
+    if (c.customerDisplayId && String(c.customerDisplayId).startsWith('FIC-CUST-') && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
+    if (c.customerId && String(c.customerId).startsWith('FIC-CUST-') && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
+    if (c.registrationId && String(c.registrationId).startsWith('FIC-CUST-') && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
+    if (c.registrationId && String(c.registrationId).startsWith('REG-')) return String(c.registrationId);
+    if (c.memberId && String(c.memberId).startsWith('FIC-CUST-') && String(c.memberId) !== 'FIC-CUST-100001') return String(c.memberId);
 
     const list = Array.isArray(customersList) ? customersList : [];
     const oPhone = (c.customer_phone || c.phone || c.mobileNumber || c.candidatePhone || '').toString().trim().replace(/[^0-9]/g, '');
@@ -26,19 +25,22 @@ const formatCustomerId = (c, customersList = null) => {
         return false;
       });
       if (match) {
-        const mId = match.customerId || match.registrationId || match.customerDisplayId || match.id;
-        if (mId && String(mId).startsWith('FIC-CUST-')) return String(mId);
+        const mId = match.customerId || match.customerDisplayId || match.registrationId || match.userRegistrationId || match.memberId || match.id;
+        if (mId && String(mId) !== 'FIC-CUST-100001') return String(mId);
       }
     }
 
-    if (oName === 'swetha' || oName === 'swethaj') return 'FIC-CUST-774974';
-    if (oName === 'sri' || oName === 'sribhavanim') return 'FIC-CUST-214155';
-    if (oName === 'connectmember') return 'FIC-CUST-462259';
+    if (c.registrationId && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
+    if (c.customerDisplayId && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
+    if (c.customerId && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
+    if (c.memberId && String(c.memberId) !== 'FIC-CUST-100001' && !c.memberId.includes('@')) return String(c.memberId);
+    if (c.id && String(c.id) !== 'FIC-CUST-100001') return String(c.id);
   }
 
   const rawId = String(c).trim();
-  if (rawId.startsWith('FIC-CUST-')) return rawId;
-  return 'FIC-CUST-100001';
+  if (rawId.startsWith('FIC-CUST-') && rawId !== 'FIC-CUST-100001') return rawId;
+  if (rawId.startsWith('REG-')) return rawId;
+  return 'N/A';
 };
 import React from 'react';
 import { useDashboard } from '../../context/DashboardContext';
@@ -213,8 +215,38 @@ const Orders = () => {
     handleStatusChange,
     handlePartnerImageUpload,
     fetchDashboardData,
-    getAxiosConfig
   } = useDashboard();
+
+  const getCustomerDisplayId = (order) => {
+    if (!order) return 'N/A';
+    if (order.customerDisplayId && String(order.customerDisplayId).startsWith('FIC-CUST-') && String(order.customerDisplayId) !== 'FIC-CUST-100001') return String(order.customerDisplayId);
+    if (order.customerId && String(order.customerId).startsWith('FIC-CUST-') && String(order.customerId) !== 'FIC-CUST-100001') return String(order.customerId);
+    if (order.registrationId && String(order.registrationId).startsWith('REG-')) return String(order.registrationId);
+    if (order.memberId && String(order.memberId).startsWith('FIC-CUST-') && String(order.memberId) !== 'FIC-CUST-100001') return String(order.memberId);
+
+    const oNameClean = (order.memberName || order.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const oEmailClean = (order.candidateEmail || order.customer_email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
+    const oPhoneClean = (order.customer_phone || order.phone || '').toString().trim().replace(/[^0-9]/g, '');
+
+    if (customers && Array.isArray(customers) && customers.length > 0) {
+      const cust = customers.find(c => {
+        if (!c) return false;
+        const cPhone = (c.phone || c.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
+        const cNameClean = (c.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cEmailClean = (c.email || '').trim().toLowerCase();
+        if (oPhoneClean && cPhone && (oPhoneClean.endsWith(cPhone) || cPhone.endsWith(oPhoneClean))) return true;
+        if (oEmailClean && cEmailClean && oEmailClean === cEmailClean && oEmailClean.includes('@')) return true;
+        if (oNameClean && cNameClean && oNameClean === cNameClean && oNameClean !== 'customer') return true;
+        return false;
+      });
+
+      if (cust) {
+        return formatCustomerId(cust, customers);
+      }
+    }
+
+    return formatCustomerId(order, customers);
+  };
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -320,46 +352,73 @@ const Orders = () => {
 
                     const filteredOrders = orders.filter(order => {
                       const matchesBusiness = !savedActiveId || order.vendorId === savedActiveId || order.vendor_id === savedActiveId || userBizIds.includes(order.vendorId) || userBizIds.includes(order.vendor_id);
-                      const matchesStatus = orderStatusFilter === 'All' || order.status === orderStatusFilter;
-                      const matchesSearch = (order.memberName || order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) || 
-                                            (order.memberId || order.id || '').toLowerCase().includes(orderSearchQuery.toLowerCase());
+                      const matchesStatus = orderStatusFilter === 'All' || order.status === orderStatusFilter || (orderStatusFilter === 'Pending' && ['Pending', 'Order Received'].includes(order.status));
+                      
+                      let matchesSearch = true;
+                      if (orderSearchQuery && orderSearchQuery.trim() !== '') {
+                        const q = orderSearchQuery.toLowerCase().trim();
+                        const cName = (order.memberName || order.customer_name || '').toLowerCase();
+                        const cEmail = (order.customer_email || order.candidateEmail || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').toLowerCase();
+                        const cId = (order.customerDisplayId || order.customerId || order.memberId || getCustomerDisplayId(order) || '').toLowerCase();
+                        const oId = (order.order_number || order.id || order._id || '').toLowerCase();
+                        const itemMatch = (order.product_details || '').toLowerCase().includes(q) ||
+                          (Array.isArray(order.items) && order.items.some(it => (it.name || it.productName || '').toLowerCase().includes(q)));
+                        matchesSearch = cName.includes(q) || cEmail.includes(q) || cId.includes(q) || oId.includes(q) || itemMatch;
+                      }
+
                       const orderVType = getOrderVendorType(order);
                       const matchesVType = orderVendorTypeFilter === 'All' || orderVType === orderVendorTypeFilter;
                       
                       let matchesTime = true;
                       if (orderTimeFilter !== 'All') {
                         const rawDateStr = order.createdAt || order.created_at || order.appointmentDate || order.orderDate || order.date;
-                        if (!rawDateStr) {
+                        let orderDateObj = null;
+                        if (rawDateStr) {
+                          const d = new Date(rawDateStr);
+                          if (!isNaN(d.getTime())) orderDateObj = d;
+                        }
+                        if (!orderDateObj && order._id) {
+                          const idStr = String(order._id);
+                          if (/^[0-9a-fA-F]{24}$/.test(idStr)) {
+                            const ts = parseInt(idStr.substring(0, 8), 16) * 1000;
+                            const d = new Date(ts);
+                            if (!isNaN(d.getTime())) orderDateObj = d;
+                          }
+                        }
+
+                        if (!orderDateObj) {
                           matchesTime = false;
                         } else {
-                          const orderDateObj = new Date(rawDateStr);
-                          if (isNaN(orderDateObj.getTime())) {
-                            matchesTime = false;
-                          } else {
-                            const orderTime = orderDateObj.getTime();
-                            const now = new Date();
-                            const nowTime = now.getTime();
-                            
-                            if (orderTimeFilter === 'Today') {
-                              matchesTime = orderDateObj.toDateString() === now.toDateString();
-                            } else if (orderTimeFilter === 'Yesterday') {
-                              const yesterday = new Date();
-                              yesterday.setDate(yesterday.getDate() - 1);
-                              matchesTime = orderDateObj.toDateString() === yesterday.toDateString();
-                            } else if (orderTimeFilter === 'LastWeek') {
-                              matchesTime = (nowTime - orderTime) <= 7 * 24 * 60 * 60 * 1000;
-                            } else if (orderTimeFilter === 'LastMonth') {
-                              const curYear = now.getFullYear();
-                              const curMonth = now.getMonth();
-                              const targetMonth = curMonth === 0 ? 11 : curMonth - 1;
-                              const targetYear = curMonth === 0 ? curYear - 1 : curYear;
-                              matchesTime = orderDateObj.getFullYear() === targetYear && orderDateObj.getMonth() === targetMonth;
-                            } else if (orderTimeFilter === 'Last30Days') {
-                              matchesTime = (nowTime - orderTime) <= 30 * 24 * 60 * 60 * 1000;
-                            } else if (orderTimeFilter === 'LastYear') {
-                              const targetYear = now.getFullYear() - 1;
-                              matchesTime = orderDateObj.getFullYear() === targetYear;
-                            }
+                          const orderTime = orderDateObj.getTime();
+                          const now = new Date();
+                          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                          const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+                          const startOfYesterday = new Date(startOfToday);
+                          startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+                          const endOfYesterday = new Date(startOfToday.getTime() - 1);
+
+                          if (orderTimeFilter === 'Today') {
+                            matchesTime = orderTime >= startOfToday.getTime() && orderTime <= endOfToday.getTime();
+                          } else if (orderTimeFilter === 'Yesterday') {
+                            matchesTime = orderTime >= startOfYesterday.getTime() && orderTime <= endOfYesterday.getTime();
+                          } else if (orderTimeFilter === 'LastWeek') {
+                            const weekAgo = new Date(startOfToday);
+                            weekAgo.setDate(weekAgo.getDate() - 7);
+                            matchesTime = orderTime >= weekAgo.getTime() && orderTime <= endOfToday.getTime();
+                          } else if (orderTimeFilter === 'LastMonth') {
+                            const curYear = now.getFullYear();
+                            const curMonth = now.getMonth();
+                            const targetMonth = curMonth === 0 ? 11 : curMonth - 1;
+                            const targetYear = curMonth === 0 ? curYear - 1 : curYear;
+                            matchesTime = orderDateObj.getFullYear() === targetYear && orderDateObj.getMonth() === targetMonth;
+                          } else if (orderTimeFilter === 'Last30Days') {
+                            const thirtyDaysAgo = new Date(startOfToday);
+                            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                            matchesTime = orderTime >= thirtyDaysAgo.getTime() && orderTime <= endOfToday.getTime();
+                          } else if (orderTimeFilter === 'LastYear') {
+                            const targetYear = now.getFullYear() - 1;
+                            matchesTime = orderDateObj.getFullYear() === targetYear;
                           }
                         }
                       }
@@ -471,7 +530,7 @@ const Orders = () => {
                                       {/* Customer Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                         <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {order.customerDisplayId || formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
+                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {getCustomerDisplayId(order)}</div>
                                         <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">Order ID: #{order.order_number || order.id || order._id}</div>
                                       </td>
                                       {/* Service Type */}
@@ -527,7 +586,7 @@ const Orders = () => {
                                       {/* Customer Name */}
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                          <div>{order.memberName || order.customer_name || 'N/A'}</div>
-                                         <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {order.customerDisplayId || formatCustomerId(order.memberId || order.customerId || order.id || order._id || order.customer_name)}</div>
+                                         <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {getCustomerDisplayId(order)}</div>
                                       </td>
                                       {/* Address */}
                                       <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">

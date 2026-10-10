@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const { Product, User, Order, Category, Customer } = require('../models/Schemas');
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
+const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES } = require('../realtime/realtimeManager');
 
 const router = express.Router();
 
@@ -450,7 +451,7 @@ router.post('/orders', async (req, res) => {
 
     // Resolve canonical Customer ID from database (Customer / User)
     let resolvedCustId = customerDisplayId || req.body.customerId;
-    if (!resolvedCustId || !String(resolvedCustId).startsWith('FIC-CUST-')) {
+    if (!resolvedCustId || !String(resolvedCustId).startsWith('FIC-CUST-') || resolvedCustId === 'FIC-CUST-100001') {
       const matchConditions = [];
       const cleanPhone = (req.body.customer_phone || req.body.candidatePhone || req.body.phone || '').toString().replace(/[^0-9]/g, '');
       if (cleanPhone && cleanPhone.length >= 10) {
@@ -465,18 +466,21 @@ router.post('/orders', async (req, res) => {
         matchConditions.push({ name: new RegExp('^' + rawName + '$', 'i') });
       }
       if (matchConditions.length > 0) {
-        const foundCust = await Customer.findOne({ $or: matchConditions });
+        let foundCust = await Customer.findOne({ $or: matchConditions }).lean();
+        if (!foundCust) {
+          foundCust = await User.findOne({ $or: matchConditions }).lean();
+        }
         if (foundCust) {
-          resolvedCustId = foundCust.customerId || foundCust.registrationId;
+          resolvedCustId = foundCust.customerId || foundCust.registrationId || (String(foundCust._id).startsWith('FIC-CUST-') ? String(foundCust._id) : null);
         }
       }
     }
-    if (!resolvedCustId || !String(resolvedCustId).startsWith('FIC-CUST-')) {
+    if (!resolvedCustId || !String(resolvedCustId).startsWith('FIC-CUST-') || resolvedCustId === 'FIC-CUST-100001') {
       const nLower = (req.body.candidateName || memberName || req.body.customer_name || '').trim().toLowerCase();
       if (nLower === 'swetha' || nLower === 'swetha j') resolvedCustId = 'FIC-CUST-774974';
       else if (nLower === 'sri' || nLower === 'sri bhavani m') resolvedCustId = 'FIC-CUST-214155';
       else if (nLower === 'connect member') resolvedCustId = 'FIC-CUST-462259';
-      else resolvedCustId = 'FIC-CUST-100001';
+      else resolvedCustId = (memberId && memberId !== 'cust_dhanush' && !memberId.startsWith('FIC-CUST-100001')) ? memberId : (customerDisplayId || req.body.customerId || undefined);
     }
 
     // Normalize payment method label for vendor display
@@ -501,29 +505,36 @@ router.post('/orders', async (req, res) => {
     const resolvedTxnId = transactionId || req.body.paymentId || razorpayPaymentId || (!isCod ? ('TXN_' + appId) : undefined);
     const resolvedPaidAt = resolvedPaymentStatus === 'Paid' ? (paidAt || new Date()) : undefined;
 
+    const isBooking = ['Booking', 'Appointment', 'Stay', 'Travel', 'Services'].includes(orderType);
+    const initialStatus = isJob
+      ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : 'APPLICATION RECEIVED')
+      : (isBooking ? (req.body.status || 'Booking Received') : (req.body.status || 'Order Received'));
+
     const orderData = {
       id: appId,
       order_number: appId,
-      applicationId: appId,
-      jobId: req.body.jobId || (items && items[0]?.productId) || req.body.productId,
-      jobTitle: req.body.jobTitle || (items && items[0]?.name) || req.body.product_details,
       vendorId,
       memberId: memberId || 'cust_dhanush',
-      memberName: req.body.candidateName || memberName || req.body.customer_name || 'Candidate',
-      candidateName: req.body.candidateName || memberName || req.body.customer_name || 'Candidate',
+      memberName: req.body.candidateName || memberName || req.body.customer_name || 'Customer',
       type: orderType,
       items: items || [],
       totalAmount: totalAmount ?? finalAmount,
       discountApplied: discountApplied || 0,
       finalAmount: finalAmount,
-      status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : 'APPLICATION RECEIVED') : (req.body.status || 'Order Received'),
-      candidateEmail: candidateEmail || req.body.customer_email,
-      candidatePhone: req.body.customer_phone || req.body.candidatePhone || req.body.phone,
-      candidateResume,
-      experience: experience || 'Fresher',
-      candidateEducation: candidateEducation || 'Graduate',
-      jobLocation: req.body.jobLocation || req.body.candidateLocation || req.body.customer_address,
-      applicationDate: req.body.applicationDate || req.body.created_at || new Date().toISOString(),
+      status: initialStatus,
+      ...(isJob ? {
+        applicationId: appId,
+        jobId: req.body.jobId || (items && items[0]?.productId) || req.body.productId,
+        jobTitle: req.body.jobTitle || (items && items[0]?.name) || req.body.product_details,
+        candidateName: req.body.candidateName || memberName || req.body.customer_name || 'Candidate',
+        candidateEmail: candidateEmail || req.body.customer_email,
+        candidatePhone: req.body.customer_phone || req.body.candidatePhone || req.body.phone,
+        candidateResume,
+        experience: experience || 'Fresher',
+        candidateEducation: candidateEducation || 'Graduate',
+        jobLocation: req.body.jobLocation || req.body.candidateLocation || req.body.customer_address,
+        applicationDate: req.body.applicationDate || req.body.created_at || new Date().toISOString()
+      } : {}),
       appointmentDate,
       appointmentTimeSlot,
       doctorName,
@@ -632,25 +643,27 @@ router.post('/orders', async (req, res) => {
         { _id: existing._id },
         {
           $set: {
-            applicationId: appId || existing.applicationId || existing.order_number || existing.id,
-            jobId: req.body.jobId || (items && items[0]?.productId) || existing.jobId,
-            jobTitle: req.body.jobTitle || (items && items[0]?.name) || existing.jobTitle || existing.product_details,
             vendorId: vendorId || existing.vendorId,
             memberId: memberId || existing.memberId,
             memberName: req.body.candidateName || memberName || existing.memberName,
-            candidateName: req.body.candidateName || memberName || existing.candidateName || existing.memberName,
-            candidateEmail: candidateEmail || req.body.customer_email || existing.candidateEmail,
-            candidatePhone: req.body.customer_phone || req.body.candidatePhone || existing.candidatePhone,
-            candidateResume: candidateResume || existing.candidateResume,
-            experience: experience || existing.experience,
-            candidateEducation: candidateEducation || existing.candidateEducation,
-            jobLocation: req.body.jobLocation || req.body.candidateLocation || existing.jobLocation,
-            applicationDate: req.body.applicationDate || existing.applicationDate || existing.createdAt || existing.created_at,
+            ...(isJob ? {
+              applicationId: appId || existing.applicationId || existing.order_number || existing.id,
+              jobId: req.body.jobId || (items && items[0]?.productId) || existing.jobId,
+              jobTitle: req.body.jobTitle || (items && items[0]?.name) || existing.jobTitle || existing.product_details,
+              candidateName: req.body.candidateName || memberName || existing.candidateName || existing.memberName,
+              candidateEmail: candidateEmail || req.body.customer_email || existing.candidateEmail,
+              candidatePhone: req.body.customer_phone || req.body.candidatePhone || existing.candidatePhone,
+              candidateResume: candidateResume || existing.candidateResume,
+              experience: experience || existing.experience,
+              candidateEducation: candidateEducation || existing.candidateEducation,
+              jobLocation: req.body.jobLocation || req.body.candidateLocation || existing.jobLocation,
+              applicationDate: req.body.applicationDate || existing.applicationDate || existing.createdAt || existing.created_at
+            } : {}),
             items: (items && items.length > 0) ? items : existing.items,
             totalAmount: totalAmount ?? finalAmount,
             finalAmount: finalAmount,
             type: orderType,
-            status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : (existing.status && existing.status !== 'Pending' && existing.status !== 'Order Received' ? existing.status : 'APPLICATION RECEIVED')) : (req.body.status || existing.status || (orderType === 'Stay' ? 'Confirmed' : 'Order Received')),
+            status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : (existing.status && existing.status !== 'Pending' && existing.status !== 'Order Received' ? existing.status : 'APPLICATION RECEIVED')) : (req.body.status || existing.status || (['Booking', 'Appointment', 'Stay', 'Travel', 'Services'].includes(orderType) ? 'Booking Received' : 'Order Received')),
             appointmentDate: appointmentDate || existing.appointmentDate,
             appointmentTimeSlot: appointmentTimeSlot || existing.appointmentTimeSlot,
             doctorName: doctorName || existing.doctorName,
@@ -699,6 +712,20 @@ router.post('/orders', async (req, res) => {
 
     const order = await Order.create(orderData);
     await reduceStockForOrder(order, vendorId);
+
+    // Broadcast Real-time Order Created Event
+    publishRealtimeEvent({
+      event: EVENT_TYPES.ORDER_CREATED,
+      entity: ENTITY_NAMES.ORDER,
+      entityId: order._id ? order._id.toString() : order.id,
+      action: 'created',
+      target: {
+        vendorId: (order.vendorId || order.vendor_id || '').toString(),
+        userId: (order.memberId || order.userId || order.user_id || '').toString(),
+        businessId: (order.businessId || order.primaryBusinessId || '').toString()
+      },
+      data: order
+    }).catch(err => console.warn('[Realtime] Public order create publish warning:', err.message));
     
     res.status(201).json({ success: true, message: 'Order created in vendor dashboard successfully', data: order });
   } catch (error) {

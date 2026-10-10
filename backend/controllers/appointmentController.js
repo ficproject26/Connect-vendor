@@ -1,4 +1,5 @@
 const { Order, Product, Customer } = require('../models/Schemas');
+const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES } = require('../realtime/realtimeManager');
 
 // @desc    Create a manual appointment
 // @route   POST /api/vendor/appointments
@@ -62,6 +63,17 @@ const createAppointment = async (req, res) => {
     };
 
     const appointment = await Order.create(orderData);
+    publishRealtimeEvent({
+      event: EVENT_TYPES.ORDER_CREATED,
+      entity: ENTITY_NAMES.ORDER,
+      entityId: appointment._id ? appointment._id.toString() : appointment.id,
+      action: 'created',
+      target: {
+        vendorId: (appointment.vendorId || appointment.vendor_id || '').toString(),
+        userId: (appointment.memberId || appointment.userId || '').toString()
+      },
+      data: appointment
+    }).catch(err => console.warn('[Realtime] Appointment create publish warning:', err.message));
 
     // Update customer record or create one
     let customer = await Customer.findOne({ vendorId, name: memberName });
@@ -133,6 +145,17 @@ const createBooking = async (req, res) => {
     };
 
     const booking = await Order.create(orderData);
+    publishRealtimeEvent({
+      event: EVENT_TYPES.ORDER_CREATED,
+      entity: ENTITY_NAMES.ORDER,
+      entityId: booking._id ? booking._id.toString() : booking.id,
+      action: 'created',
+      target: {
+        vendorId: (booking.vendorId || booking.vendor_id || '').toString(),
+        userId: (booking.memberId || booking.userId || '').toString()
+      },
+      data: booking
+    }).catch(err => console.warn('[Realtime] Booking create publish warning:', err.message));
 
     // Update customer record or create one
     let customer = await Customer.findOne({ vendorId, name: memberName });
@@ -201,6 +224,17 @@ const createManualOrder = async (req, res) => {
     };
 
     const order = await Order.create(orderData);
+    publishRealtimeEvent({
+      event: EVENT_TYPES.ORDER_CREATED,
+      entity: ENTITY_NAMES.ORDER,
+      entityId: order._id ? order._id.toString() : order.id,
+      action: 'created',
+      target: {
+        vendorId: (order.vendorId || order.vendor_id || '').toString(),
+        userId: (order.memberId || order.userId || '').toString()
+      },
+      data: order
+    }).catch(err => console.warn('[Realtime] Manual order create publish warning:', err.message));
 
     // Reduce product stock count
     if (typeof product.stock === 'number' && product.stock > 0) {

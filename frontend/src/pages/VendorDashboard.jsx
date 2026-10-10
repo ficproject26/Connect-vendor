@@ -8,7 +8,7 @@ import {
   Plus, Edit2, Trash2, MapPin, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
   Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink, Activity, Search,
-  LayoutGrid, List, Camera, Image as ImageIcon, Menu, X, Sparkles
+  LayoutGrid, List, Camera, Image as ImageIcon, Menu, X, Sparkles, AlertCircle
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
@@ -50,14 +50,13 @@ const isValidTimeFormat = (timeStr) => {
 };
 
 const formatCustomerId = (c, customersList = null) => {
-  if (!c) return 'FIC-CUST-100001';
+  if (!c) return 'N/A';
   if (typeof c === 'object') {
-    if (c.customerDisplayId && String(c.customerDisplayId).startsWith('FIC-CUST-')) return String(c.customerDisplayId);
-    if (c.customerId && String(c.customerId).startsWith('FIC-CUST-')) return String(c.customerId);
-    if (c.registrationId && String(c.registrationId).startsWith('FIC-CUST-')) return String(c.registrationId);
-    if (c.memberId && String(c.memberId).startsWith('FIC-CUST-')) return String(c.memberId);
-    if (c.id && String(c.id).startsWith('FIC-CUST-')) return String(c.id);
-    if (c._id && String(c._id).startsWith('FIC-CUST-')) return String(c._id);
+    if (c.customerDisplayId && String(c.customerDisplayId).startsWith('FIC-CUST-') && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
+    if (c.customerId && String(c.customerId).startsWith('FIC-CUST-') && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
+    if (c.registrationId && String(c.registrationId).startsWith('FIC-CUST-') && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
+    if (c.registrationId && String(c.registrationId).startsWith('REG-')) return String(c.registrationId);
+    if (c.memberId && String(c.memberId).startsWith('FIC-CUST-') && String(c.memberId) !== 'FIC-CUST-100001') return String(c.memberId);
 
     // Check against customers list
     const list = Array.isArray(customersList) ? customersList : [];
@@ -77,19 +76,23 @@ const formatCustomerId = (c, customersList = null) => {
         return false;
       });
       if (match) {
-        const mId = match.customerId || match.registrationId || match.customerDisplayId || match.id;
-        if (mId && String(mId).startsWith('FIC-CUST-')) return String(mId);
+        const mId = match.customerId || match.customerDisplayId || match.registrationId || match.userRegistrationId || match.memberId || match.id;
+        if (mId && String(mId) !== 'FIC-CUST-100001') return String(mId);
       }
     }
 
-    if (oName === 'swetha' || oName === 'swethaj') return 'FIC-CUST-774974';
-    if (oName === 'sri' || oName === 'sribhavanim') return 'FIC-CUST-214155';
-    if (oName === 'connectmember') return 'FIC-CUST-462259';
+    // Direct fallback to any identifier on the object other than the placeholder
+    if (c.registrationId && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
+    if (c.customerDisplayId && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
+    if (c.customerId && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
+    if (c.memberId && String(c.memberId) !== 'FIC-CUST-100001' && !c.memberId.includes('@')) return String(c.memberId);
+    if (c.id && String(c.id) !== 'FIC-CUST-100001') return String(c.id);
   }
 
   const rawId = String(c).trim();
-  if (rawId.startsWith('FIC-CUST-')) return rawId;
-  return 'FIC-CUST-100001';
+  if (rawId.startsWith('FIC-CUST-') && rawId !== 'FIC-CUST-100001') return rawId;
+  if (rawId.startsWith('REG-')) return rawId;
+  return 'N/A';
 };
 
 const formatVendorId = (vendorId, index = 0) => {
@@ -208,6 +211,33 @@ const getCustomerAvatarUrl = (customer) => {
     'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80'
   ];
   return avatars[avatarIndex];
+};
+
+export const getRecordClassification = (record) => {
+  if (!record) return 'ORDER';
+  const rawType = String(record.type || '').trim().toUpperCase();
+  const rawCat = String(record.category || '').trim().toUpperCase();
+  const sourceEntity = String(record.sourceEntity || record.recordType || '').trim().toUpperCase();
+
+  // 1. Explicit Job Application check
+  if (sourceEntity === 'APPLICATION' || sourceEntity === 'JOB_APPLICATION') return 'JOB_APPLICATION';
+  if (['JOB', 'JOBS', 'JOB_APPLICATION', 'APPLICATION'].includes(rawType)) return 'JOB_APPLICATION';
+  if (['JOB', 'JOBS'].includes(rawCat) && !rawType) return 'JOB_APPLICATION';
+  if ((record.candidateResume || record.resumeUrl || record.resume) && !['TRAVEL', 'STAY', 'HOTEL', 'SERVICES', 'SERVICE', 'HOSPITAL', 'PRODUCTS', 'PRODUCT', 'FOOD', 'RESTAURANT', 'DAILY NEEDS', 'DAILY_NEEDS'].includes(rawType)) {
+    return 'JOB_APPLICATION';
+  }
+
+  // 2. Booking types
+  const bookingTypes = ['TRAVEL', 'STAY', 'HOTEL', 'SERVICES', 'SERVICE', 'HOSPITAL', 'CLINIC', 'APPOINTMENT'];
+  if (bookingTypes.includes(rawType) || bookingTypes.includes(rawCat) || sourceEntity === 'BOOKING') {
+    return 'BOOKING';
+  }
+  if (record.appointmentDate || record.travelDate || record.checkInDate || record.roomName) {
+    return 'BOOKING';
+  }
+
+  // 3. Default to Order
+  return 'ORDER';
 };
 
 export const getCustomerMetrics = (customer, orders = []) => {
@@ -1332,6 +1362,12 @@ const VendorDashboard = () => {
   const [selectedBillOrder, setSelectedBillOrder] = useState(null);
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
   const [isResumeViewerOpen, setIsResumeViewerOpen] = useState(false);
+  const [resumeBlobUrl, setResumeBlobUrl] = useState(null);
+  const [resumeFileType, setResumeFileType] = useState(null);
+  const [resumeFileName, setResumeFileName] = useState('');
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [resumeError, setResumeError] = useState(null);
+  const [downloadingResumeId, setDownloadingResumeId] = useState(null);
   const [updatingStatusIds, setUpdatingStatusIds] = useState(new Set());
 
   // Sync profile on mount to get latest user categories/businesses from DB
@@ -1350,6 +1386,149 @@ const VendorDashboard = () => {
       syncProfile();
     }
   }, [dispatch, token]);
+
+  // Authenticated resume preview management with cleanup
+  useEffect(() => {
+    let activeBlobUrl = null;
+    let isCancelled = false;
+
+    const loadResume = async () => {
+      if (!isResumeViewerOpen || !selectedBillOrder) {
+        setResumeBlobUrl(null);
+        setResumeFileType(null);
+        setResumeFileName('');
+        setResumeLoading(false);
+        setResumeError(null);
+        return;
+      }
+
+      const rawResume = String(selectedBillOrder.candidateResume || selectedBillOrder.resume || selectedBillOrder.resumeUrl || selectedBillOrder.cv || '').trim();
+      const orderId = selectedBillOrder._id || selectedBillOrder.id || selectedBillOrder.order_number;
+      const fileNameCandidate = rawResume ? rawResume.replace(/\\/g, '/').split('/').pop() : 'Resume.pdf';
+      setResumeFileName(fileNameCandidate);
+
+      if (!rawResume && !orderId) {
+        setResumeError('No resume file has been attached by this candidate.');
+        setResumeFileType('unsupported');
+        return;
+      }
+
+      // External link check
+      if (rawResume.startsWith('http://') || rawResume.startsWith('https://')) {
+        setResumeFileType('external');
+        setResumeBlobUrl(rawResume);
+        setResumeLoading(false);
+        return;
+      }
+
+      setResumeLoading(true);
+      setResumeError(null);
+
+      try {
+        const backendBase = getVendorBackendUrl();
+        const res = await axios.get(`${backendBase}/api/vendor/orders/${orderId}/resume`, {
+          ...getAxiosConfig(),
+          responseType: 'blob'
+        });
+
+        if (isCancelled) return;
+
+        const contentType = res.headers['content-type'] || '';
+        const ext = (fileNameCandidate.split('.').pop() || '').toLowerCase();
+
+        let type = 'other';
+        if (contentType.includes('pdf') || ext === 'pdf') {
+          type = 'pdf';
+        } else if (contentType.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
+          type = 'image';
+        } else if (
+          contentType.includes('word') ||
+          contentType.includes('officedocument') ||
+          ['doc', 'docx'].includes(ext)
+        ) {
+          type = 'word';
+        }
+
+        const blob = new Blob([res.data], { type: contentType || (type === 'pdf' ? 'application/pdf' : 'application/octet-stream') });
+        activeBlobUrl = URL.createObjectURL(blob);
+        setResumeBlobUrl(activeBlobUrl);
+        setResumeFileType(type);
+      } catch (err) {
+        if (isCancelled) return;
+        console.error('Failed to load resume document:', err);
+        const errMsg = err.response?.status === 401 
+          ? 'Not authorized to view this resume. Your session may have expired.'
+          : (err.response?.status === 404
+            ? 'Resume document was not found on the server.'
+            : 'Unable to load resume preview. Please use the download option or try again later.');
+        setResumeError(errMsg);
+        setResumeFileType('error');
+      } finally {
+        if (!isCancelled) {
+          setResumeLoading(false);
+        }
+      }
+    };
+
+    loadResume();
+
+    return () => {
+      isCancelled = true;
+      if (activeBlobUrl) {
+        URL.revokeObjectURL(activeBlobUrl);
+      }
+    };
+  }, [isResumeViewerOpen, selectedBillOrder]);
+
+  const handleDownloadResume = async (app) => {
+    if (!app) return;
+    const orderId = app._id || app.id || app.order_number;
+    const rawResume = String(app.candidateResume || app.resume || app.resumeUrl || app.cv || '').trim();
+    if (!orderId && !rawResume) {
+      alert('No resume document available for this candidate.');
+      return;
+    }
+
+    if (rawResume.startsWith('http://') || rawResume.startsWith('https://')) {
+      window.open(rawResume, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    try {
+      setDownloadingResumeId(String(orderId));
+      const backendBase = getVendorBackendUrl();
+      const res = await axios.get(`${backendBase}/api/vendor/orders/${orderId}/resume?download=true`, {
+        ...getAxiosConfig(),
+        responseType: 'blob'
+      });
+
+      let fileName = 'Candidate_Resume.pdf';
+      const disposition = res.headers['content-disposition'];
+      if (disposition && disposition.includes('filename=')) {
+        const matches = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (matches && matches[1]) {
+          fileName = matches[1].replace(/['"]/g, '').trim();
+        }
+      } else if (rawResume) {
+        fileName = rawResume.replace(/\\/g, '/').split('/').pop() || 'Candidate_Resume.pdf';
+      }
+
+      const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' });
+      const tempUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = tempUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(tempUrl), 1000);
+    } catch (err) {
+      console.error('Failed to download resume:', err);
+      alert('Failed to download candidate resume. Please check your network and session.');
+    } finally {
+      setDownloadingResumeId(null);
+    }
+  };
 
   // Sidebar Controls and UI States
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
@@ -1454,10 +1633,11 @@ const VendorDashboard = () => {
   const [isCustomerDetailsModalOpen, setIsCustomerDetailsModalOpen] = useState(false);
 
   const getCustomerDisplayId = (order) => {
-    if (!order) return 'FIC-CUST-100001';
-    if (order.customerDisplayId && String(order.customerDisplayId).startsWith('FIC-CUST-')) return String(order.customerDisplayId);
-    if (order.customerId && String(order.customerId).startsWith('FIC-CUST-')) return String(order.customerId);
-    if (order.memberId && String(order.memberId).startsWith('FIC-CUST-')) return String(order.memberId);
+    if (!order) return 'N/A';
+    if (order.customerDisplayId && String(order.customerDisplayId).startsWith('FIC-CUST-') && String(order.customerDisplayId) !== 'FIC-CUST-100001') return String(order.customerDisplayId);
+    if (order.customerId && String(order.customerId).startsWith('FIC-CUST-') && String(order.customerId) !== 'FIC-CUST-100001') return String(order.customerId);
+    if (order.registrationId && String(order.registrationId).startsWith('REG-')) return String(order.registrationId);
+    if (order.memberId && String(order.memberId).startsWith('FIC-CUST-') && String(order.memberId) !== 'FIC-CUST-100001') return String(order.memberId);
 
     const oNameClean = (order.memberName || order.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     const oEmailClean = (order.candidateEmail || order.customer_email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
@@ -1469,9 +1649,9 @@ const VendorDashboard = () => {
         const cPhone = (c.phone || c.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
         const cNameClean = (c.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
         const cEmailClean = (c.email || '').trim().toLowerCase();
-        if (oPhoneClean && cPhone && oPhoneClean === cPhone) return true;
-        if (oNameClean && cNameClean && oNameClean === cNameClean && oNameClean !== 'customer') return true;
+        if (oPhoneClean && cPhone && (oPhoneClean.endsWith(cPhone) || cPhone.endsWith(oPhoneClean))) return true;
         if (oEmailClean && cEmailClean && oEmailClean === cEmailClean && oEmailClean.includes('@')) return true;
+        if (oNameClean && cNameClean && oNameClean === cNameClean && oNameClean !== 'customer') return true;
         return false;
       });
 
@@ -1765,69 +1945,82 @@ const VendorDashboard = () => {
   };
 
   const getItemSalesData = (itemId, targetItem = null) => {
-    if (!orders || orders.length === 0) return { count: 0, customersCount: 0, orders: [], revenue: 0 };
+    const allRecords = [
+      ...(Array.isArray(orders) ? orders : []),
+      ...(Array.isArray(bookings) ? bookings : [])
+    ];
     
     let count = 0;
     let revenue = 0;
     const itemOrders = [];
     const uniqueCustomers = new Set();
     
-    const targetIdStr = String(itemId || '').trim();
+    const targetIdStr = String(itemId || (targetItem?._id || targetItem?.id) || '').trim();
     const targetNameClean = targetItem && targetItem.name ? targetItem.name.trim().toLowerCase() : '';
 
-    orders.forEach(order => {
-      if (order.status !== 'Cancelled' && order.status !== 'Rejected') {
-        let isMatch = false;
-        let qty = 1;
-        let price = 0;
+    if (allRecords.length > 0) {
+      allRecords.forEach(order => {
+        if (order.status !== 'Cancelled' && order.status !== 'Rejected') {
+          let isMatch = false;
+          let qty = 1;
+          let price = 0;
 
-        // 1. Check inside order.items array
-        if (order.items && Array.isArray(order.items) && order.items.length > 0) {
-          for (const i of order.items) {
-            const itemProdId = String(i.productId || i._id || i.id || '').trim();
-            const itemNameClean = (i.name || '').trim().toLowerCase();
-            
-            if ((targetIdStr && itemProdId === targetIdStr) || (targetNameClean && itemNameClean && targetNameClean === itemNameClean)) {
-              isMatch = true;
-              qty = Number(i.quantity || i.qty || 1);
-              price = Number(i.price || 0);
-              break;
+          // 1. Check inside order.items array
+          if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+            for (const i of order.items) {
+              const itemProdId = String(i.productId || i._id || i.id || '').trim();
+              const itemNameClean = (i.name || i.productName || '').trim().toLowerCase();
+              
+              if ((targetIdStr && itemProdId === targetIdStr) || (targetNameClean && itemNameClean && (targetNameClean === itemNameClean || itemNameClean.includes(targetNameClean)))) {
+                isMatch = true;
+                qty = Number(i.quantity || i.qty || 1);
+                price = Number(i.price || 0);
+                break;
+              }
             }
           }
-        }
 
-        // 2. Check top-level order properties (for direct bookings/appointments/services)
-        if (!isMatch) {
-          const orderProdId = String(order.productId || order.product_details_id || '').trim();
-          const orderProdDetails = (order.product_details || order.doctorName || order.serviceName || order.packageName || '').trim().toLowerCase();
+          // 2. Check top-level order properties (for direct bookings/appointments/services/travel/stay)
+          if (!isMatch) {
+            const orderProdId = String(order.productId || order.product_details_id || order.serviceId || order.travelId || order.itemId || order.packageId || '').trim();
+            const orderProdDetails = (order.product_details || order.doctorName || order.serviceName || order.packageName || order.vehicleName || order.bikeName || order.carName || order.busName || order.title || order.name || '').trim().toLowerCase();
 
-          if ((targetIdStr && orderProdId === targetIdStr) || (targetNameClean && orderProdDetails && (targetNameClean === orderProdDetails || orderProdDetails.includes(targetNameClean)))) {
-            isMatch = true;
-            qty = Number(order.quantity || 1);
-            price = Number(order.finalAmount || order.totalAmount || order.amount || 0);
+            if ((targetIdStr && orderProdId === targetIdStr) || (targetNameClean && orderProdDetails && (targetNameClean === orderProdDetails || orderProdDetails.includes(targetNameClean)))) {
+              isMatch = true;
+              qty = Number(order.quantity || order.seats || order.passengers || 1);
+              price = Number(order.finalAmount || order.totalAmount || order.amount || 0);
+            }
+          }
+
+          if (isMatch) {
+            count += qty;
+            revenue += price > 0 ? (price * qty) : Number(order.finalAmount || order.totalAmount || 0);
+            
+            const custKey = order.memberId || order.customerId || order.memberName || order.candidateEmail || order._id;
+            if (custKey) uniqueCustomers.add(String(custKey));
+            
+            itemOrders.push({
+              orderId: order._id,
+              memberName: order.memberName || order.customer_name || 'Customer',
+              quantity: qty,
+              amount: price > 0 ? (price * qty) : Number(order.finalAmount || order.totalAmount || 0),
+              date: formatOrderDate(order),
+              status: order.status || 'Confirmed'
+            });
           }
         }
+      });
+    }
 
-        if (isMatch) {
-          count += qty;
-          revenue += price > 0 ? (price * qty) : Number(order.finalAmount || order.totalAmount || 0);
-          
-          const custKey = order.memberId || order.customerId || order.memberName || order.candidateEmail || order._id;
-          if (custKey) uniqueCustomers.add(String(custKey));
-          
-          itemOrders.push({
-            orderId: order._id,
-            memberName: order.memberName || order.customer_name || 'Customer',
-            quantity: qty,
-            amount: price > 0 ? (price * qty) : Number(order.finalAmount || order.totalAmount || 0),
-            date: formatOrderDate(order),
-            status: order.status || 'Confirmed'
-          });
-        }
+    // Fallback to backend-computed count on item if records were not preloaded or empty
+    if (count === 0 && targetItem) {
+      const persistedCount = Number(targetItem.bookingCount ?? targetItem.bookingsCount ?? targetItem.ordersCount ?? targetItem.salesCount ?? 0);
+      if (persistedCount > 0) {
+        count = persistedCount;
       }
-    });
+    }
     
-    return { count, customersCount: uniqueCustomers.size, orders: itemOrders, revenue };
+    return { count, customersCount: uniqueCustomers.size > 0 ? uniqueCustomers.size : count, orders: itemOrders, revenue };
   };
 
   const handleOpenSalesDetails = (item) => {
@@ -2263,34 +2456,42 @@ const VendorDashboard = () => {
               });
             }
           } else {
-            res = await axios.get(`${getVendorBackendUrl()}/api/vendor/analytics`, getAxiosConfig());
-            if (res.data.success) setAnalytics(res.data.data);
-            
-            // Fetch extra collections for client-side widgets
-            try {
-              const ordersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
-              if (ordersRes.data.success) setOrders(ordersRes.data.data);
-            } catch (err) {
-              console.error('Failed to load orders for vendor dashboard:', err);
+            const [analyticsRes, ordersRes, productsRes, customersRes] = await Promise.allSettled([
+              axios.get(`${getVendorBackendUrl()}/api/vendor/analytics`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/products`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig())
+            ]);
+            if (analyticsRes.status === 'fulfilled' && analyticsRes.value.data.success) {
+              setAnalytics(analyticsRes.value.data.data);
             }
-            try {
-              const productsRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/products`, getAxiosConfig());
-              if (productsRes.data.success) setCatalog(productsRes.data.data);
-            } catch (err) {
-              console.error('Failed to load products for vendor dashboard:', err);
+            if (ordersRes.status === 'fulfilled' && ordersRes.value.data.success) {
+              setOrders(ordersRes.value.data.data);
             }
-            try {
-              const customersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig());
-              if (customersRes.data.success) setCustomers(customersRes.data.data);
-            } catch (err) {
-              console.error('Failed to load customers for vendor dashboard:', err);
+            if (productsRes.status === 'fulfilled' && productsRes.value.data.success) {
+              setCatalog(productsRes.value.data.data);
+            }
+            if (customersRes.status === 'fulfilled' && customersRes.value.data.success) {
+              setCustomers(customersRes.value.data.data);
             }
           }
         } else if (activeTab === 'catalog') {
           const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
           const targetCategoryType = getProductMainCategory('', activeBiz?.vendorType || user?.vendorType || '');
-          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/products?type=${encodeURIComponent(targetCategoryType)}`, getAxiosConfig());
-          if (res.data.success) setCatalog(res.data.data);
+          const [prodRes, ordersRes, bookingsRes] = await Promise.allSettled([
+            axios.get(`${getVendorBackendUrl()}/api/vendor/products?type=${encodeURIComponent(targetCategoryType)}`, getAxiosConfig()),
+            axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
+            axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig())
+          ]);
+          if (prodRes.status === 'fulfilled' && prodRes.value.data.success) {
+            setCatalog(prodRes.value.data.data);
+          }
+          if (ordersRes.status === 'fulfilled' && ordersRes.value.data.success) {
+            setOrders(ordersRes.value.data.data);
+          }
+          if (bookingsRes.status === 'fulfilled' && bookingsRes.value.data.success) {
+            setBookings(bookingsRes.value.data.data);
+          }
         } else if (activeTab === 'orders') {
           const catParam = orderCategoryFilter && orderCategoryFilter !== 'All'
             ? `?category=${encodeURIComponent(categoryToSlug(orderCategoryFilter))}`
@@ -2324,10 +2525,18 @@ const VendorDashboard = () => {
           const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig());
           if (res.data.success) setCustomers(res.data.data);
           try {
-            const ordersRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
-            if (ordersRes.data.success) setOrders(ordersRes.data.data);
+            const [ordersRes, bookingsRes] = await Promise.allSettled([
+              axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig())
+            ]);
+            if (ordersRes.status === 'fulfilled' && ordersRes.value.data.success) {
+              setOrders(ordersRes.value.data.data);
+            }
+            if (bookingsRes.status === 'fulfilled' && bookingsRes.value.data.success) {
+              setBookings(bookingsRes.value.data.data);
+            }
           } catch (err) {
-            console.error('Failed to load orders for customers tab:', err);
+            console.error('Failed to load orders/bookings for customers tab:', err);
           }
         } else if (activeTab === 'card') {
           try {
@@ -4448,11 +4657,7 @@ const VendorDashboard = () => {
                   <div className="min-w-0">
                     <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Total {terms.customersName}</p>
                     <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-teal-600 dark:text-teal-455">
-                      {Math.max(
-                        customers.length,
-                        new Set(orders.map(o => o.memberId || o.customerId || o.customer_email || o.candidateEmail || o.memberName || o.customer_name).filter(Boolean)).size,
-                        analytics.customersCount || 0
-                      )}
+                      {analytics.customersCount !== undefined ? analytics.customersCount : customers.length}
                     </p>
                   </div>
                 </div>
@@ -4463,13 +4668,7 @@ const VendorDashboard = () => {
                   <div className="min-w-0">
                     <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Active Memberships</p>
                     <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-pink-600 dark:text-pink-400">
-                      {Math.max(
-                        customers.filter(c => c.status === 'Active' || c.membershipStatus === 'Active' || c.cardTier || c.isMember).length,
-                        orders.filter(o => o.memberId || o.cardType).length > 0
-                          ? new Set(orders.map(o => o.memberId || o.customerId).filter(Boolean)).size
-                          : 0,
-                        analytics.activeMembershipsCount || 0
-                      )}
+                      {analytics.activeMembershipsCount !== undefined ? analytics.activeMembershipsCount : 0}
                     </p>
                   </div>
                 </div>
@@ -4514,7 +4713,9 @@ const VendorDashboard = () => {
                   <div className="p-2.5 md:p-3.5 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded-xl md:rounded-2xl shadow-inner shrink-0"><CheckCircle2 size={20} className="md:w-6 md:h-6" /></div>
                   <div className="min-w-0">
                     <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Completed {terms.ordersName}</p>
-                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-green-600 dark:text-green-455">{completedOrders.length}</p>
+                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-green-600 dark:text-green-455">
+                      {analytics.completedOrdersCount !== undefined ? analytics.completedOrdersCount : completedOrders.length}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -4709,36 +4910,23 @@ const VendorDashboard = () => {
 
                 {/* Sidebar Column (Members Section Only) */}
                 <div className="space-y-6">
-                  {/* Members Section */}
+                  {/* Recent Customers Section */}
                   <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight mb-4 flex items-center gap-2">
-                      <Users size={18} className="text-slate-400" />
-                      Members Overview
-                    </h3>
-
-                    {/* Member Stats Cards */}
-                    <div className="grid grid-cols-2 gap-3 mb-6">
-                      <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-850/50">
-                        <p className="text-[10px] uppercase font-bold text-slate-400">Total Members</p>
-                        <p className="text-xl font-extrabold mt-1 text-slate-800 dark:text-white">{totalMembersCount}</p>
-                      </div>
-                      <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-4 rounded-2xl border border-emerald-100/30 dark:border-emerald-900/20">
-                        <p className="text-[10px] uppercase font-bold text-emerald-500">Active</p>
-                        <p className="text-xl font-extrabold mt-1 text-emerald-600 dark:text-emerald-400">{activeMemberships}</p>
-                      </div>
-                      <div className="bg-amber-50/50 dark:bg-amber-950/20 p-4 rounded-2xl border border-amber-100/30 dark:border-amber-900/20">
-                        <p className="text-[10px] uppercase font-bold text-amber-500">New (7d)</p>
-                        <p className="text-xl font-extrabold mt-1 text-amber-600 dark:text-amber-400">{newMembersCount}</p>
-                      </div>
-                      <div className="bg-rose-50/50 dark:bg-rose-950/20 p-4 rounded-2xl border border-rose-100/30 dark:border-rose-900/20">
-                        <p className="text-[10px] uppercase font-bold text-rose-500">Expired</p>
-                        <p className="text-xl font-extrabold mt-1 text-rose-600 dark:text-rose-400">{expiredMemberships}</p>
-                      </div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                        <Users size={18} className="text-slate-400" />
+                        Recent Customers
+                      </h3>
+                      <button 
+                        onClick={() => setActiveTab('customers')}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 transition-colors"
+                      >
+                        View All
+                      </button>
                     </div>
 
                     {/* Mini Customers List */}
                     <div className="space-y-3">
-                      <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">Recent Customers</h4>
                       {customers.slice(0, 3).map((customer, idx) => {
                         const metrics = getCustomerMetrics(customer, orders);
                         return (
@@ -5342,6 +5530,10 @@ const VendorDashboard = () => {
                     <option value="All">All Payments</option>
                     <option value="Paid">Paid</option>
                     <option value="Payment Pending">Payment Pending</option>
+                    <option value="COD">Cash on Delivery</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Net Banking">Net Banking</option>
+                    <option value="Wallet">Connect Wallet</option>
                   </select>
                 </div>
 
@@ -5417,11 +5609,23 @@ const VendorDashboard = () => {
 
                   if (!matchesBusiness) return false;
 
-                  // Payment filter
+                  // Payment filter (supports both payment status and payment method)
                   if (orderPaymentFilter !== 'All') {
                     const isPaid = order.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(order.status);
-                    if (orderPaymentFilter === 'Paid' && !isPaid) return false;
-                    if (orderPaymentFilter === 'Payment Pending' && isPaid) return false;
+                    const pMethod = (order.paymentMethod || order.payment_method || order.paymentMode || '').toLowerCase();
+                    if (orderPaymentFilter === 'Paid') {
+                      if (!isPaid) return false;
+                    } else if (orderPaymentFilter === 'Payment Pending') {
+                      if (isPaid) return false;
+                    } else if (orderPaymentFilter === 'COD') {
+                      if (!pMethod.includes('cash') && !pMethod.includes('cod')) return false;
+                    } else if (orderPaymentFilter === 'UPI') {
+                      if (!pMethod.includes('upi')) return false;
+                    } else if (orderPaymentFilter === 'Net Banking') {
+                      if (!pMethod.includes('net') && !pMethod.includes('bank')) return false;
+                    } else if (orderPaymentFilter === 'Wallet') {
+                      if (!pMethod.includes('wallet')) return false;
+                    }
                   }
 
                   // Status filter
@@ -5430,7 +5634,7 @@ const VendorDashboard = () => {
                     const f = orderStatusFilter.toLowerCase().trim();
                     let matchStatus = s === f;
                     if (!matchStatus) {
-                      const pendingAliases = ['pending', 'order received', 'order_pending', 'payment_pending'];
+                      const pendingAliases = ['pending', 'order received', 'order_pending'];
                       if (f === 'pending' && pendingAliases.includes(s)) matchStatus = true;
                       const confirmedAliases = ['confirmed', 'order confirmed', 'accepted', 'approved', 'in progress', 'processing'];
                       if (f === 'confirmed' && confirmedAliases.includes(s)) matchStatus = true;
@@ -5457,22 +5661,40 @@ const VendorDashboard = () => {
 
                   // Time filter
                   if (orderTimeFilter !== 'All') {
-                    const rawDateStr = order.createdAt || order.created_at || order.orderDate || order.date;
-                    if (!rawDateStr) return false;
-                    const orderDateObj = new Date(rawDateStr);
-                    if (isNaN(orderDateObj.getTime())) return false;
-                    const orderTime = orderDateObj.getTime();
+                    const rawDateStr = order.createdAt || order.created_at || order.orderDate || order.date || order.order_date;
+                    let orderDateObj = null;
+                    if (rawDateStr) {
+                      const d = new Date(rawDateStr);
+                      if (!isNaN(d.getTime())) orderDateObj = d;
+                    }
+                    if (!orderDateObj && order._id) {
+                      const idStr = String(order._id);
+                      if (/^[0-9a-fA-F]{24}$/.test(idStr)) {
+                        const ts = parseInt(idStr.substring(0, 8), 16) * 1000;
+                        const d = new Date(ts);
+                        if (!isNaN(d.getTime())) orderDateObj = d;
+                      }
+                    }
+                    if (!orderDateObj) return false;
+
                     const now = new Date();
-                    const nowTime = now.getTime();
+                    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+                    const startOfYesterday = new Date(startOfToday);
+                    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+                    const endOfYesterday = new Date(startOfToday.getTime() - 1);
+
+                    const orderTime = orderDateObj.getTime();
 
                     if (orderTimeFilter === 'Today') {
-                      if (orderDateObj.toDateString() !== now.toDateString()) return false;
+                      if (orderTime < startOfToday.getTime() || orderTime > endOfToday.getTime()) return false;
                     } else if (orderTimeFilter === 'Yesterday') {
-                      const yesterday = new Date();
-                      yesterday.setDate(yesterday.getDate() - 1);
-                      if (orderDateObj.toDateString() !== yesterday.toDateString()) return false;
+                      if (orderTime < startOfYesterday.getTime() || orderTime > endOfYesterday.getTime()) return false;
                     } else if (orderTimeFilter === 'LastWeek') {
-                      if ((nowTime - orderTime) > 7 * 24 * 60 * 60 * 1000) return false;
+                      const weekAgo = new Date(startOfToday);
+                      weekAgo.setDate(weekAgo.getDate() - 7);
+                      if (orderTime < weekAgo.getTime() || orderTime > endOfToday.getTime()) return false;
                     } else if (orderTimeFilter === 'LastMonth') {
                       const curYear = now.getFullYear();
                       const curMonth = now.getMonth();
@@ -5480,7 +5702,9 @@ const VendorDashboard = () => {
                       const targetYear = curMonth === 0 ? curYear - 1 : curYear;
                       if (!(orderDateObj.getFullYear() === targetYear && orderDateObj.getMonth() === targetMonth)) return false;
                     } else if (orderTimeFilter === 'Last30Days') {
-                      if ((nowTime - orderTime) > 30 * 24 * 60 * 60 * 1000) return false;
+                      const thirtyDaysAgo = new Date(startOfToday);
+                      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                      if (orderTime < thirtyDaysAgo.getTime() || orderTime > endOfToday.getTime()) return false;
                     } else if (orderTimeFilter === 'LastYear') {
                       const targetYear = now.getFullYear() - 1;
                       if (orderDateObj.getFullYear() !== targetYear) return false;
@@ -6643,11 +6867,6 @@ const VendorDashboard = () => {
                           const isUpdating = updatingStatusIds.has(appIdStr);
                           const resumeVal = app.candidateResume || app.resume || app.resumeUrl || app.cv;
                           const resumeFileName = resumeVal ? (typeof resumeVal === 'string' ? resumeVal : 'Resume.pdf').replace(/\\/g, '/').split('/').pop() || 'Resume.pdf' : '';
-                          const resumeDownloadUrl = resumeVal
-                            ? (typeof resumeVal === 'string' && resumeVal.startsWith('http')
-                                ? resumeVal
-                                : `${getVendorBackendUrl()}/api/vendor/orders/${app._id || app.id || app.order_number}/resume?download=true`)
-                            : '';
 
                           return (
                             <tr key={app._id || app.id || app.order_number} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 text-slate-700 dark:text-slate-200 transition-colors">
@@ -6676,7 +6895,7 @@ const VendorDashboard = () => {
 
                               {/* Applied Position */}
                               <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                                {app.jobTitle || app.product_details || (app.items && app.items[0]?.name) || 'Job Role'}
+                                {app.jobTitle || 'Job details unavailable'}
                               </td>
 
                               {/* CV / Resume */}
@@ -6691,17 +6910,18 @@ const VendorDashboard = () => {
                                     >
                                       📄 {resumeFileName.length > 18 ? resumeFileName.substring(0, 18) + '...' : resumeFileName}
                                     </button>
-                                    <a
-                                      href={resumeDownloadUrl}
-                                      download
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-md transition-colors"
+                                    <button
+                                      type="button"
+                                      disabled={downloadingResumeId === appIdStr}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDownloadResume(app);
+                                      }}
+                                      className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-md transition-colors cursor-pointer disabled:opacity-50"
                                       title="Download Resume"
                                     >
                                       <Download size={14} />
-                                    </a>
+                                    </button>
                                   </div>
                                 ) : (
                                   <span className="text-[10px] text-slate-400 italic">No Resume</span>
@@ -6846,7 +7066,7 @@ const VendorDashboard = () => {
                             <tr className="bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-200/50 dark:border-slate-800/50">
                               <th className="px-6 py-4">Customer Name & ID</th>
                               <th className="px-6 py-4">Contact Info</th>
-                              <th className="px-6 py-4 text-center">Total Visits</th>
+                              <th className="px-6 py-4 text-center">Visits</th>
                               <th className="px-6 py-4 text-right">Total Spent</th>
                               <th className="px-6 py-4 text-center">Action</th>
                             </tr>
@@ -6878,8 +7098,8 @@ const VendorDashboard = () => {
                                   <p>{c.email || 'N/A'}</p>
                                   <p className="text-[10px] text-slate-400 mt-0.5">{c.phone || 'N/A'}</p>
                                 </td>
-                                <td className="px-6 py-4 text-center font-bold text-slate-800 dark:text-slate-200">
-                                  {getCustomerMetrics(c, orders).count} times
+                                <td className="px-6 py-4 text-center font-medium text-slate-500 dark:text-slate-400 text-xs" title="Visit tracking unavailable">
+                                  Unavailable
                                 </td>
                                 <td className="px-6 py-4 text-right font-extrabold text-emerald-600 dark:text-emerald-400">
                                   ₹{getCustomerMetrics(c, orders).totalSpent}
@@ -6940,7 +7160,7 @@ const VendorDashboard = () => {
                             <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
                               <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
                                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Visits</span>
-                                <span className="text-sm font-extrabold text-slate-800 dark:text-slate-200">{metrics.count} times</span>
+                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400" title="Visit tracking unavailable">Unavailable</span>
                               </div>
                               <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
                                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">{terms.customerSpentLabel.replace('Total ', '').replace(' (₹)', '')}</span>
@@ -12079,24 +12299,45 @@ required
         isOpen={isBillModalOpen} 
         onClose={() => setIsBillModalOpen(false)} 
         title={(() => {
+          if (!selectedBillOrder) return "Details";
+          const classification = getRecordClassification(selectedBillOrder);
+          if (classification === 'JOB_APPLICATION') return "Job Application Details";
+          if (classification === 'BOOKING') {
+            const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
+            if (rawCat === 'TRAVEL') return "Travel Booking Details";
+            if (rawCat === 'STAY' || rawCat === 'HOTEL' || isStayBooking(selectedBillOrder)) return "Stay Booking Details";
+            if (rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL') return "Service Booking Details";
+            return "Booking Details";
+          }
           const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
-          if (rawCat === 'JOB' || rawCat === 'JOBS' || Boolean(selectedBillOrder?.applicationId) || Boolean(selectedBillOrder?.candidateResume) || Boolean(selectedBillOrder?.candidateEducation)) return "Candidate Job Application Details";
-          if (rawCat === 'TRAVEL') return "Travel Booking Details";
-          if (rawCat === 'STAY' || rawCat === 'HOTEL' || isStayBooking(selectedBillOrder)) return "Stay / Room Booking Details";
           if (rawCat === 'FOOD' || rawCat === 'RESTAURANT') return "Food Order Details";
-          if (rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL') return "Service Booking Details";
-          return "Order & Transaction Details";
+          return "Order Details";
         })()}
       >
         {Boolean(selectedBillOrder) && (() => {
+          const classification = getRecordClassification(selectedBillOrder);
           const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
-          const isJobOrder = rawCat === 'JOB' || rawCat === 'JOBS' || Boolean(selectedBillOrder?.applicationId) || Boolean(selectedBillOrder?.candidateResume) || Boolean(selectedBillOrder?.candidateEducation);
-          const isTravelOrder = rawCat === 'TRAVEL';
-          const isStayOrder = rawCat === 'STAY' || rawCat === 'HOTEL' || isStayBooking(selectedBillOrder);
-          const isFoodOrder = rawCat === 'FOOD' || rawCat === 'RESTAURANT';
-          const isServiceOrder = rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL';
+          const isJobOrder = classification === 'JOB_APPLICATION';
+          const isTravelOrder = classification === 'BOOKING' && rawCat === 'TRAVEL';
+          const isStayOrder = classification === 'BOOKING' && (rawCat === 'STAY' || rawCat === 'HOTEL' || isStayBooking(selectedBillOrder));
+          const isFoodOrder = classification === 'ORDER' && (rawCat === 'FOOD' || rawCat === 'RESTAURANT');
+          const isServiceOrder = classification === 'BOOKING' && (rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL');
           
           if (isJobOrder) {
+            const jobStatusDisplay = (() => {
+              const raw = (selectedBillOrder.status || 'APPLICATION RECEIVED').toUpperCase();
+              if (['APPLICATION RECEIVED', 'PENDING', 'ORDER RECEIVED', 'APPLIED', 'NEW'].includes(raw)) return 'APPLICATION RECEIVED';
+              if (['UNDER REVIEW', 'REVIEWING', 'INTERVIEWING', 'IN REVIEW', 'SCREENING'].includes(raw)) return 'UNDER REVIEW';
+              if (['SHORTLISTED', 'SHORTLIST'].includes(raw)) return 'SHORTLISTED';
+              if (['SELECTED', 'HIRED', 'ACCEPTED', 'APPROVED'].includes(raw)) return 'SELECTED';
+              if (['REJECTED', 'DECLINED', 'CANCELLED'].includes(raw)) return 'REJECTED';
+              return raw;
+            })();
+
+            const appliedPosition = selectedBillOrder.jobTitle || 'Job details unavailable';
+            const appId = selectedBillOrder.applicationId || selectedBillOrder.order_number || selectedBillOrder._id || 'N/A';
+            const jId = selectedBillOrder.jobId || (selectedBillOrder.items && selectedBillOrder.items[0]?.productId) || selectedBillOrder.productId || 'N/A';
+
             return (
               <div className="space-y-5 text-slate-800 dark:text-slate-200 text-xs">
                 {/* Header */}
@@ -12105,7 +12346,7 @@ required
                     <Briefcase size={24} />
                   </div>
                   <h4 className="text-lg font-black uppercase tracking-wider text-slate-900 dark:text-white">Job Application Details</h4>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Applied Position: {selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Job Candidate'}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Applied Position: {appliedPosition}</p>
                 </div>
 
                 {/* Grid details */}
@@ -12120,12 +12361,16 @@ required
                       <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.candidateEmail || selectedBillOrder.customer_email || 'N/A'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Education / Exp</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.candidateEducation || selectedBillOrder.experience || 'Graduate'}</span>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Application ID</span>
+                      <span className="font-mono font-bold text-primary-600 dark:text-primary-400">#{appId}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Job Location</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{getCustomerAddress(selectedBillOrder)}</span>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Job ID</span>
+                      <span className="font-mono font-bold text-slate-700 dark:text-slate-300">#{jId}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Education / Exp</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.candidateEducation || 'Graduate'} • Exp: {selectedBillOrder.experience || 'Fresher'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Application Date</span>
@@ -12133,9 +12378,9 @@ required
                         {selectedBillOrder.applicationDate || selectedBillOrder.createdAt ? new Date(selectedBillOrder.applicationDate || selectedBillOrder.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
                       </span>
                     </div>
-                    <div>
+                    <div className="col-span-2">
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Status</span>
-                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 uppercase">{selectedBillOrder.status}</span>
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 uppercase">{jobStatusDisplay}</span>
                     </div>
                   </div>
                 </div>
@@ -12146,7 +12391,7 @@ required
                   <button
                     type="button"
                     onClick={() => setIsResumeViewerOpen(true)}
-                    className="w-full bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-xs px-5 py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.98]"
+                    className="w-full bg-[#faed26] hover:bg-[#faed26]/90 text-[#0b3c7b] font-bold text-xs px-5 py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.98] cursor-pointer"
                   >
                     📄 View Resume
                   </button>
@@ -12237,7 +12482,9 @@ required
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Status</span>
-                      <span className="font-extrabold text-emerald-600 dark:text-emerald-450 uppercase">{selectedBillOrder.status}</span>
+                      <span className="font-extrabold text-emerald-600 dark:text-emerald-450 uppercase">
+                        {['ORDER RECEIVED', 'PENDING', 'BOOKING RECEIVED'].includes((selectedBillOrder.status || '').toUpperCase()) ? 'BOOKING RECEIVED' : selectedBillOrder.status}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -12257,9 +12504,9 @@ required
 
           if (isStayOrder) {
             const sched = resolveStaySchedule(selectedBillOrder);
-            let displayStatus = selectedBillOrder.status || 'Pending';
-            if (displayStatus === 'Order Received' || displayStatus === 'Accepted') {
-              displayStatus = selectedBillOrder.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending';
+            let displayStatus = selectedBillOrder.status || 'Booking Received';
+            if (displayStatus === 'Order Received' || displayStatus === 'Pending' || displayStatus === 'Accepted') {
+              displayStatus = selectedBillOrder.paymentStatus === 'Completed' ? 'Confirmed' : 'Booking Received';
             }
 
             const holder = selectedBillOrder.bookingHolder || {
@@ -12794,7 +13041,9 @@ required
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Status</span>
-                      <span className="font-extrabold text-emerald-600 dark:text-emerald-450 uppercase">{selectedBillOrder.status}</span>
+                      <span className="font-extrabold text-emerald-600 dark:text-emerald-450 uppercase">
+                        {['ORDER RECEIVED', 'PENDING', 'BOOKING RECEIVED'].includes((selectedBillOrder.status || '').toUpperCase()) ? 'BOOKING RECEIVED' : selectedBillOrder.status}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -12812,7 +13061,7 @@ required
             );
           }
 
-          // Otherwise show original Product Invoice modal content
+          // Otherwise show Order Details modal content
           return (
             <div className="space-y-5 text-slate-800 dark:text-slate-200">
               {/* Header / Receipt Icon & Title */}
@@ -12820,8 +13069,8 @@ required
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 mb-2">
                   <CheckCircle2 size={24} />
                 </div>
-                <h4 className="text-lg font-black uppercase tracking-wider text-slate-900 dark:text-white">Transaction Receipt</h4>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Connect Ecosystem Co-Operative Platform</p>
+                <h4 className="text-lg font-black uppercase tracking-wider text-slate-900 dark:text-white">Order Details</h4>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Connect Ecosystem Verified Order</p>
               </div>
 
               {/* Merchant and Billed-To Info */}
@@ -13036,73 +13285,133 @@ required
           <div className="space-y-4 text-slate-800 dark:text-slate-200">
             <div className="border-b border-slate-200 dark:border-slate-850 pb-3">
               <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                Candidate: {selectedBillOrder.memberName || selectedBillOrder.customer_name}
+                Candidate: {selectedBillOrder.candidateName || selectedBillOrder.memberName || selectedBillOrder.customer_name || 'Candidate'}
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Role Applied: {selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name)}
+                Role Applied: {selectedBillOrder.jobTitle || 'Job details unavailable'}
               </p>
             </div>
             
             <div className="space-y-2">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                Resume Content / Cover Letter
+                Resume Document
               </span>
               
               {(() => {
-                const rawResume = selectedBillOrder.candidateResume?.trim() || '';
-                const orderId = selectedBillOrder._id || selectedBillOrder.id || selectedBillOrder.order_number;
-                const backendBase = getVendorBackendUrl();
-
-                let viewUrl = null;
-                let downloadUrl = null;
-
-                if (rawResume.startsWith('http://') || rawResume.startsWith('https://') || rawResume.startsWith('data:')) {
-                  viewUrl = rawResume;
-                  downloadUrl = rawResume;
-                } else if (orderId) {
-                  viewUrl = `${backendBase}/api/vendor/orders/${orderId}/resume`;
-                  downloadUrl = `${backendBase}/api/vendor/orders/${orderId}/resume?download=true`;
-                } else if (rawResume) {
-                  const encodedName = encodeURIComponent(rawResume.replace(/\\/g, '/').split('/').pop());
-                  viewUrl = `${backendBase}/uploads/resumes/${encodedName}`;
-                  downloadUrl = `${backendBase}/uploads/resumes/${encodedName}?download=true`;
+                if (resumeLoading) {
+                  return (
+                    <div className="py-20 text-center space-y-3 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-800">
+                      <div className="w-8 h-8 mx-auto border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading candidate resume securely...</p>
+                    </div>
+                  );
                 }
 
-                if (viewUrl) {
+                if (resumeError) {
+                  return (
+                    <div className="p-6 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-2xl text-center space-y-3">
+                      <AlertCircle className="mx-auto text-amber-600 dark:text-amber-400" size={32} />
+                      <div>
+                        <h5 className="text-sm font-bold text-slate-900 dark:text-white">Document Preview Unavailable</h5>
+                        <p className="text-xs text-slate-600 dark:text-slate-350 mt-1 max-w-md mx-auto">{resumeError}</p>
+                      </div>
+                      <div className="pt-2 flex justify-center">
+                        <button
+                          type="button"
+                          disabled={downloadingResumeId === String(selectedBillOrder._id || selectedBillOrder.id || selectedBillOrder.order_number)}
+                          onClick={() => handleDownloadResume(selectedBillOrder)}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                        >
+                          <Download size={14} /> Attempt Download
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (resumeFileType === 'external' && resumeBlobUrl) {
+                  return (
+                    <div className="p-5 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200">
+                        <ExternalLink size={16} className="text-indigo-600 dark:text-indigo-400" />
+                        <span>External Candidate Resume Link</span>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 break-all font-mono bg-white dark:bg-slate-900 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
+                        {resumeBlobUrl}
+                      </p>
+                      <div className="flex justify-end">
+                        <a
+                          href={resumeBlobUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                        >
+                          <ExternalLink size={14} /> Open External Document
+                        </a>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (resumeFileType === 'word') {
+                  return (
+                    <div className="p-6 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/30 rounded-2xl text-center space-y-3">
+                      <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-md">
+                        DOC
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-slate-900 dark:text-white">{resumeFileName}</h5>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          Microsoft Word Document (.doc / .docx). In-browser preview is not supported for Word formats.
+                        </p>
+                      </div>
+                      <div className="pt-2 flex justify-center">
+                        <button
+                          type="button"
+                          disabled={downloadingResumeId === String(selectedBillOrder._id || selectedBillOrder.id || selectedBillOrder.order_number)}
+                          onClick={() => handleDownloadResume(selectedBillOrder)}
+                          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                        >
+                          <Download size={15} /> Download Original Document
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (resumeBlobUrl) {
                   return (
                     <div className="space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl">
                         <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200">
                           <FileText size={16} className="text-indigo-600 dark:text-indigo-400" />
-                          <span>Candidate Original Uploaded Resume Document</span>
+                          <span>Candidate Uploaded Document ({resumeFileName})</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <a
-                            href={viewUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => window.open(resumeBlobUrl, '_blank')}
                             className="text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                           >
-                            <ExternalLink size={14} /> Open Original File
-                          </a>
-                          <a
-                            href={downloadUrl}
-                            download
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            <ExternalLink size={14} /> Open in New Tab
+                          </button>
+                          <button
+                            type="button"
+                            disabled={downloadingResumeId === String(selectedBillOrder._id || selectedBillOrder.id || selectedBillOrder.order_number)}
+                            onClick={() => handleDownloadResume(selectedBillOrder)}
+                            className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer disabled:opacity-50"
                           >
                             <Download size={14} /> Download
-                          </a>
+                          </button>
                         </div>
                       </div>
 
                       <div className="w-full h-[450px] bg-slate-100 dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-inner flex items-center justify-center">
-                        {/\.(png|jpg|jpeg|webp)$/i.test(rawResume) ? (
-                          <img src={viewUrl} alt="Candidate Resume" className="w-full h-full object-contain p-2" />
+                        {resumeFileType === 'image' ? (
+                          <img src={resumeBlobUrl} alt="Candidate Resume" className="w-full h-full object-contain p-2" />
                         ) : (
                           <iframe
-                            src={viewUrl}
+                            src={resumeBlobUrl}
                             title="Candidate Uploaded Resume"
                             className="w-full h-full border-none bg-white"
                           />
@@ -13113,8 +13422,8 @@ required
                 }
 
                 return (
-                  <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 p-4 rounded-2xl break-words whitespace-pre-line text-xs leading-relaxed max-h-96 overflow-y-auto">
-                    {rawResume || 'No resume content provided.'}
+                  <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 p-6 rounded-2xl text-center text-slate-500 text-xs">
+                    No resume document content found for this candidate.
                   </div>
                 );
               })()}
@@ -13868,29 +14177,54 @@ required
           title={`Customer Purchase Details - ${selectedCustomerForDetails.name}`}
         >
           {(() => {
+            // Combine orders and bookings safely
+            const allTxMap = new Map();
+            [...(orders || []), ...(bookings || [])].forEach(tx => {
+              if (tx && (tx._id || tx.id)) {
+                allTxMap.set(String(tx._id || tx.id), tx);
+              }
+            });
+            const allTransactions = Array.from(allTxMap.values());
+
             const cNameLower = (selectedCustomerForDetails.name || '').trim().toLowerCase();
             const cEmailLower = (selectedCustomerForDetails.email || '').trim().toLowerCase();
-            const cMemberIdStr = String(selectedCustomerForDetails.memberId || '').trim();
+            const cPhoneDigits = String(selectedCustomerForDetails.phone || '').trim().replace(/\D/g, '');
+            const cMemberIdStr = String(selectedCustomerForDetails.memberId || selectedCustomerForDetails.id || selectedCustomerForDetails._id || '').trim();
 
-            const custOrders = (orders || []).filter(o => {
-              if (!o) return false;
-              const matchesVendor = !activeBusinessId || String(o.vendorId || o.vendor_id || '') === String(activeBusinessId) || String(o.vendorId || o.vendor_id || '') === String(user?.parentUserId || user?._id || '');
+            const custTransactions = allTransactions.filter(t => {
+              if (!t) return false;
+
+              // Strictly exclude job applications from purchase/booking history
+              const classification = getRecordClassification(t);
+              if (classification === 'JOB_APPLICATION') return false;
+
+              // Check vendor scope
+              const matchesVendor = !activeBusinessId ||
+                String(t.vendorId || t.vendor_id || '') === String(activeBusinessId) ||
+                String(t.vendorId || t.vendor_id || '') === String(user?.parentUserId || user?._id || '');
               if (!matchesVendor) return false;
 
-              const oName = (o.memberName || o.customer_name || '').trim().toLowerCase();
-              const oEmail = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
-              const oMemberId = String(o.memberId || o.customerId || '').trim();
+              // Match customer identity
+              const tName = (t.memberName || t.customer_name || '').trim().toLowerCase();
+              const tEmail = (t.customer_email || t.email || (t.memberId && t.memberId.includes('@') ? t.memberId : '') || '').trim().toLowerCase();
+              const tPhoneDigits = String(t.customer_phone || t.phone || '').trim().replace(/\D/g, '');
+              const tMemberId = String(t.memberId || t.customerId || '').trim();
 
-              if (cEmailLower && oEmail && cEmailLower === oEmail) return true;
-              if (cNameLower && oName && cNameLower === oName && cNameLower !== 'customer') return true;
-              if (cMemberIdStr && oMemberId && cMemberIdStr === oMemberId && !cMemberIdStr.startsWith('[object') && !cMemberIdStr.startsWith('cust_')) return true;
+              if (cEmailLower && tEmail && cEmailLower === tEmail) return true;
+              if (cPhoneDigits && tPhoneDigits && cPhoneDigits.length >= 8 && tPhoneDigits.includes(cPhoneDigits.slice(-8))) return true;
+              if (cNameLower && tName && cNameLower === tName && cNameLower !== 'customer') return true;
+              if (cMemberIdStr && tMemberId && cMemberIdStr === tMemberId && !cMemberIdStr.startsWith('[object') && !cMemberIdStr.startsWith('cust_')) return true;
               return false;
             });
 
-            const actualVisits = selectedCustomerForDetails.ordersCount || custOrders.length || 0;
-            const actualTotalSpent = selectedCustomerForDetails.totalSpent || (custOrders.length > 0 
-              ? custOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0)
-              : 0);
+            // Calculate spending from genuine transactions, falling back to authoritative summary
+            const computedTotalSpent = custTransactions.reduce((sum, t) => {
+              const st = String(t.status || '').toLowerCase();
+              if (['cancelled', 'rejected', 'failed'].includes(st)) return sum;
+              return sum + Number(t.finalAmount || t.amount || t.totalAmount || 0);
+            }, 0);
+
+            const displayTotalSpent = computedTotalSpent > 0 ? computedTotalSpent : Number(selectedCustomerForDetails.totalSpent || 0);
 
             return (
               <div className="space-y-6 text-slate-800 dark:text-slate-100 animate-fadeIn">
@@ -13911,11 +14245,11 @@ required
                   <div className="flex gap-3 text-center sm:text-right">
                     <div className="bg-white dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
                       <span className="block text-[9px] font-extrabold uppercase text-slate-400">Total Visits</span>
-                      <span className="text-sm font-black text-slate-900 dark:text-white">{actualVisits} times</span>
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400" title="Visit tracking unavailable">Visit tracking unavailable</span>
                     </div>
                     <div className="bg-white dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
                       <span className="block text-[9px] font-extrabold uppercase text-slate-400">Total Spent</span>
-                      <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">₹{actualTotalSpent}</span>
+                      <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">₹{displayTotalSpent}</span>
                     </div>
                   </div>
                 </div>
@@ -13923,78 +14257,77 @@ required
                 {/* Purchase List */}
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-                    Purchased Products & Bookings ({custOrders.length})
+                    Purchased Products & Bookings ({custTransactions.length})
                   </h4>
 
-                  {custOrders.length === 0 ? (
+                  {custTransactions.length === 0 ? (
                     <div className="p-8 text-center bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
-                      No transaction records found for this customer.
+                      No transaction records found for this customer with this business.
                     </div>
                   ) : (
                     <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
-                      {custOrders.map((ord, idx) => {
-                        const isJobApp = ord.candidateEducation || ord.candidateResume || ord.type === 'Job Application' || ord.category === 'Jobs' || (ord.items && ord.items[0]?.category === 'Jobs');
-                        const firstItem = ord.items && ord.items[0];
-                        const itemCategory = isJobApp ? 'Job Application' : (firstItem?.category || ord.category || 'General');
-                        const itemName = ord.product_details || (firstItem?.name) || (isJobApp ? 'Job Application' : 'Catalog Item');
+                      {custTransactions.map((tx, idx) => {
+                        const isBooking = getRecordClassification(tx) === 'BOOKING';
+                        const rawCat = (tx.type || tx.category || '').toUpperCase();
+                        const firstItem = tx.items && tx.items[0];
+                        const categoryLabel = isBooking 
+                          ? (rawCat === 'TRAVEL' ? 'Travel Booking' : (rawCat === 'STAY' ? 'Stay Booking' : (rawCat === 'SERVICES' || rawCat === 'SERVICE' ? 'Service Booking' : 'Booking')))
+                          : (firstItem?.category || tx.category || 'Product Order');
+                        const itemName = tx.product_details || tx.serviceName || tx.roomName || firstItem?.name || (isBooking ? 'Booking Service' : 'Catalog Product');
+                        const txId = tx.applicationId || tx.order_number || tx._id || 'N/A';
+                        const txAmount = tx.finalAmount || tx.amount || tx.totalAmount || 0;
+                        const txDate = tx.travelDate || tx.appointmentDate || tx.checkInDate || tx.createdAt || tx.created_at;
+                        const formattedDate = txDate ? new Date(txDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+
+                        const statusBadge = (() => {
+                          const raw = (tx.status || 'Order Received').toUpperCase();
+                          if (isBooking && ['ORDER RECEIVED', 'PENDING', 'BOOKING RECEIVED'].includes(raw)) return 'BOOKING RECEIVED';
+                          return tx.status || 'Order Received';
+                        })();
 
                         return (
                           <div 
-                            key={ord._id || idx}
+                            key={tx._id || idx}
                             className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 space-y-2"
                           >
-                            <div className="flex justify-between items-start">
+                            <div className="flex justify-between items-start gap-2">
                               <div>
                                 <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md border mb-1 ${
-                                  isJobApp ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200/40' : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200/40'
+                                  isBooking ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200/40' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200/40'
                                 }`}>
-                                  {itemCategory}
+                                  {categoryLabel}
                                 </span>
                                 <h5 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">{itemName}</h5>
+                                <p className="text-[10px] font-mono text-slate-400 mt-0.5">ID: #{txId}</p>
                               </div>
-                              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase ${
-                                ord.status === 'Completed' || ord.status === 'Delivered' || ord.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' :
-                                ord.status === 'Pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400' :
+                              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase shrink-0 ${
+                                statusBadge === 'Completed' || statusBadge === 'Delivered' || statusBadge === 'Accepted' || statusBadge === 'Confirmed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' :
+                                statusBadge === 'Pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400' :
                                 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400'
                               }`}>
-                                {ord.status}
+                                {statusBadge}
                               </span>
                             </div>
 
-                            {isJobApp ? (
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
-                                <div>
-                                  <span className="text-[10px] text-slate-400 block">Applied Role</span>
-                                  <span className="font-semibold text-slate-800 dark:text-slate-200">{itemName}</span>
-                                </div>
-                                <div>
-                                  <span className="text-[10px] text-slate-400 block">Education</span>
-                                  <span className="font-semibold text-slate-700 dark:text-slate-300 truncate block">{ord.candidateEducation || 'Graduate'}</span>
-                                </div>
-                                <div>
-                                  <span className="text-[10px] text-slate-400 block">Application Time</span>
-                                  <span className="font-semibold text-indigo-600 dark:text-indigo-400 block">⌚ {getBookingTimeSlot(ord)}</span>
-                                </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">Amount</span>
+                                <span className="font-extrabold text-emerald-600 dark:text-emerald-400">₹{txAmount}</span>
+                                {tx.discountApplied > 0 && (
+                                  <span className="text-[9px] text-slate-400 block">(Saved ₹{tx.discountApplied})</span>
+                                )}
                               </div>
-                            ) : (
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
-                                <div>
-                                  <span className="text-[10px] text-slate-400 block">Amount Paid</span>
-                                  <span className="font-extrabold text-emerald-600 dark:text-emerald-400">₹{ord.finalAmount || ord.amount || 0}</span>
-                                  {ord.discountApplied > 0 && (
-                                    <span className="text-[9px] text-slate-400 block">(Saved ₹{ord.discountApplied})</span>
-                                  )}
-                                </div>
-                                <div>
-                                  <span className="text-[10px] text-slate-400 block">Address / Location</span>
-                                  <span className="font-semibold text-slate-700 dark:text-slate-300 truncate block">{getCustomerAddress(ord)}</span>
-                                </div>
-                                <div>
-                                  <span className="text-[10px] text-slate-400 block">Booking Time</span>
-                                  <span className="font-semibold text-indigo-600 dark:text-indigo-400 block">⌚ {getBookingTimeSlot(ord)}</span>
-                                </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">Date</span>
+                                <span className="font-semibold text-slate-700 dark:text-slate-300 truncate block">{formattedDate}</span>
                               </div>
-                            )}
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">{isBooking ? 'Schedule / Time' : 'Location'}</span>
+                                <span className="font-semibold text-indigo-600 dark:text-indigo-400 block truncate">
+                                  {isBooking ? `⌚ ${tx.appointmentTimeSlot || tx.bookingTime || 'Standard Slot'}` : (getCustomerAddress(tx) || 'Standard Delivery')}
+                                </span>
+                              </div>
+                            </div>
                           </div>
                         );
                       })}

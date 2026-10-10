@@ -146,11 +146,11 @@ const getVendorAnalytics = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    // Check fast cache first for low latency
-    const cachedAnalytics = await cacheManager.get('analytics', parentUserId.toString());
-    if (cachedAnalytics) {
-      return res.status(200).json({ success: true, data: cachedAnalytics, _cached: true });
-    }
+    // Bypass stale cache for real-time consistency on refresh
+    // const cachedAnalytics = await cacheManager.get('analytics', parentUserId.toString());
+    // if (cachedAnalytics) {
+    //   return res.status(200).json({ success: true, data: cachedAnalytics, _cached: true });
+    // }
 
     const businessIds = [parentUserId.toString()];
     if (user.businesses && user.businesses.length > 0) {
@@ -227,7 +227,12 @@ const getVendorAnalytics = async (req, res) => {
     // Today's Revenue Calculation
     const todayDateString = new Date().toDateString();
     const todayRevenue = completedOrders
-      .filter(o => new Date(o.createdAt).toDateString() === todayDateString)
+      .filter(o => {
+        const rawDate = o.createdAt || o.created_at || o.orderDate || o.date;
+        if (!rawDate) return false;
+        const d = new Date(rawDate);
+        return !isNaN(d.getTime()) && d.toDateString() === todayDateString;
+      })
       .reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
 
     // Active Memberships Count
@@ -301,6 +306,7 @@ const getVendorAnalytics = async (req, res) => {
       bookingsCount: totalBookingsCount,
       applicationsCount: totalApplicationsCount,
       pendingOrdersCount,
+      completedOrdersCount: completedOrders.length,
       customersCount: uniqueCustomersCount,
       itemsCount: totalItemsCount,
       availableItemsCount,
@@ -662,6 +668,60 @@ const getProducts = async (req, res) => {
       return true;
     });
 
+    // Compute accurate persisted booking & order counts for each product from Order collection
+    if (filtered.length > 0) {
+      const productIds = filtered.map(p => String(p._id || p.id));
+      const productNames = filtered.map(p => (p.name || '').trim().toLowerCase()).filter(Boolean);
+
+      const relevantOrders = await Order.find({
+        $or: [
+          { vendorId: { $in: vendorIds } },
+          { vendor_id: { $in: vendorIds } }
+        ],
+        status: { $nin: ['Cancelled', 'Rejected'] }
+      }).select('items productId product_details finalAmount totalAmount amount status').lean();
+
+      const bookingCountMap = {};
+      relevantOrders.forEach(ord => {
+        if (ord.items && Array.isArray(ord.items) && ord.items.length > 0) {
+          ord.items.forEach(it => {
+            const itId = String(it.productId || it._id || it.id || '');
+            const itName = (it.name || '').trim().toLowerCase();
+            const qty = Number(it.quantity || it.qty || 1);
+            if (itId && productIds.includes(itId)) {
+              bookingCountMap[itId] = (bookingCountMap[itId] || 0) + qty;
+            } else if (itName && productNames.includes(itName)) {
+              const match = filtered.find(p => (p.name || '').trim().toLowerCase() === itName);
+              if (match) {
+                const pId = String(match._id || match.id);
+                bookingCountMap[pId] = (bookingCountMap[pId] || 0) + qty;
+              }
+            }
+          });
+        } else {
+          const ordProdId = String(ord.productId || '');
+          const ordProdName = (ord.product_details || '').trim().toLowerCase();
+          if (ordProdId && productIds.includes(ordProdId)) {
+            bookingCountMap[ordProdId] = (bookingCountMap[ordProdId] || 0) + 1;
+          } else if (ordProdName && productNames.includes(ordProdName)) {
+            const match = filtered.find(p => (p.name || '').trim().toLowerCase() === ordProdName);
+            if (match) {
+              const pId = String(match._id || match.id);
+              bookingCountMap[pId] = (bookingCountMap[pId] || 0) + 1;
+            }
+          }
+        }
+      });
+
+      filtered.forEach(p => {
+        const pId = String(p._id || p.id);
+        const count = bookingCountMap[pId] || 0;
+        p.bookingCount = count;
+        p.bookingsCount = count;
+        p.ordersCount = count;
+      });
+    }
+
     res.status(200).json({
       success: true,
       data: filtered,
@@ -861,7 +921,7 @@ const deleteProduct = async (req, res) => {
 // @access  Private (Vendor)
 // Reusable helper to build Customer ID canonical lookup without scanning entire collections
 const buildCustomerLookupForOrders = async (orders) => {
-  const memberIds = [...new Set(orders.map(o => o.memberId || o.customerId || o.customer_id).filter(Boolean))];
+  const memberIds = [...new Set(orders.map(o => o.memberId || o.customerId || o.customer_id).filter(id => id && id !== 'FIC-CUST-100001' && id !== 'cust_dhanush'))];
   const emails = [...new Set(orders.map(o => o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : null)).filter(Boolean))];
   const phones = [...new Set(orders.map(o => (o.customer_phone || o.phone || o.candidatePhone || '').toString().replace(/[^0-9]/g, '').slice(-10)).filter(p => p && p.length >= 10))];
 
@@ -904,7 +964,9 @@ const buildCustomerLookupForOrders = async (orders) => {
 
   const registerCustomerInLookup = (cust) => {
     if (!cust) return;
-    const cid = cust.customerId || cust.registrationId || cust.customerDisplayId || (String(cust._id || cust.id).startsWith('FIC-CUST-') ? String(cust._id || cust.id) : null);
+    let cid = cust.customerId || cust.registrationId || cust.customerDisplayId || (String(cust._id || cust.id).startsWith('FIC-CUST-') ? String(cust._id || cust.id) : null);
+    if (cid === 'FIC-CUST-100001') cid = null;
+    if (!cid && cust.registrationId) cid = cust.registrationId;
     
     if (cust._id) {
       if (cid) customerLookup.byId[String(cust._id)] = cid;
@@ -1122,13 +1184,16 @@ const getOrders = async (req, res) => {
 
       // Canonical Customer ID resolution
       let resolvedCustomerId = null;
-      if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-')) {
+      if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-') && obj.customerId !== 'FIC-CUST-100001') {
         resolvedCustomerId = String(obj.customerId);
-      } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-')) {
+      } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-') && obj.customerDisplayId !== 'FIC-CUST-100001') {
         resolvedCustomerId = String(obj.customerDisplayId);
-      } else if (obj.memberId && String(obj.memberId).startsWith('FIC-CUST-')) {
+      } else if (obj.memberId && String(obj.memberId).startsWith('FIC-CUST-') && obj.memberId !== 'FIC-CUST-100001') {
         resolvedCustomerId = String(obj.memberId);
-      } else {
+      }
+
+      // If still unresolved or defaulted to placeholder, look up genuine customer record
+      if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
         const oPhone = (obj.customer_phone || obj.phone || '').toString().replace(/[^0-9]/g, '');
         const oEmail = (obj.customer_email || (obj.memberId && obj.memberId.includes('@') ? obj.memberId : '') || '').trim().toLowerCase();
         const oName = (obj.memberName || obj.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1144,8 +1209,14 @@ const getOrders = async (req, res) => {
         }
       }
 
-      if (!resolvedCustomerId) {
-        resolvedCustomerId = 'FIC-CUST-100001';
+      if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
+        if (obj.memberId && obj.memberId !== 'cust_dhanush' && !obj.memberId.startsWith('FIC-CUST-100001')) {
+          resolvedCustomerId = String(obj.memberId);
+        } else if (obj.customerId && obj.customerId !== 'FIC-CUST-100001') {
+          resolvedCustomerId = String(obj.customerId);
+        } else {
+          resolvedCustomerId = 'N/A';
+        }
       }
 
       obj.customerId = resolvedCustomerId;
@@ -1327,11 +1398,11 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
 
   // Canonical Customer ID resolution
   let resolvedCustomerId = null;
-  if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-')) {
+  if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-') && obj.customerId !== 'FIC-CUST-100001') {
     resolvedCustomerId = String(obj.customerId);
-  } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-')) {
+  } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-') && obj.customerDisplayId !== 'FIC-CUST-100001') {
     resolvedCustomerId = String(obj.customerDisplayId);
-  } else if (obj.memberId && String(obj.memberId).startsWith('FIC-CUST-')) {
+  } else if (obj.memberId && String(obj.memberId).startsWith('FIC-CUST-') && obj.memberId !== 'FIC-CUST-100001') {
     resolvedCustomerId = String(obj.memberId);
   }
 
@@ -1349,11 +1420,17 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
                       (oName && customerLookup.entitiesByName[oName]) || null;
   }
 
-  if (!resolvedCustomerId && matchedCustomer) {
+  if ((!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') && matchedCustomer) {
     resolvedCustomerId = matchedCustomer.customerId || matchedCustomer.registrationId;
   }
-  if (!resolvedCustomerId) {
-    resolvedCustomerId = 'FIC-CUST-100001';
+  if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
+    if (obj.memberId && obj.memberId !== 'cust_dhanush' && !obj.memberId.startsWith('FIC-CUST-100001')) {
+      resolvedCustomerId = String(obj.memberId);
+    } else if (obj.customerId && obj.customerId !== 'FIC-CUST-100001') {
+      resolvedCustomerId = String(obj.customerId);
+    } else {
+      resolvedCustomerId = 'N/A';
+    }
   }
 
   obj.customerId = resolvedCustomerId;
@@ -1527,10 +1604,12 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     droppingPoint: obj.droppingPoint || obj.vehicleDetails?.droppingPoint || null
   };
 
-  // Status mapping for Stay: Replace product-like "Order Received" with proper hotel booking status
+  // Status mapping for Bookings: Replace product-like "Order Received" with legitimate booking status
   const isStay = obj.type === 'Stay' || obj.category === 'Stay' || (obj.items && obj.items[0]?.category === 'Stay');
   if (isStay && (obj.status === 'Order Received' || !obj.status)) {
     obj.status = (obj.paymentStatus === 'Paid' || obj.payment_status === 'Paid') ? 'Confirmed' : 'Pending';
+  } else if (!isStay && (obj.status === 'Order Received' || !obj.status || obj.status === 'Pending')) {
+    obj.status = 'Booking Received';
   }
 
   // Status history
@@ -1723,18 +1802,16 @@ const getApplications = async (req, res) => {
         { mainCategory: { $regex: /^job/i } },
         { category: { $regex: /^job/i } }
       ]
-    }).select('_id id name').lean();
+    }).select('_id id name title').lean();
 
     const vendorJobIds = vendorJobs.map(j => String(j._id || j.id));
 
     // Base query: strictly applications matching this vendor's vacancies or vendor ID
+    // NEVER match general bookings or orders merely because applicationId exists
     const baseQuery = {
       $and: [
         {
-          $or: [
-            { type: { $in: APPLICATION_BASED_TYPES } },
-            { applicationId: { $exists: true, $ne: null } }
-          ]
+          type: { $in: APPLICATION_BASED_TYPES, $nin: [...ORDER_BASED_TYPES, ...BOOKING_BASED_TYPES] }
         },
         {
           $or: [
@@ -1782,6 +1859,30 @@ const getApplications = async (req, res) => {
     const applications = await query;
     const customerLookup = await buildCustomerLookupForOrders(applications);
 
+    // Build map of vendor job vacancies and fetch any extra referenced jobs
+    const jobVacancyMap = {};
+    vendorJobs.forEach(j => {
+      jobVacancyMap[String(j._id || j.id)] = j;
+    });
+
+    const unmappedJobIds = applications
+      .map(a => String(a.jobId || (a.items && a.items[0]?.productId) || a.productId || ''))
+      .filter(id => id && !jobVacancyMap[id]);
+
+    if (unmappedJobIds.length > 0) {
+      const extraJobs = await Product.find({
+        _id: { $in: unmappedJobIds },
+        $or: [
+          { type: { $regex: /^job/i } },
+          { mainCategory: { $regex: /^job/i } },
+          { category: { $regex: /^job/i } }
+        ]
+      }).select('_id id name title').lean();
+      extraJobs.forEach(j => {
+        jobVacancyMap[String(j._id || j.id)] = j;
+      });
+    }
+
     const normalizedApplications = applications.map(app => {
       const obj = app.toObject ? app.toObject() : app;
       if (!obj.vendorId && obj.vendor_id) obj.vendorId = obj.vendor_id;
@@ -1795,10 +1896,23 @@ const getApplications = async (req, res) => {
         obj.status = 'APPLICATION RECEIVED';
       }
 
+      // Resolve real job vacancy title and Job ID
+      const targetJobId = String(obj.jobId || (obj.items && obj.items[0]?.productId) || obj.productId || '');
+      const matchedJob = jobVacancyMap[targetJobId];
+      if (matchedJob) {
+        obj.jobTitle = matchedJob.title || matchedJob.name || 'Job details unavailable';
+        obj.jobId = String(matchedJob._id || matchedJob.id);
+      } else if (obj.jobTitle && !['Car', 'Non Ac Car', 'Dell', 'Mobile Phone', 'Wheat', 'Dove', 'Apex'].some(p => obj.jobTitle.toLowerCase() === p.toLowerCase())) {
+        obj.jobId = targetJobId || 'N/A';
+      } else {
+        obj.jobTitle = 'Job details unavailable';
+        obj.jobId = targetJobId || 'N/A';
+      }
+
       let resolvedCustomerId = null;
-      if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-')) {
+      if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-') && obj.customerId !== 'FIC-CUST-100001') {
         resolvedCustomerId = String(obj.customerId);
-      } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-')) {
+      } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-') && obj.customerDisplayId !== 'FIC-CUST-100001') {
         resolvedCustomerId = String(obj.customerDisplayId);
       } else {
         const oPhone = (obj.candidatePhone || obj.customer_phone || '').toString().replace(/[^0-9]/g, '');
@@ -1813,8 +1927,8 @@ const getApplications = async (req, res) => {
           resolvedCustomerId = customerLookup.byName[oName];
         }
       }
-      obj.customerId = resolvedCustomerId || 'FIC-CUST-100001';
-      obj.customerDisplayId = resolvedCustomerId || 'FIC-CUST-100001';
+      obj.customerId = resolvedCustomerId || (obj.memberId && !obj.memberId.startsWith('FIC-CUST-100001') ? obj.memberId : 'N/A');
+      obj.customerDisplayId = obj.customerId;
 
       return obj;
     });
@@ -2184,6 +2298,18 @@ const getOrderResume = async (req, res) => {
       }
     }
 
+    if (!isAuthorized && (order.jobId || (order.items && order.items[0]?.productId) || order.productId)) {
+      const targetJobId = String(order.jobId || (order.items && order.items[0]?.productId) || order.productId);
+      const isVendorJob = await Product.exists({
+        _id: targetJobId,
+        $or: [
+          { vendorId: { $in: Array.from(businessIds) } },
+          { vendor_id: { $in: Array.from(businessIds) } }
+        ]
+      });
+      if (isVendorJob) isAuthorized = true;
+    }
+
     if (!isAuthorized) {
       return res.status(404).json({ success: false, message: 'Candidate Application not found or unauthorized' });
     }
@@ -2441,6 +2567,9 @@ const getCustomers = async (req, res) => {
       const custPhoneClean = (cust.phone || '').toString().trim().replace(/[^0-9]/g, '');
 
       const custOrders = rawOrders.filter(o => {
+        // Exclude job candidate applications from customer transactional purchase history
+        if (o.type && APPLICATION_BASED_TYPES.includes(o.type)) return false;
+
         const oNameClean = (o.memberName || o.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
         const oEmailClean = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
         const oMemberIdClean = (o.memberId || o.customerId || '').toString().trim().toLowerCase();

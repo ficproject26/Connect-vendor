@@ -565,7 +565,9 @@ const Overview = () => {
                   <div className="p-3.5 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded-2xl shadow-inner"><CheckCircle2 size={24} /></div>
                   <div>
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Completed {terms.ordersName}</p>
-                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-green-600 dark:text-green-455">{completedOrders.length}</p>
+                    <p className="text-2xl font-extrabold mt-0.5 tracking-tight text-green-600 dark:text-green-455">
+                      {analytics.completedOrdersCount !== undefined ? analytics.completedOrdersCount : completedOrders.length}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -760,36 +762,23 @@ const Overview = () => {
 
                 {/* Sidebar Column (Members Section Only) */}
                 <div className="space-y-6">
-                  {/* Members Section */}
+                  {/* Recent Customers Section */}
                   <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight mb-4 flex items-center gap-2">
-                      <Users size={18} className="text-slate-400" />
-                      Members Overview
-                    </h3>
-
-                    {/* Member Stats Cards */}
-                    <div className="grid grid-cols-2 gap-3 mb-6">
-                      <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-850/50">
-                        <p className="text-[10px] uppercase font-bold text-slate-400">Total Members</p>
-                        <p className="text-xl font-extrabold mt-1 text-slate-800 dark:text-white">{totalMembersCount}</p>
-                      </div>
-                      <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-4 rounded-2xl border border-emerald-100/30 dark:border-emerald-900/20">
-                        <p className="text-[10px] uppercase font-bold text-emerald-500">Active</p>
-                        <p className="text-xl font-extrabold mt-1 text-emerald-600 dark:text-emerald-400">{activeMemberships}</p>
-                      </div>
-                      <div className="bg-amber-50/50 dark:bg-amber-950/20 p-4 rounded-2xl border border-amber-100/30 dark:border-amber-900/20">
-                        <p className="text-[10px] uppercase font-bold text-amber-500">New (7d)</p>
-                        <p className="text-xl font-extrabold mt-1 text-amber-600 dark:text-amber-400">{newMembersCount}</p>
-                      </div>
-                      <div className="bg-rose-50/50 dark:bg-rose-950/20 p-4 rounded-2xl border border-rose-100/30 dark:border-rose-900/20">
-                        <p className="text-[10px] uppercase font-bold text-rose-500">Expired</p>
-                        <p className="text-xl font-extrabold mt-1 text-rose-600 dark:text-rose-400">{expiredMemberships}</p>
-                      </div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                        <Users size={18} className="text-slate-400" />
+                        Recent Customers
+                      </h3>
+                      <button 
+                        onClick={() => setActiveTab('customers')}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 transition-colors"
+                      >
+                        View All
+                      </button>
                     </div>
 
                     {/* Mini Customers List */}
                     <div className="space-y-3">
-                      <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">Recent Customers</h4>
                       {customers.slice(0, 3).map((customer, idx) => {
                         const metrics = getCustomerMetrics(customer, orders);
                         return (

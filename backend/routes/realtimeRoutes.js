@@ -70,4 +70,35 @@ router.get('/sync', protect, async (req, res) => {
   }
 });
 
+
+// POST /api/realtime/notify-order
+// Allows internal services to trigger real-time order notification
+router.post('/notify-order', async (req, res) => {
+  try {
+    const { order } = req.body;
+    if (!order) {
+      return res.status(400).json({ success: false, message: 'Order data required' });
+    }
+
+    const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES } = require('../realtime/realtimeManager');
+    await publishRealtimeEvent({
+      event: EVENT_TYPES.ORDER_CREATED,
+      entity: ENTITY_NAMES.ORDER,
+      entityId: (order._id || order.id || '').toString(),
+      action: 'created',
+      target: {
+        vendorId: (order.vendorId || order.vendor_id || '').toString(),
+        userId: (order.memberId || order.userId || order.user_id || '').toString(),
+        businessId: (order.businessId || order.primaryBusinessId || '').toString()
+      },
+      data: order
+    });
+
+    res.status(200).json({ success: true, message: 'Realtime order event published successfully' });
+  } catch (err) {
+    console.error('Notify Order Error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to broadcast order event' });
+  }
+});
+
 module.exports = router;
