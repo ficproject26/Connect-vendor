@@ -1362,9 +1362,14 @@ const getOrders = async (req, res) => {
       delete obj.candidateResume;
       delete obj.candidateEmail;
       delete obj.candidateEducation;
+      delete obj.candidateName;
       delete obj.candidatePhone;
       delete obj.candidateAddress;
+      delete obj.candidateLocation;
+      delete obj.jobLocation;
+      delete obj.experience;
       delete obj.applicationId;
+      delete obj.applicationDate;
       delete obj.jobId;
 
       if (obj.memberId && membershipMap[obj.memberId.toString()]) {
@@ -1735,7 +1740,14 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     delete obj.candidateResume;
     delete obj.candidateEmail;
     delete obj.candidateEducation;
+    delete obj.candidateName;
+    delete obj.candidatePhone;
+    delete obj.candidateAddress;
+    delete obj.candidateLocation;
+    delete obj.jobLocation;
+    delete obj.experience;
     delete obj.applicationId;
+    delete obj.applicationDate;
     delete obj.jobId;
   }
 

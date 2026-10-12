@@ -643,72 +643,88 @@ router.post('/orders', async (req, res) => {
     // If order already exists in the shared database (created by customer backend), update and return it
     const existing = await Order.findOne({ $or: [{ id: appId }, { id: id }, { order_number: appId }, { order_number: id }] });
     if (existing) {
+      const updateFields = {
+        vendorId: vendorId || existing.vendorId,
+        memberId: memberId || existing.memberId,
+        memberName: req.body.candidateName || memberName || existing.memberName,
+        items: (items && items.length > 0) ? items : existing.items,
+        totalAmount: totalAmount ?? finalAmount,
+        finalAmount: finalAmount,
+        type: orderType,
+        status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : (existing.status && existing.status !== 'Pending' && existing.status !== 'Order Received' ? existing.status : 'APPLICATION RECEIVED')) : (req.body.status || existing.status || (['Booking', 'Appointment', 'Stay', 'Travel', 'Services'].includes(orderType) ? 'Booking Received' : 'Order Received')),
+        appointmentDate: appointmentDate || existing.appointmentDate,
+        appointmentTimeSlot: appointmentTimeSlot || existing.appointmentTimeSlot,
+        doctorName: doctorName || existing.doctorName,
+        tableNumber: tableNumber || existing.tableNumber,
+        roomNumber: roomNumber || existing.roomNumber,
+        prescriptionUrl: prescriptionUrl || existing.prescriptionUrl,
+        checkInDate: req.body.checkInDate || req.body.check_in_date || appointmentDate || existing.checkInDate,
+        checkInTime: req.body.checkInTime || req.body.check_in_time || existing.checkInTime,
+        checkOutDate: req.body.checkOutDate || req.body.check_out_date || existing.checkOutDate,
+        checkOutTime: req.body.checkOutTime || req.body.check_out_time || existing.checkOutTime,
+        guestList: Array.isArray(req.body.guestList) ? req.body.guestList : (existing.guestList || existing.guestDetails || []),
+        guestDetails: Array.isArray(req.body.guestDetails) ? req.body.guestDetails : (existing.guestDetails || existing.guestList || []),
+        guests: req.body.guests || req.body.numberOfGuests || req.body.guestCount || req.body.adults || existing.guests,
+        adults: req.body.adults || existing.adults,
+        children: req.body.children || existing.children,
+        infants: req.body.infants || existing.infants,
+        roomsCount: req.body.roomsCount || req.body.numberOfRooms || existing.roomsCount,
+        nightsCount: req.body.nightsCount || req.body.numberOfNights || existing.nightsCount,
+        vehicleDetails: req.body.vehicleDetails || existing.vehicleDetails,
+        travelType: req.body.travelType || existing.travelType,
+        vehicleType: req.body.vehicleType || existing.vehicleType,
+        vehicleNumber: req.body.vehicleNumber || existing.vehicleNumber,
+        pickupDropInfo: req.body.pickupDropInfo || existing.pickupDropInfo,
+        customer_address: req.body.customer_address || req.body.address || req.body.deliveryAddress || existing.customer_address,
+        deliveryAddress: req.body.deliveryAddress || req.body.customer_address || req.body.address || existing.deliveryAddress,
+        customer_phone: req.body.customer_phone || req.body.phone || existing.customer_phone,
+        customerId: resolvedCustId,
+        customerDisplayId: resolvedCustId,
+        // Payment fields - always set resolved or preserved values
+        paymentMethod: resolvedPaymentMethod || existing.paymentMethod || existing.payment_method || 'Connect Wallet',
+        payment_method: resolvedPaymentMethod || existing.payment_method || existing.paymentMethod || 'Connect Wallet',
+        paymentStatus: resolvedPaymentStatus || existing.paymentStatus || existing.payment_status || 'Paid',
+        payment_status: resolvedPaymentStatus || existing.payment_status || existing.paymentStatus || 'Paid',
+        ...(resolvedTxnId && { transactionId: resolvedTxnId }),
+        ...(resolvedPaidAt && { paidAt: resolvedPaidAt }),
+        ...(razorpayPaymentId && { razorpayPaymentId }),
+        ...(razorpayOrderId && { razorpayOrderId }),
+        ...(paymentReference && { paymentReference }),
+        ...(paymentProvider && { paymentProvider: resolvedPaymentMethod || paymentProvider })
+      };
+
+      const updateOp = { $set: updateFields };
+      if (isJob) {
+        updateFields.applicationId = appId || existing.applicationId || existing.order_number || existing.id;
+        updateFields.jobId = req.body.jobId || (items && items[0]?.productId) || existing.jobId;
+        updateFields.jobTitle = req.body.jobTitle || (items && items[0]?.name) || existing.jobTitle || existing.product_details;
+        updateFields.candidateName = req.body.candidateName || memberName || existing.candidateName || existing.memberName;
+        updateFields.candidateEmail = candidateEmail || req.body.customer_email || existing.candidateEmail;
+        updateFields.candidatePhone = req.body.customer_phone || req.body.candidatePhone || existing.candidatePhone;
+        updateFields.candidateResume = candidateResume || existing.candidateResume;
+        updateFields.experience = experience || existing.experience;
+        updateFields.candidateEducation = candidateEducation || existing.candidateEducation;
+        updateFields.jobLocation = req.body.jobLocation || req.body.candidateLocation || existing.jobLocation;
+        updateFields.applicationDate = req.body.applicationDate || existing.applicationDate || existing.createdAt || existing.created_at;
+      } else {
+        updateOp.$unset = {
+          jobTitle: "",
+          candidateEmail: "",
+          candidateResume: "",
+          candidateEducation: "",
+          candidatePhone: "",
+          jobLocation: "",
+          experience: "",
+          applicationId: "",
+          applicationDate: "",
+          jobId: "",
+          candidateName: ""
+        };
+      }
+
       await Order.updateOne(
         { _id: existing._id },
-        {
-          $set: {
-            vendorId: vendorId || existing.vendorId,
-            memberId: memberId || existing.memberId,
-            memberName: req.body.candidateName || memberName || existing.memberName,
-            ...(isJob ? {
-              applicationId: appId || existing.applicationId || existing.order_number || existing.id,
-              jobId: req.body.jobId || (items && items[0]?.productId) || existing.jobId,
-              jobTitle: req.body.jobTitle || (items && items[0]?.name) || existing.jobTitle || existing.product_details,
-              candidateName: req.body.candidateName || memberName || existing.candidateName || existing.memberName,
-              candidateEmail: candidateEmail || req.body.customer_email || existing.candidateEmail,
-              candidatePhone: req.body.customer_phone || req.body.candidatePhone || existing.candidatePhone,
-              candidateResume: candidateResume || existing.candidateResume,
-              experience: experience || existing.experience,
-              candidateEducation: candidateEducation || existing.candidateEducation,
-              jobLocation: req.body.jobLocation || req.body.candidateLocation || existing.jobLocation,
-              applicationDate: req.body.applicationDate || existing.applicationDate || existing.createdAt || existing.created_at
-            } : {}),
-            items: (items && items.length > 0) ? items : existing.items,
-            totalAmount: totalAmount ?? finalAmount,
-            finalAmount: finalAmount,
-            type: orderType,
-            status: isJob ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : (existing.status && existing.status !== 'Pending' && existing.status !== 'Order Received' ? existing.status : 'APPLICATION RECEIVED')) : (req.body.status || existing.status || (['Booking', 'Appointment', 'Stay', 'Travel', 'Services'].includes(orderType) ? 'Booking Received' : 'Order Received')),
-            appointmentDate: appointmentDate || existing.appointmentDate,
-            appointmentTimeSlot: appointmentTimeSlot || existing.appointmentTimeSlot,
-            doctorName: doctorName || existing.doctorName,
-            tableNumber: tableNumber || existing.tableNumber,
-            roomNumber: roomNumber || existing.roomNumber,
-            prescriptionUrl: prescriptionUrl || existing.prescriptionUrl,
-            checkInDate: req.body.checkInDate || req.body.check_in_date || appointmentDate || existing.checkInDate,
-            checkInTime: req.body.checkInTime || req.body.check_in_time || existing.checkInTime,
-            checkOutDate: req.body.checkOutDate || req.body.check_out_date || existing.checkOutDate,
-            checkOutTime: req.body.checkOutTime || req.body.check_out_time || existing.checkOutTime,
-            guestList: Array.isArray(req.body.guestList) ? req.body.guestList : (existing.guestList || existing.guestDetails || []),
-            guestDetails: Array.isArray(req.body.guestDetails) ? req.body.guestDetails : (existing.guestDetails || existing.guestList || []),
-            guests: req.body.guests || req.body.numberOfGuests || req.body.guestCount || req.body.adults || existing.guests,
-            adults: req.body.adults || existing.adults,
-            children: req.body.children || existing.children,
-            infants: req.body.infants || existing.infants,
-            roomsCount: req.body.roomsCount || req.body.numberOfRooms || existing.roomsCount,
-            nightsCount: req.body.nightsCount || req.body.numberOfNights || existing.nightsCount,
-            vehicleDetails: req.body.vehicleDetails || existing.vehicleDetails,
-            travelType: req.body.travelType || existing.travelType,
-            vehicleType: req.body.vehicleType || existing.vehicleType,
-            vehicleNumber: req.body.vehicleNumber || existing.vehicleNumber,
-            pickupDropInfo: req.body.pickupDropInfo || existing.pickupDropInfo,
-            customer_address: req.body.customer_address || req.body.address || req.body.deliveryAddress || existing.customer_address,
-            deliveryAddress: req.body.deliveryAddress || req.body.customer_address || req.body.address || existing.deliveryAddress,
-            customer_phone: req.body.customer_phone || req.body.phone || existing.customer_phone,
-            customerId: resolvedCustId,
-            customerDisplayId: resolvedCustId,
-            // Payment fields - always set resolved or preserved values
-            paymentMethod: resolvedPaymentMethod || existing.paymentMethod || existing.payment_method || 'Connect Wallet',
-            payment_method: resolvedPaymentMethod || existing.payment_method || existing.paymentMethod || 'Connect Wallet',
-            paymentStatus: resolvedPaymentStatus || existing.paymentStatus || existing.payment_status || 'Paid',
-            payment_status: resolvedPaymentStatus || existing.payment_status || existing.paymentStatus || 'Paid',
-            ...(resolvedTxnId && { transactionId: resolvedTxnId }),
-            ...(resolvedPaidAt && { paidAt: resolvedPaidAt }),
-            ...(razorpayPaymentId && { razorpayPaymentId }),
-            ...(razorpayOrderId && { razorpayOrderId }),
-            ...(paymentReference && { paymentReference }),
-            ...(paymentProvider && { paymentProvider: resolvedPaymentMethod || paymentProvider })
-          }
-        }
+        updateOp
       );
       await reduceStockForOrder(existing, vendorId);
       return res.status(200).json({ success: true, message: 'Order updated in vendor dashboard successfully', data: existing });

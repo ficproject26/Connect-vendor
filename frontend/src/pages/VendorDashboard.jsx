@@ -245,7 +245,8 @@ export const getRecordClassification = (record) => {
   const sourceEntity = String(record.sourceEntity || record.recordType || '').trim().toUpperCase();
 
   const isOrderCategory = ['ORDER', 'ORDERS', 'FOOD', 'FOODS', 'RESTAURANT', 'PRODUCTS', 'PRODUCT', 'DAILY NEEDS', 'DAILY_NEEDS', 'GROCERY'].includes(rawType) ||
-                          ['ORDER', 'ORDERS', 'FOOD', 'FOODS', 'RESTAURANT', 'PRODUCTS', 'PRODUCT', 'DAILY NEEDS', 'DAILY_NEEDS', 'GROCERY'].includes(rawCat);
+                          ['ORDER', 'ORDERS', 'FOOD', 'FOODS', 'RESTAURANT', 'PRODUCTS', 'PRODUCT', 'DAILY NEEDS', 'DAILY_NEEDS', 'GROCERY'].includes(rawCat) ||
+                          Boolean(record.items && record.items.length > 0 && !['JOB', 'JOBS'].includes(rawType));
 
   // 1. Explicit Job Application check (never true for orders, stay, travel, or services)
   if (!isOrderCategory) {
@@ -12802,26 +12803,27 @@ required
         onClose={() => setIsBillModalOpen(false)} 
         title={(() => {
           if (!selectedBillOrder) return "Details";
+          const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
+          const isFood = rawCat === 'FOOD' || rawCat === 'RESTAURANT' || getRecordCategory(selectedBillOrder) === CATEGORY_FOOD;
+          if (isFood) return "Food Order Details";
           const classification = getRecordClassification(selectedBillOrder);
           if (classification === 'JOB_APPLICATION') return "Job Application Details";
           if (isTravelBooking(selectedBillOrder)) return "Travel Booking Details";
           if (isStayBooking(selectedBillOrder)) return "Stay Booking Details";
           if (selectedBillOrder.doctorName || selectedBillOrder.patientName || selectedBillOrder.specialty) return "Appointment Details";
-          const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
           if (rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL') return "Service Booking Details";
           if (classification === 'BOOKING') return "Booking Details";
-          if (rawCat === 'FOOD' || rawCat === 'RESTAURANT' || getRecordCategory(selectedBillOrder) === CATEGORY_FOOD) return "Food Order Details";
           return "Order Details";
         })()}
       >
         {Boolean(selectedBillOrder) && (() => {
-          const classification = getRecordClassification(selectedBillOrder);
           const rawCat = (selectedBillOrder?.type || selectedBillOrder?.category || '').toUpperCase();
-          const isJobOrder = classification === 'JOB_APPLICATION';
-          const isTravelOrder = !isJobOrder && isTravelBooking(selectedBillOrder);
-          const isStayOrder = !isJobOrder && !isTravelOrder && (isStayBooking(selectedBillOrder) || rawCat === 'STAY' || rawCat === 'HOTEL');
-          const isServiceOrder = !isJobOrder && !isTravelOrder && !isStayOrder && (rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL' || Boolean(selectedBillOrder.doctorName));
-          const isFoodOrder = !isJobOrder && !isTravelOrder && !isStayOrder && !isServiceOrder && (rawCat === 'FOOD' || rawCat === 'RESTAURANT' || getRecordCategory(selectedBillOrder) === CATEGORY_FOOD);
+          const isFoodOrder = rawCat === 'FOOD' || rawCat === 'RESTAURANT' || getRecordCategory(selectedBillOrder) === CATEGORY_FOOD;
+          const classification = getRecordClassification(selectedBillOrder);
+          const isJobOrder = !isFoodOrder && classification === 'JOB_APPLICATION';
+          const isTravelOrder = !isFoodOrder && !isJobOrder && isTravelBooking(selectedBillOrder);
+          const isStayOrder = !isFoodOrder && !isJobOrder && !isTravelOrder && (isStayBooking(selectedBillOrder) || rawCat === 'STAY' || rawCat === 'HOTEL');
+          const isServiceOrder = !isFoodOrder && !isJobOrder && !isTravelOrder && !isStayOrder && (rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL' || Boolean(selectedBillOrder.doctorName));
           
           if (isJobOrder) {
             const jobStatusDisplay = (() => {
