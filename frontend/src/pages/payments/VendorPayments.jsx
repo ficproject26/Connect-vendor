@@ -154,7 +154,7 @@ export default function VendorPayments() {
   const [salesError, setSalesError] = useState('');
   const [salesSearch, setSalesSearch] = useState('');
   const [salesStatus, setSalesStatus] = useState('All'); // 'All' | 'Successful' | 'Failed' | 'Hold'
-  const [salesDuration, setSalesDuration] = useState('Today'); // 'Today' | 'This Week' | 'This Month' | 'This Year' | 'Custom'
+  const [salesDuration, setSalesDuration] = useState('All'); // 'All' | 'Today' | 'This Week' | 'This Month' | 'This Year' | 'Custom'
   const [salesFromDate, setSalesFromDate] = useState('');
   const [salesToDate, setSalesToDate] = useState('');
   const [salesDateError, setSalesDateError] = useState('');
@@ -661,14 +661,7 @@ export default function VendorPayments() {
                             <div className="font-semibold text-slate-800 dark:text-slate-200">
                               {(() => {
                                 const isCod = (item.paymentMethod || '').toLowerCase().includes('cash') || (item.paymentMethod || '').toLowerCase().includes('cod');
-                                const isSynthetic = item.transactionId && (
-                                  item.transactionId === item.orderId ||
-                                  item.transactionId.startsWith('TXN_ORD') ||
-                                  item.transactionId.startsWith('TXN_BKG') ||
-                                  item.transactionId.startsWith('TXN_RD') ||
-                                  item.transactionId === `TXN_${item.orderId}`
-                                );
-                                if (!item.transactionId || isSynthetic) {
+                                if (!item.transactionId) {
                                   return (
                                     <span className="text-slate-400 italic font-sans font-normal">
                                       {isCod ? 'Pending collection' : 'Not generated'}
@@ -1123,14 +1116,7 @@ export default function VendorPayments() {
                 <div className="font-mono text-base font-bold text-slate-900 dark:text-white">
                   {(() => {
                     const isCod = (selectedSaleDetail.paymentMethod || '').toLowerCase().includes('cash') || (selectedSaleDetail.paymentMethod || '').toLowerCase().includes('cod');
-                    const isSynthetic = selectedSaleDetail.transactionId && (
-                      selectedSaleDetail.transactionId === selectedSaleDetail.orderId ||
-                      selectedSaleDetail.transactionId.startsWith('TXN_ORD') ||
-                      selectedSaleDetail.transactionId.startsWith('TXN_BKG') ||
-                      selectedSaleDetail.transactionId.startsWith('TXN_RD') ||
-                      selectedSaleDetail.transactionId === `TXN_${selectedSaleDetail.orderId}`
-                    );
-                    if (!selectedSaleDetail.transactionId || isSynthetic) {
+                    if (!selectedSaleDetail.transactionId) {
                       return (
                         <span className="text-slate-400 italic font-sans font-normal text-sm">
                           {isCod ? 'Pending collection' : 'Not generated'}

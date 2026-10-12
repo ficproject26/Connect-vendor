@@ -108,12 +108,10 @@ const Customers = () => {
                       <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
                         <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
                           <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Visits</span>
-                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400" title="Visit tracking unavailable">Unavailable</span>
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{c.ordersCount || c.visits || 1} times</span>
                         </div>
                         <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
-                          <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">
-                            {terms?.customerSpentLabel ? terms.customerSpentLabel.replace('Total ', '').replace(' (₹)', '') : 'Total Spent'}
-                          </span>
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Total Spent</span>
                           <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">₹{c.totalSpent || 0}</span>
                         </div>
                       </div>

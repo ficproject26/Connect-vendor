@@ -1006,6 +1006,21 @@ const deleteProduct = async (req, res) => {
 // @desc    Get all orders / bookings of the vendor
 // @route   GET /api/vendor/orders
 // @access  Private (Vendor)
+// Helper to deduplicate repeating address tokens like "Krishnagiri, Tamil Nadu, Krishnagiri, Tamil Nadu"
+const deduplicateAddressSegments = (addrStr) => {
+  if (!addrStr || typeof addrStr !== 'string') return addrStr;
+  const tokens = [];
+  addrStr.split(',').forEach(segment => {
+    const trimmed = segment.trim();
+    if (!trimmed || trimmed === 'N/A') return;
+    const lower = trimmed.toLowerCase();
+    if (!tokens.some(t => t.toLowerCase() === lower)) {
+      tokens.push(trimmed);
+    }
+  });
+  return tokens.join(', ');
+};
+
 // Reusable helper to build Customer ID canonical lookup without scanning entire collections
 const buildCustomerLookupForOrders = async (orders) => {
   const memberIds = [...new Set(orders.map(o => o.memberId || o.customerId || o.customer_id).filter(id => id && id !== 'FIC-CUST-100001' && id !== 'cust_dhanush'))];
@@ -1028,16 +1043,13 @@ const buildCustomerLookupForOrders = async (orders) => {
     orCustConditions.push({ mobileNumber: { $in: phones } });
   }
 
-  let dbCustomers = [];
-  let memberUsers = [];
-  if (orCustConditions.length > 0) {
-    const [cResult, uResult] = await Promise.all([
-      Customer.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id address street city state pincode aadhaar pan role status addresses').lean(),
-      User.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id aadhaar pan role').lean()
-    ]);
-    dbCustomers = cResult;
-    memberUsers = uResult;
-  }
+  // Fetch all Customer documents (collection has only 27 records) plus matching Users
+  const [dbCustomers, memberUsers] = await Promise.all([
+    Customer.find({}).select('name email phone mobileNumber customerId registrationId _id address street city state pincode aadhaar pan role status addresses').lean(),
+    orCustConditions.length > 0
+      ? User.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id aadhaar pan role').lean()
+      : Promise.resolve([])
+  ]);
 
   const customerLookup = {
     byPhone: {},
@@ -1054,7 +1066,7 @@ const buildCustomerLookupForOrders = async (orders) => {
     if (!cust) return;
     let cid = cust.customerId || cust.registrationId || cust.customerDisplayId || (String(cust._id || cust.id).startsWith('FIC-CUST-') ? String(cust._id || cust.id) : null);
     if (cid === 'FIC-CUST-100001') cid = null;
-    if (!cid && cust.registrationId) cid = cust.registrationId;
+    if (!cid && cust.registrationId && cust.registrationId !== 'FIC-CUST-100001') cid = cust.registrationId;
     
     if (cust._id) {
       if (cid) customerLookup.byId[String(cust._id)] = cid;
@@ -1064,11 +1076,11 @@ const buildCustomerLookupForOrders = async (orders) => {
       if (cid) customerLookup.byId[String(cust.id)] = cid;
       customerLookup.entitiesById[String(cust.id)] = cust;
     }
-    if (cust.customerId) {
+    if (cust.customerId && cust.customerId !== 'FIC-CUST-100001') {
       if (cid) customerLookup.byId[String(cust.customerId)] = cid;
       customerLookup.entitiesById[String(cust.customerId)] = cust;
     }
-    if (cust.registrationId) {
+    if (cust.registrationId && cust.registrationId !== 'FIC-CUST-100001') {
       if (cid) customerLookup.byId[String(cust.registrationId)] = cid;
       customerLookup.entitiesById[String(cust.registrationId)] = cust;
     }
@@ -1101,11 +1113,13 @@ const normalizeAddressStateForOrder = (obj) => {
     if (/(krishnagiri|dharmapuri|chennai|coimbatore|salem|madurai|tirupur)/i.test(obj.customer_address) || /-\s*6[0-4]\d{4}/.test(obj.customer_address)) {
       obj.customer_address = obj.customer_address.replace(/,\s*Karnataka/gi, ', Tamil Nadu').replace(/\bKarnataka\b/gi, 'Tamil Nadu');
     }
+    obj.customer_address = deduplicateAddressSegments(obj.customer_address);
   }
   if (obj.deliveryAddress && typeof obj.deliveryAddress === 'string') {
     if (/(krishnagiri|dharmapuri|chennai|coimbatore|salem|madurai|tirupur)/i.test(obj.deliveryAddress) || /-\s*6[0-4]\d{4}/.test(obj.deliveryAddress)) {
       obj.deliveryAddress = obj.deliveryAddress.replace(/,\s*Karnataka/gi, ', Tamil Nadu').replace(/\bKarnataka\b/gi, 'Tamil Nadu');
     }
+    obj.deliveryAddress = deduplicateAddressSegments(obj.deliveryAddress);
   }
 };
 
@@ -1578,21 +1592,44 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     contactEmail: user?.email || 'Not provided'
   };
 
+  // Pre-fetch product details to aid accurate categorization
+  const firstItem = (obj.items && obj.items[0]) || {};
+  const targetProdId = firstItem.productId || obj.productId;
+  const matchedProd = targetProdId && productMap ? productMap[String(targetProdId)] : null;
+
   // Determine true business category for the booking
   const rawType = String(obj.type || '').trim().toLowerCase();
   const rawCat = String(obj.category || '').trim().toLowerCase();
+  const rawSubCat = String(obj.subcategory || obj.subCategory || matchedProd?.subcategory || '').trim().toLowerCase();
+  const prodCat = String(matchedProd?.category || '').trim().toLowerCase();
+  const prodName = String(matchedProd?.name || '').trim().toLowerCase();
   const detailStr = String(obj.product_details || (obj.items && obj.items[0]?.name) || '').toLowerCase();
 
-  const isTravel = ['travel', 'travels', 'package', 'packages', 'bus', 'vehicle', 'cab', 'car', 'bike'].includes(rawType) ||
-                   ['travel', 'travels', 'package', 'packages', 'bus', 'vehicle', 'cab', 'car', 'bike'].includes(rawCat) ||
-                   Boolean(obj.travelDate || obj.journeyDate || obj.vehicleType || obj.busName || obj.carName || obj.bikeName) ||
-                   /travel|bus|cab|car|bike|tour/i.test(detailStr);
+  const isTravelTerm = (str) => {
+    if (!str) return false;
+    const s = String(str).trim().toLowerCase();
+    return (
+      ['travel', 'travels', 'package', 'packages', 'bus', 'vehicle', 'cab', 'car', 'bike', 'transport'].includes(s) ||
+      /^(ac\s*car|non\s*ac\s*car|car|ac\s*bus|non\s*ac\s*bus|bus|bike|superbike|mini\s*superbike|tempo|van|taxi|cab|flight|train)/i.test(s) ||
+      /(car|bus|bike|vehicle|travel|cab|transport)/i.test(s)
+    );
+  };
+
+  const isTravel = isTravelTerm(rawType) ||
+                   isTravelTerm(rawCat) ||
+                   isTravelTerm(rawSubCat) ||
+                   isTravelTerm(prodCat) ||
+                   isTravelTerm(prodName) ||
+                   Boolean(obj.travelDate || obj.journeyDate || obj.vehicleType || obj.busName || obj.carName || obj.bikeName || obj.boardingPoint || obj.droppingPoint) ||
+                   isTravelTerm(detailStr);
 
   const isStay = !isTravel && (
     ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawType) ||
     ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawCat) ||
     Boolean(obj.roomNumber || obj.roomName || (obj.items && obj.items[0]?.category === 'Stay')) ||
-    /room|suite|villa|resort|hotel|cottage/i.test(detailStr)
+    /room|suite|villa|resort|hotel|cottage/i.test(detailStr) ||
+    /room|suite|villa|resort|hotel|cottage/i.test(prodCat) ||
+    /room|suite|villa|resort|hotel|cottage/i.test(prodName)
   );
 
   const isServices = !isTravel && !isStay && (
@@ -1601,10 +1638,15 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     Boolean(obj.doctorName || obj.appointmentDate)
   );
 
-  const isJob = ['job', 'jobs', 'application', 'job_application'].includes(rawType) || 
-                Boolean(obj.candidateResume || obj.applicationId);
+  const isJob = (!isTravel && !isStay && !['food', 'foods', 'restaurant', 'restaurants', 'dining', 'products', 'product', 'daily needs', 'daily_needs', 'services', 'service'].includes(rawType)) && (
+    ['job', 'jobs', 'application', 'job_application'].includes(rawType) || 
+    ['job', 'jobs', 'application', 'job_application'].includes(rawCat) ||
+    Boolean(obj.candidateResume || (obj.applicationId && String(obj.applicationId).startsWith('APP')))
+  );
 
-  const isFood = ['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(rawType);
+  const isFood = ['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(rawType) ||
+                 ['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(rawCat) ||
+                 /food|restaurant|biryani|chicken|pizza|burger|meal|dish/i.test(detailStr);
 
   if (isTravel) {
     obj.category = 'Travel';
@@ -1623,10 +1665,13 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     obj.type = 'Food';
   }
 
-  // Product / Room details for Stay
-  const firstItem = (obj.items && obj.items[0]) || {};
-  const targetProdId = firstItem.productId || obj.productId;
-  const matchedProd = targetProdId && productMap ? productMap[String(targetProdId)] : null;
+  // Deduplicate address on booking holder if present
+  if (obj.bookingHolder && obj.bookingHolder.address) {
+    obj.bookingHolder.address = deduplicateAddressSegments(obj.bookingHolder.address);
+  }
+  if (obj.customerDetails && obj.customerDetails.address) {
+    obj.customerDetails.address = deduplicateAddressSegments(obj.customerDetails.address);
+  }
 
   if (isStay) {
     obj.roomDetails = {
@@ -1699,9 +1744,16 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     const departureTimeVal = obj.departureTime || obj.time || obj.appointmentTimeSlot || obj.schedule || 'Not provided';
     obj.travelDate = travelDateVal;
     obj.departureTime = departureTimeVal;
+
+    let resolvedVehicleType = 'Vehicle';
+    if (/car/i.test(detailStr) || /car/i.test(prodCat) || /car/i.test(rawCat) || /car/i.test(rawSubCat)) resolvedVehicleType = 'Car';
+    else if (/bus/i.test(detailStr) || /bus/i.test(prodCat) || /bus/i.test(rawCat) || /bus/i.test(rawSubCat)) resolvedVehicleType = 'Bus';
+    else if (/bike/i.test(detailStr) || /bike/i.test(prodCat) || /bike/i.test(rawCat) || /bike/i.test(rawSubCat)) resolvedVehicleType = 'Bike';
+
+    obj.vehicleType = obj.vehicleType || resolvedVehicleType;
     obj.vehicleDetails = {
-      travelType: obj.travelType || obj.vehicleDetails?.travelType || 'Road',
-      vehicleType: obj.vehicleType || (['Bus', 'AC Bus', 'Non ACBus'].some(v => detailStr.includes(v.toLowerCase())) ? 'Bus' : (['Car', 'Non Ac Car'].some(v => detailStr.includes(v.toLowerCase())) ? 'Car' : (['Bike'].some(v => detailStr.includes(v.toLowerCase())) ? 'Bike' : (obj.product_details || 'Vehicle')))),
+      travelType: obj.travelType || obj.vehicleDetails?.travelType || resolvedVehicleType,
+      vehicleType: obj.vehicleType || resolvedVehicleType,
       vehicleNumber: obj.vehicleNumber || obj.vehicleDetails?.vehicleNumber || null,
       numberOfVehicles: obj.numberOfVehicles || obj.vehicleDetails?.numberOfVehicles || 1,
       pickupDropInfo: obj.pickupDropInfo || obj.boardingPoint || obj.droppingPoint || null,
@@ -2737,7 +2789,7 @@ const getCustomers = async (req, res) => {
           .filter(p => p && typeof p === 'string' && p.trim() !== '' && p !== 'N/A' && !/^\d{6}$/.test(p.trim()));
 
         if (uAddrParts.length > 0) {
-          const uFullAddr = uAddrParts.join(', ');
+          const uFullAddr = deduplicateAddressSegments(uAddrParts.join(', '));
           if (!cust.address || cust.address === 'N/A' || cust.address === 'Bangalore Center' || cust.address.trim() === '') {
             cust.address = uFullAddr;
           }
@@ -2755,6 +2807,11 @@ const getCustomers = async (req, res) => {
       const custOrders = rawOrders.filter(o => {
         // Exclude job candidate applications from customer transactional purchase history
         if (o.type && APPLICATION_BASED_TYPES.includes(o.type)) return false;
+
+        // Exclude failed, cancelled, or rejected transactions
+        const rawPayStatus = (o.paymentStatus || o.payment_status || '').toLowerCase();
+        const rawStatus = (o.status || '').toLowerCase();
+        if (rawPayStatus === 'failed' || ['cancelled', 'rejected', 'failed'].includes(rawStatus)) return false;
 
         const oNameClean = (o.memberName || o.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
         const oEmailClean = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
@@ -2813,7 +2870,7 @@ const getCustomers = async (req, res) => {
       }
 
       if (!canonicalId || canonicalId === 'FIC-CUST-100001') {
-        canonicalId = cust._id;
+        canonicalId = cust._id && !String(cust._id).startsWith('cust_') ? String(cust._id) : 'N/A';
       }
 
       cust.customerId = canonicalId;
@@ -4151,12 +4208,20 @@ const getSalesPayments = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    const businessIds = [parentUserId.toString()];
+    const businessIds = [
+      parentUserId.toString(),
+      ...(user.vendorId ? [String(user.vendorId)] : []),
+      ...(user.registrationId ? [String(user.registrationId)] : []),
+      ...(user._id ? [String(user._id)] : [])
+    ];
     if (user.businesses && Array.isArray(user.businesses)) {
       user.businesses.forEach(b => {
         if (b._id) businessIds.push(b._id.toString());
+        if (b.id) businessIds.push(b.id.toString());
+        if (b.vendorId) businessIds.push(String(b.vendorId));
       });
     }
+    const uniqueBusinessIds = [...new Set(businessIds.filter(Boolean))];
 
     // Platform commission configuration (cached)
     const config = await getPlatformConfigCached();
@@ -4165,8 +4230,8 @@ const getSalesPayments = async (req, res) => {
     // Build base query across ALL vendor businesses and order categories
     const query = {
       $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
+        { vendorId: { $in: uniqueBusinessIds } },
+        { vendor_id: { $in: uniqueBusinessIds } }
       ]
     };
 
@@ -4276,8 +4341,8 @@ const getSalesPayments = async (req, res) => {
       });
     }
 
-    // Fetch all matching orders
-    const allOrders = await Order.find(query).sort({ createdAt: -1 }).lean();
+    // Fetch all matching orders sorted newest first
+    const allOrders = await Order.find(query).sort({ created_at: -1, createdAt: -1, _id: -1 }).lean();
     const customerLookup = await buildCustomerLookupForOrders(allOrders);
 
     // Map each order to standard Sales Payment record
@@ -4354,13 +4419,8 @@ const getSalesPayments = async (req, res) => {
       const customerRef = realCustId || (custPhone ? `${custName} (${maskedPhone})` : custName);
 
       const isCod = (o.paymentMethod || o.payment_method || '').toLowerCase().includes('cash') || (o.paymentMethod || o.payment_method || '').toLowerCase().includes('cod');
-      let txnId = o.transactionId || o.razorpayPaymentId || o.walletTxnId || o.paymentReference || o.transactionReference || null;
-      if (txnId && typeof txnId === 'string' && (txnId.startsWith('TXN_ORD') || txnId.startsWith('TXN_BKG') || txnId === `TXN_${o.order_number}`)) {
-        txnId = null;
-      }
-      if (isCod && !o.razorpayPaymentId && !o.walletTxnId && (!o.transactionId || String(o.transactionId).startsWith('TXN_'))) {
-        txnId = null;
-      }
+      // Preserve genuine transaction ID from database
+      const txnId = o.transactionId || o.razorpayPaymentId || o.walletTxnId || o.paymentReference || o.transactionReference || null;
 
       return {
         _id: o._id,
