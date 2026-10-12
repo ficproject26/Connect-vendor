@@ -1639,6 +1639,33 @@ const VendorDashboard = () => {
   const [customerViewMode, setCustomerViewMode] = useState('grid'); // 'grid' | 'list'
   const [selectedCustomerForDetails, setSelectedCustomerForDetails] = useState(null);
   const [isCustomerDetailsModalOpen, setIsCustomerDetailsModalOpen] = useState(false);
+  const [customerPurchases, setCustomerPurchases] = useState([]);
+  const [customerPurchasesLoading, setCustomerPurchasesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isCustomerDetailsModalOpen || !selectedCustomerForDetails) {
+      setCustomerPurchases([]);
+      return;
+    }
+    const fetchPurchases = async () => {
+      setCustomerPurchasesLoading(true);
+      try {
+        const custId = selectedCustomerForDetails.customerId || selectedCustomerForDetails.registrationId || selectedCustomerForDetails._id || selectedCustomerForDetails.id || selectedCustomerForDetails.email || selectedCustomerForDetails.name;
+        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers/${encodeURIComponent(custId)}/purchases`, getAxiosConfig());
+        if (res.data && res.data.success) {
+          setCustomerPurchases(res.data.data || []);
+        } else {
+          setCustomerPurchases([]);
+        }
+      } catch (err) {
+        console.error('Failed to load customer purchases:', err);
+        setCustomerPurchases([]);
+      } finally {
+        setCustomerPurchasesLoading(false);
+      }
+    };
+    fetchPurchases();
+  }, [isCustomerDetailsModalOpen, selectedCustomerForDetails?._id, selectedCustomerForDetails?.customerId]);
 
   const getCustomerDisplayId = (order) => {
     if (!order) return 'N/A';
@@ -1798,6 +1825,49 @@ const VendorDashboard = () => {
       return `${clean.slice(0, 2)}XXXXX${clean.slice(-3)}`;
     }
     return clean.length >= 4 ? `XXXXX${clean.slice(-4)}` : 'Not provided';
+  };
+
+  const parseDateToYMD = (val) => {
+    if (!val) return null;
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+      if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.substring(0, 10);
+      const d = new Date(trimmed);
+      if (!isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } else if (val instanceof Date && !isNaN(val.getTime())) {
+      const year = val.getFullYear();
+      const month = String(val.getMonth() + 1).padStart(2, '0');
+      const day = String(val.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    return null;
+  };
+
+  const matchesBookingCalendarDate = (b, targetDateStr) => {
+    if (!b || !targetDateStr) return false;
+    const checkInYMD = parseDateToYMD(b.checkInDate);
+    const checkOutYMD = parseDateToYMD(b.checkOutDate);
+    const apptYMD = parseDateToYMD(b.appointmentDate);
+    const travelYMD = parseDateToYMD(b.travelDate);
+
+    if (apptYMD && apptYMD === targetDateStr) return true;
+    if (checkInYMD) {
+      if (checkInYMD === targetDateStr) return true;
+      if (checkOutYMD && targetDateStr >= checkInYMD && targetDateStr <= checkOutYMD) return true;
+    }
+    if (travelYMD && travelYMD === targetDateStr) return true;
+
+    if (!checkInYMD && !apptYMD && !travelYMD) {
+      const fallbackYMD = parseDateToYMD(b.bookingDate || b.date || b.orderDate || b.createdAt || b.created_at);
+      if (fallbackYMD && fallbackYMD === targetDateStr) return true;
+    }
+    return false;
   };
 
   const isStayBooking = (b) => {
@@ -2029,7 +2099,12 @@ const VendorDashboard = () => {
       }
     }
     
-    return { count, customersCount: uniqueCustomers.size > 0 ? uniqueCustomers.size : count, orders: itemOrders, revenue };
+    const authoritativeCustomerCount = Number(targetItem?.customersCount ?? targetItem?.uniqueCustomers ?? 0);
+    const resolvedCustomersCount = uniqueCustomers.size > 0 
+      ? uniqueCustomers.size 
+      : (authoritativeCustomerCount > 0 ? authoritativeCustomerCount : count);
+
+    return { count, customersCount: resolvedCustomersCount, orders: itemOrders, revenue };
   };
 
   const handleOpenSalesDetails = async (item) => {
@@ -2529,7 +2604,9 @@ const VendorDashboard = () => {
           }
         } else if (activeTab === 'catalog') {
           const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
-          const targetCategoryType = getProductMainCategory('', activeBiz?.vendorType || user?.vendorType || '');
+          const targetCategoryType = (currentCategoryContext && currentCategoryContext !== 'All')
+            ? currentCategoryContext
+            : getProductMainCategory('', activeBiz?.vendorType || user?.vendorType || '');
           const [prodRes, ordersRes, bookingsRes] = await Promise.allSettled([
             axios.get(`${getVendorBackendUrl()}/api/vendor/products?type=${encodeURIComponent(targetCategoryType)}`, getAxiosConfig()),
             axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
@@ -2698,7 +2775,7 @@ const VendorDashboard = () => {
     };
 
     fetchTabData();
-  }, [activeTab, activeBusinessId, orderCategoryFilter, bookingCategoryFilter]);
+  }, [activeTab, activeBusinessId, currentCategoryContext, orderCategoryFilter, bookingCategoryFilter]);
 
   // Clear cached data only when user session changes
   useEffect(() => {
@@ -5277,11 +5354,11 @@ const VendorDashboard = () => {
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500"
                         />
                       </div>
-                      <div className="w-full sm:w-48">
+                      <div className="relative w-full sm:w-48">
                         <select
                           value={catalogCategoryFilter}
                           onChange={(e) => setCatalogCategoryFilter(e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-700 dark:text-slate-300"
+                          className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-4 pr-10 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-700 dark:text-slate-300 cursor-pointer"
                         >
                           <option value="All">All Categories</option>
                           {[...new Set(
@@ -5298,29 +5375,38 @@ const VendorDashboard = () => {
                             <option key={cat} value={cat}>{cat}</option>
                           ))}
                         </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                          <ChevronDown size={16} />
+                        </div>
                       </div>
-                      <div className="w-full sm:w-48">
+                      <div className="relative w-full sm:w-48">
                         <select
                           value={catalogStatusFilter}
                           onChange={(e) => setCatalogStatusFilter(e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-700 dark:text-slate-300"
+                          className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-4 pr-10 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-700 dark:text-slate-300 cursor-pointer"
                         >
                           <option value="All">All Statuses</option>
                           {terms.catalogStatuses.map(status => (
                             <option key={status} value={status}>{status}</option>
                           ))}
                         </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                          <ChevronDown size={16} />
+                        </div>
                       </div>
-                      <div className="w-full sm:w-48">
+                      <div className="relative w-full sm:w-48">
                         <select
                           value={catalogSortOrder}
                           onChange={(e) => setCatalogSortOrder(e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-700 dark:text-slate-300"
+                          className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-4 pr-10 py-3 text-sm focus:outline-none focus:border-primary-500 font-medium text-slate-700 dark:text-slate-300 cursor-pointer"
                         >
                           <option value="Default">Sort: Default</option>
                           <option value="lowToHigh">Price: Low to High</option>
                           <option value="highToLow">Price: High to Low</option>
                         </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                          <ChevronDown size={16} />
+                        </div>
                       </div>
                     </div>
 
@@ -5596,25 +5682,28 @@ const VendorDashboard = () => {
 
               <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full lg:w-auto">
                 {/* Category filter */}
-                <div className="w-full sm:w-40 shrink-0">
+                <div className="relative w-full sm:w-40 shrink-0">
                   <select
                     value={orderCategoryFilter}
                     onChange={(e) => handleOrderCategoryChange(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                    className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-3 pr-8 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
                   >
                     <option value="All">All Categories</option>
                     <option value="Products">Products</option>
                     <option value="Food">Food</option>
                     <option value="Daily Needs">Daily Needs</option>
                   </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                    <ChevronDown size={14} />
+                  </div>
                 </div>
 
                 {/* Payment filter */}
-                <div className="w-full sm:w-36 shrink-0">
+                <div className="relative w-full sm:w-36 shrink-0">
                   <select
                     value={orderPaymentFilter}
                     onChange={(e) => setOrderPaymentFilter(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                    className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-3 pr-8 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
                   >
                     <option value="All">All Payments</option>
                     <option value="Paid">Paid</option>
@@ -5624,14 +5713,17 @@ const VendorDashboard = () => {
                     <option value="Net Banking">Net Banking</option>
                     <option value="Wallet">Connect Wallet</option>
                   </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                    <ChevronDown size={14} />
+                  </div>
                 </div>
 
                 {/* Status filter */}
-                <div className="w-full sm:w-36 shrink-0">
+                <div className="relative w-full sm:w-36 shrink-0">
                   <select
                     value={orderStatusFilter}
                     onChange={(e) => setOrderStatusFilter(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                    className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-3 pr-8 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
                   >
                     <option value="All">All Statuses</option>
                     <option value="Pending">Pending</option>
@@ -5642,14 +5734,17 @@ const VendorDashboard = () => {
                     <option value="Delivered">Delivered</option>
                     <option value="Cancelled">Cancelled</option>
                   </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                    <ChevronDown size={14} />
+                  </div>
                 </div>
 
                 {/* Date range filter */}
-                <div className="w-full sm:w-36 shrink-0">
+                <div className="relative w-full sm:w-36 shrink-0">
                   <select
                     value={orderTimeFilter}
                     onChange={(e) => setOrderTimeFilter(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                    className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-3 pr-8 py-3 text-xs focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
                   >
                     <option value="All">All Time</option>
                     <option value="Today">Today</option>
@@ -5659,6 +5754,9 @@ const VendorDashboard = () => {
                     <option value="Last30Days">Last 30 Days</option>
                     <option value="LastYear">Last Year</option>
                   </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                    <ChevronDown size={14} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -6108,24 +6206,27 @@ const VendorDashboard = () => {
                       </div>
 
                       {/* Category filter */}
-                      <div className="w-full sm:w-48 shrink-0">
+                      <div className="relative w-full sm:w-48 shrink-0">
                         <select
                           value={bookingCategoryFilter}
                           onChange={(e) => handleBookingCategoryChange(e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                          className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-4 pr-10 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
                         >
                           <option value="All">All Categories</option>
                           <option value="Services">Services</option>
                           <option value="Stay">Stay</option>
                           <option value="Travel">Travel</option>
                         </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                          <ChevronDown size={16} />
+                        </div>
                       </div>
 
-                      <div className="w-full sm:w-48 shrink-0">
+                      <div className="relative w-full sm:w-48 shrink-0">
                         <select
                           value={bookingTimeFilter}
                           onChange={(e) => setBookingTimeFilter(e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                          className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-4 pr-10 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
                         >
                           <option value="All">All Time</option>
                           <option value="Today">Today</option>
@@ -6135,19 +6236,25 @@ const VendorDashboard = () => {
                           <option value="Last30Days">Last 30 Days</option>
                           <option value="LastYear">Last Year</option>
                         </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                          <ChevronDown size={16} />
+                        </div>
                       </div>
 
-                      <div className="w-full sm:w-48 shrink-0">
+                      <div className="relative w-full sm:w-48 shrink-0">
                         <select
                           value={bookingStatusFilter}
                           onChange={(e) => setBookingStatusFilter(e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                          className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-4 pr-10 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
                         >
                           <option value="All">All Statuses</option>
                           {['Pending', 'Confirmed', 'Checked In', 'Completed', 'Cancelled'].map(status => (
                             <option key={status} value={status}>{status}</option>
                           ))}
                         </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                          <ChevronDown size={16} />
+                        </div>
                       </div>
                     </div>
 
@@ -6522,7 +6629,7 @@ const VendorDashboard = () => {
                             // Active days
                             for (let day = 1; day <= daysInMonth; day++) {
                               const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                              const dayAppts = bookings.filter(b => (b.appointmentDate === dateStr || (b.checkInDate && b.checkInDate.substring(0, 10) === dateStr)) && b.status !== 'Cancelled');
+                              const dayAppts = bookings.filter(b => matchesBookingCalendarDate(b, dateStr) && b.status !== 'Cancelled');
                               const isSelected = calendarSelectedDate === dateStr;
                               
                               cells.push(
@@ -6559,7 +6666,7 @@ const VendorDashboard = () => {
 
                         <div className="space-y-3.5 max-h-[420px] overflow-y-auto pr-1">
                           {(() => {
-                            const dayAppts = bookings.filter(b => b.appointmentDate === calendarSelectedDate || (b.checkInDate && b.checkInDate.substring(0, 10) === calendarSelectedDate));
+                            const dayAppts = bookings.filter(b => matchesBookingCalendarDate(b, calendarSelectedDate));
                             
                             if (dayAppts.length === 0) {
                               return (
@@ -7187,8 +7294,8 @@ const VendorDashboard = () => {
                                   <p>{c.email || 'N/A'}</p>
                                   <p className="text-[10px] text-slate-400 mt-0.5">{c.phone || 'N/A'}</p>
                                 </td>
-                                <td className="px-6 py-4 text-center font-medium text-slate-500 dark:text-slate-400 text-xs" title="Visit tracking unavailable">
-                                  Unavailable
+                                <td className="px-6 py-4 text-center font-bold text-slate-700 dark:text-slate-300 text-xs">
+                                  {c.ordersCount || c.visits || getCustomerMetrics(c, orders).count || 1} times
                                 </td>
                                 <td className="px-6 py-4 text-right font-extrabold text-emerald-600 dark:text-emerald-400">
                                   ₹{getCustomerMetrics(c, orders).totalSpent}
@@ -7249,7 +7356,9 @@ const VendorDashboard = () => {
                             <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
                               <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
                                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Visits</span>
-                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400" title="Visit tracking unavailable">Unavailable</span>
+                                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                  {c.ordersCount || c.visits || metrics.count || 1} times
+                                </span>
                               </div>
                               <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
                                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">{terms.customerSpentLabel.replace('Total ', '').replace(' (₹)', '')}</span>
@@ -13326,8 +13435,40 @@ required
                 </div>
                 <div className="min-w-0 flex flex-col justify-start">
                   <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">TRANSACTION ID:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 break-all select-all text-[11px] mt-0.5" title={selectedBillOrder.transactionId || selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId || ('TXN_' + (selectedBillOrder.order_number || selectedBillOrder.id || '').toUpperCase())}>
-                    {selectedBillOrder.transactionId || selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId || ('TXN_' + (selectedBillOrder.order_number || selectedBillOrder.id || '').toUpperCase())}
+                  <span className="font-bold text-slate-800 dark:text-slate-200 break-all select-all text-[11px] mt-0.5" title={(() => {
+                    const isCod = String(selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || '').toLowerCase().includes('cash') || String(selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || '').toLowerCase().includes('cod');
+                    const isSynthetic = selectedBillOrder.transactionId && (
+                      selectedBillOrder.transactionId === selectedBillOrder.order_number ||
+                      selectedBillOrder.transactionId === selectedBillOrder.id ||
+                      selectedBillOrder.transactionId.startsWith('TXN_ORD') ||
+                      selectedBillOrder.transactionId.startsWith('TXN_BKG') ||
+                      selectedBillOrder.transactionId.startsWith('TXN_RD') ||
+                      selectedBillOrder.transactionId === `TXN_${selectedBillOrder.order_number}`
+                    );
+                    if (!selectedBillOrder.transactionId || isSynthetic) {
+                      return selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId || (isCod ? 'Pending collection' : 'Not generated');
+                    }
+                    return selectedBillOrder.transactionId;
+                  })()}>
+                    {(() => {
+                      const isCod = String(selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || '').toLowerCase().includes('cash') || String(selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || '').toLowerCase().includes('cod');
+                      const isSynthetic = selectedBillOrder.transactionId && (
+                        selectedBillOrder.transactionId === selectedBillOrder.order_number ||
+                        selectedBillOrder.transactionId === selectedBillOrder.id ||
+                        selectedBillOrder.transactionId.startsWith('TXN_ORD') ||
+                        selectedBillOrder.transactionId.startsWith('TXN_BKG') ||
+                        selectedBillOrder.transactionId.startsWith('TXN_RD') ||
+                        selectedBillOrder.transactionId === `TXN_${selectedBillOrder.order_number}`
+                      );
+                      if (!selectedBillOrder.transactionId || isSynthetic) {
+                        return (
+                          <span className="text-slate-400 italic font-sans font-normal">
+                            {selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId || (isCod ? 'Pending collection' : 'Not generated')}
+                          </span>
+                        );
+                      }
+                      return selectedBillOrder.transactionId;
+                    })()}
                   </span>
                 </div>
               </div>
@@ -14581,8 +14722,13 @@ required
               return false;
             });
 
+            // Use customerPurchases fetched directly from authoritative backend endpoint, falling back to matching custTransactions
+            const displayTransactions = (customerPurchases && customerPurchases.length > 0)
+              ? customerPurchases
+              : custTransactions;
+
             // Calculate spending from genuine transactions, falling back to authoritative summary
-            const computedTotalSpent = custTransactions.reduce((sum, t) => {
+            const computedTotalSpent = displayTransactions.reduce((sum, t) => {
               const st = String(t.status || '').toLowerCase();
               if (['cancelled', 'rejected', 'failed'].includes(st)) return sum;
               return sum + Number(t.finalAmount || t.amount || t.totalAmount || 0);
@@ -14609,7 +14755,9 @@ required
                   <div className="flex gap-3 text-center sm:text-right">
                     <div className="bg-white dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
                       <span className="block text-[9px] font-extrabold uppercase text-slate-400">Total Visits</span>
-                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400" title="Visit tracking unavailable">Visit tracking unavailable</span>
+                      <span className="text-sm font-black text-slate-800 dark:text-slate-100">
+                        {selectedCustomerForDetails.ordersCount || displayTransactions.length || 1} times
+                      </span>
                     </div>
                     <div className="bg-white dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
                       <span className="block text-[9px] font-extrabold uppercase text-slate-400">Total Spent</span>
@@ -14621,26 +14769,30 @@ required
                 {/* Purchase List */}
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-                    Purchased Products & Bookings ({custTransactions.length})
+                    Purchased Products & Bookings ({displayTransactions.length})
                   </h4>
 
-                  {custTransactions.length === 0 ? (
+                  {customerPurchasesLoading ? (
                     <div className="p-8 text-center bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
-                      No transaction records found for this customer with this business.
+                      Loading purchase and booking records...
+                    </div>
+                  ) : displayTransactions.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
+                      No transaction records found for this customer.
                     </div>
                   ) : (
                     <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
-                      {custTransactions.map((tx, idx) => {
-                        const isBooking = getRecordClassification(tx) === 'BOOKING';
-                        const rawCat = (tx.type || tx.category || '').toUpperCase();
+                      {displayTransactions.map((tx, idx) => {
+                        const isBooking = ['Stay', 'stay', 'Hotel', 'hotel', 'Travel', 'travel', 'Services', 'Service', 'service', 'services', 'Appointment', 'appointment', 'Booking', 'booking'].includes(tx.type) || ['Stay', 'stay', 'Hotel', 'hotel', 'Travel', 'travel', 'Services', 'Service', 'service', 'services'].includes(tx.category) || Boolean(tx.checkInDate || tx.appointmentDate || tx.travelDate);
+                        const rawCat = (tx.category || tx.type || '').toUpperCase();
                         const firstItem = tx.items && tx.items[0];
                         const categoryLabel = isBooking 
                           ? (rawCat === 'TRAVEL' ? 'Travel Booking' : (rawCat === 'STAY' ? 'Stay Booking' : (rawCat === 'SERVICES' || rawCat === 'SERVICE' ? 'Service Booking' : 'Booking')))
-                          : (firstItem?.category || tx.category || 'Product Order');
-                        const itemName = tx.product_details || tx.serviceName || tx.roomName || firstItem?.name || (isBooking ? 'Booking Service' : 'Catalog Product');
-                        const txId = tx.applicationId || tx.order_number || tx._id || 'N/A';
+                          : (firstItem?.category || tx.category || tx.type || 'Product Order');
+                        const itemName = tx.itemName || tx.product_details || tx.serviceName || tx.roomName || firstItem?.name || (isBooking ? 'Booking Service' : 'Catalog Product');
+                        const txId = tx.order_number || tx.orderNumber || tx.applicationId || tx._id || 'N/A';
                         const txAmount = tx.finalAmount || tx.amount || tx.totalAmount || 0;
-                        const txDate = tx.travelDate || tx.appointmentDate || tx.checkInDate || tx.createdAt || tx.created_at;
+                        const txDate = tx.orderDate || tx.travelDate || tx.appointmentDate || tx.checkInDate || tx.createdAt || tx.created_at;
                         const formattedDate = txDate ? new Date(txDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
 
                         const statusBadge = (() => {
@@ -14662,7 +14814,7 @@ required
                                   {categoryLabel}
                                 </span>
                                 <h5 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">{itemName}</h5>
-                                <p className="text-[10px] font-mono text-slate-400 mt-0.5">ID: #{txId}</p>
+                                <p className="text-[10px] font-mono text-slate-400 mt-0.5">Order/Ref ID: #{txId}</p>
                               </div>
                               <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase shrink-0 ${
                                 statusBadge === 'Completed' || statusBadge === 'Delivered' || statusBadge === 'Accepted' || statusBadge === 'Confirmed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' :
@@ -14673,22 +14825,23 @@ required
                               </span>
                             </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
                               <div>
                                 <span className="text-[10px] text-slate-400 block">Amount</span>
                                 <span className="font-extrabold text-emerald-600 dark:text-emerald-400">₹{txAmount}</span>
-                                {tx.discountApplied > 0 && (
-                                  <span className="text-[9px] text-slate-400 block">(Saved ₹{tx.discountApplied})</span>
-                                )}
                               </div>
                               <div>
                                 <span className="text-[10px] text-slate-400 block">Date</span>
                                 <span className="font-semibold text-slate-700 dark:text-slate-300 truncate block">{formattedDate}</span>
                               </div>
                               <div>
-                                <span className="text-[10px] text-slate-400 block">{isBooking ? 'Schedule / Time' : 'Location'}</span>
+                                <span className="text-[10px] text-slate-400 block">Payment</span>
+                                <span className={`font-semibold truncate block ${tx.paymentStatus === 'Paid' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{tx.paymentStatus || 'Pending'}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">{isBooking ? 'Schedule' : 'Method'}</span>
                                 <span className="font-semibold text-indigo-600 dark:text-indigo-400 block truncate">
-                                  {isBooking ? `⌚ ${tx.appointmentTimeSlot || tx.bookingTime || 'Standard Slot'}` : (getCustomerAddress(tx) || 'Standard Delivery')}
+                                  {isBooking ? (tx.checkInDate || tx.appointmentDate || tx.travelDate || 'Booked Slot') : (tx.paymentMethod || 'COD / Online')}
                                 </span>
                               </div>
                             </div>

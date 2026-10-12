@@ -35,7 +35,8 @@ const {
   getSalesPayments,
   getBusinessRequests,
   resubmitBusinessRequest,
-  getProductSalesInsights
+  getProductSalesInsights,
+  getCustomerPurchases
 } = require('../controllers/vendorController');
 
 const { uploadToCloudinary } = require('../config/cloudinary');
@@ -121,6 +122,7 @@ router.get('/orders/:id/resume', getOrderResume);
 
 // Customers
 router.get('/customers', getCustomers);
+router.get('/customers/:customerId/purchases', getCustomerPurchases);
 
 // Patients (Hospital Vendor Specific)
 router.get('/patients', getPatients);

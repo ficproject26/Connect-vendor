@@ -658,7 +658,24 @@ export default function VendorPayments() {
                             {serial}
                           </td>
                           <td className="py-3 px-4 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
-                            {item.transactionId}
+                            {(() => {
+                              const isCod = (item.paymentMethod || '').toLowerCase().includes('cash') || (item.paymentMethod || '').toLowerCase().includes('cod');
+                              const isSynthetic = item.transactionId && (
+                                item.transactionId === item.orderId ||
+                                item.transactionId.startsWith('TXN_ORD') ||
+                                item.transactionId.startsWith('TXN_BKG') ||
+                                item.transactionId.startsWith('TXN_RD') ||
+                                item.transactionId === `TXN_${item.orderId}`
+                              );
+                              if (!item.transactionId || isSynthetic) {
+                                return (
+                                  <span className="text-slate-400 italic font-sans font-normal">
+                                    {isCod ? 'Pending collection' : 'Not generated'}
+                                  </span>
+                                );
+                              }
+                              return item.transactionId;
+                            })()}
                           </td>
                           <td className="py-3 px-4 text-xs text-slate-500 dark:text-slate-400">
                             {formatDate(item.saleDate)}
@@ -1101,7 +1118,24 @@ export default function VendorPayments() {
               <div>
                 <div className="text-xs text-slate-400 font-medium">Transaction ID</div>
                 <div className="font-mono text-base font-bold text-slate-900 dark:text-white">
-                  {selectedSaleDetail.transactionId}
+                  {(() => {
+                    const isCod = (selectedSaleDetail.paymentMethod || '').toLowerCase().includes('cash') || (selectedSaleDetail.paymentMethod || '').toLowerCase().includes('cod');
+                    const isSynthetic = selectedSaleDetail.transactionId && (
+                      selectedSaleDetail.transactionId === selectedSaleDetail.orderId ||
+                      selectedSaleDetail.transactionId.startsWith('TXN_ORD') ||
+                      selectedSaleDetail.transactionId.startsWith('TXN_BKG') ||
+                      selectedSaleDetail.transactionId.startsWith('TXN_RD') ||
+                      selectedSaleDetail.transactionId === `TXN_${selectedSaleDetail.orderId}`
+                    );
+                    if (!selectedSaleDetail.transactionId || isSynthetic) {
+                      return (
+                        <span className="text-slate-400 italic font-sans font-normal text-sm">
+                          {isCod ? 'Pending collection' : 'Not generated'}
+                        </span>
+                      );
+                    }
+                    return selectedSaleDetail.transactionId;
+                  })()}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -1135,7 +1169,24 @@ export default function VendorPayments() {
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80">
                 <div className="text-slate-400 font-medium mb-1">Transaction ID</div>
                 <div className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                  {selectedSaleDetail.transactionId || 'Not available'}
+                  {(() => {
+                    const isCod = (selectedSaleDetail.paymentMethod || '').toLowerCase().includes('cash') || (selectedSaleDetail.paymentMethod || '').toLowerCase().includes('cod');
+                    const isSynthetic = selectedSaleDetail.transactionId && (
+                      selectedSaleDetail.transactionId === selectedSaleDetail.orderId ||
+                      selectedSaleDetail.transactionId.startsWith('TXN_ORD') ||
+                      selectedSaleDetail.transactionId.startsWith('TXN_BKG') ||
+                      selectedSaleDetail.transactionId.startsWith('TXN_RD') ||
+                      selectedSaleDetail.transactionId === `TXN_${selectedSaleDetail.orderId}`
+                    );
+                    if (!selectedSaleDetail.transactionId || isSynthetic) {
+                      return (
+                        <span className="text-slate-400 italic font-sans font-normal">
+                          {isCod ? 'Pending collection' : 'Not generated'}
+                        </span>
+                      );
+                    }
+                    return selectedSaleDetail.transactionId;
+                  })()}
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80 sm:col-span-2">

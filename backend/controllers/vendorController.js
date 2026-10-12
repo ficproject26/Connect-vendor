@@ -668,21 +668,32 @@ const getProducts = async (req, res) => {
       return true;
     });
 
-    // Compute accurate persisted booking & order counts for each product from Order collection
+    // Compute accurate persisted booking, order, and unique customer counts for each product from Order collection
     if (filtered.length > 0) {
       const productIds = filtered.map(p => String(p._id || p.id));
       const productNames = filtered.map(p => (p.name || '').trim().toLowerCase()).filter(Boolean);
 
+      const allVendorBusinessIds = [parentId, activeBusinessId];
+      if (req.user && req.user.businesses && Array.isArray(req.user.businesses)) {
+        req.user.businesses.forEach(b => {
+          if (b && (b._id || b.id)) allVendorBusinessIds.push(String(b._id || b.id));
+        });
+      }
+
       const relevantOrders = await Order.find({
         $or: [
-          { vendorId: { $in: vendorIds } },
-          { vendor_id: { $in: vendorIds } }
+          { vendorId: { $in: allVendorBusinessIds } },
+          { vendor_id: { $in: allVendorBusinessIds } }
         ],
         status: { $nin: ['Cancelled', 'Rejected'] }
-      }).select('items productId product_details finalAmount totalAmount amount status').lean();
+      }).select('items productId product_details finalAmount totalAmount amount status customerId memberId customer_name memberName phone mobileNumber email candidateEmail customer_email').lean();
 
       const bookingCountMap = {};
+      const customersSetMap = {};
+
       relevantOrders.forEach(ord => {
+        const custKey = ord.customerId || ord.memberId || ord.customer_name || ord.memberName || ord.phone || ord.mobileNumber || ord.customer_email || ord.candidateEmail || ord.email || ord._id;
+
         if (ord.items && Array.isArray(ord.items) && ord.items.length > 0) {
           ord.items.forEach(it => {
             const itId = String(it.productId || it._id || it.id || '');
@@ -690,11 +701,19 @@ const getProducts = async (req, res) => {
             const qty = Number(it.quantity || it.qty || 1);
             if (itId && productIds.includes(itId)) {
               bookingCountMap[itId] = (bookingCountMap[itId] || 0) + qty;
+              if (custKey) {
+                customersSetMap[itId] = customersSetMap[itId] || new Set();
+                customersSetMap[itId].add(String(custKey));
+              }
             } else if (itName && productNames.includes(itName)) {
               const match = filtered.find(p => (p.name || '').trim().toLowerCase() === itName);
               if (match) {
                 const pId = String(match._id || match.id);
                 bookingCountMap[pId] = (bookingCountMap[pId] || 0) + qty;
+                if (custKey) {
+                  customersSetMap[pId] = customersSetMap[pId] || new Set();
+                  customersSetMap[pId].add(String(custKey));
+                }
               }
             }
           });
@@ -703,11 +722,19 @@ const getProducts = async (req, res) => {
           const ordProdName = (ord.product_details || '').trim().toLowerCase();
           if (ordProdId && productIds.includes(ordProdId)) {
             bookingCountMap[ordProdId] = (bookingCountMap[ordProdId] || 0) + 1;
+            if (custKey) {
+              customersSetMap[ordProdId] = customersSetMap[ordProdId] || new Set();
+              customersSetMap[ordProdId].add(String(custKey));
+            }
           } else if (ordProdName && productNames.includes(ordProdName)) {
             const match = filtered.find(p => (p.name || '').trim().toLowerCase() === ordProdName);
             if (match) {
               const pId = String(match._id || match.id);
               bookingCountMap[pId] = (bookingCountMap[pId] || 0) + 1;
+              if (custKey) {
+                customersSetMap[pId] = customersSetMap[pId] || new Set();
+                customersSetMap[pId].add(String(custKey));
+              }
             }
           }
         }
@@ -716,9 +743,13 @@ const getProducts = async (req, res) => {
       filtered.forEach(p => {
         const pId = String(p._id || p.id);
         const count = bookingCountMap[pId] || 0;
+        const uniqueCustCount = customersSetMap[pId] ? customersSetMap[pId].size : 0;
         p.bookingCount = count;
         p.bookingsCount = count;
         p.ordersCount = count;
+        p.salesCount = count;
+        p.customersCount = uniqueCustCount;
+        p.uniqueCustomers = uniqueCustCount;
       });
     }
 
@@ -1269,7 +1300,11 @@ const getOrders = async (req, res) => {
       obj.payment_status = pStatus;
 
       if (!obj.transactionId) {
-        obj.transactionId = obj.razorpayPaymentId || obj.walletTxnId || ('TXN_' + (obj.order_number || obj.id || (obj._id ? String(obj._id).slice(-6) : '')).toUpperCase());
+        if (!isCodOrder) {
+          obj.transactionId = obj.razorpayPaymentId || obj.walletTxnId || null;
+        } else {
+          obj.transactionId = null;
+        }
       }
       if (!obj.paidAt && pStatus === 'Paid') {
         obj.paidAt = obj.paymentDate || obj.created_at || obj.createdAt || new Date();
@@ -2682,6 +2717,142 @@ const getCustomers = async (req, res) => {
   }
 };
 
+// @desc    Get genuine purchase and booking history for a specific customer
+// @route   GET /api/vendor/customers/:customerId/purchases
+// @access  Private (Vendor)
+const getCustomerPurchases = async (req, res) => {
+  try {
+    const parentUserId = (req.user.parentUserId || req.user._id).toString();
+    const activeBusinessId = (req.user._id || '').toString();
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const businessIds = [parentUserId, activeBusinessId];
+    if (user.businesses && Array.isArray(user.businesses)) {
+      user.businesses.forEach(b => {
+        if (b && (b._id || b.id)) businessIds.push(String(b._id || b.id));
+      });
+    }
+
+    const customerIdentifier = String(req.params.customerId || '').trim();
+    if (!customerIdentifier) {
+      return res.status(400).json({ success: false, message: 'Customer identifier is required' });
+    }
+
+    // Resolve customer identity from User and Customer collections
+    let lookupQueries = [
+      { customerId: customerIdentifier },
+      { registrationId: customerIdentifier },
+      { memberId: customerIdentifier },
+      { _id: customerIdentifier }
+    ];
+    if (customerIdentifier.startsWith('cust_')) {
+      const cleanKey = customerIdentifier.replace(/^cust_/, '');
+      lookupQueries.push({ name: new RegExp(`^${cleanKey}$`, 'i') });
+      lookupQueries.push({ email: new RegExp(`^${cleanKey}`, 'i') });
+    }
+    if (customerIdentifier.includes('@')) {
+      lookupQueries.push({ email: customerIdentifier.toLowerCase() });
+    }
+
+    const [targetUser, targetCustomer] = await Promise.all([
+      User.findOne({ $or: lookupQueries }).select('name email phone mobileNumber customerId registrationId _id').lean().catch(() => null),
+      Customer.findOne({ $or: lookupQueries }).select('name email phone mobileNumber customerId registrationId _id').lean().catch(() => null)
+    ]);
+
+    const targetDoc = targetUser || targetCustomer;
+    const names = [customerIdentifier.toLowerCase()];
+    const emails = [];
+    const phones = [];
+    const ids = [customerIdentifier];
+
+    if (targetDoc) {
+      if (targetDoc.name) names.push(targetDoc.name.trim().toLowerCase());
+      if (targetDoc.email) emails.push(targetDoc.email.trim().toLowerCase());
+      const p = (targetDoc.phone || targetDoc.mobileNumber || '').toString().replace(/[^0-9]/g, '');
+      if (p) {
+        phones.push(p);
+        if (p.length >= 10) phones.push(p.slice(-10));
+      }
+      if (targetDoc.customerId) ids.push(String(targetDoc.customerId));
+      if (targetDoc.registrationId) ids.push(String(targetDoc.registrationId));
+      if (targetDoc._id) ids.push(String(targetDoc._id));
+    }
+
+    // Clean names
+    const nameRegexes = names
+      .filter(n => n && n !== 'customer' && n.length > 1)
+      .map(n => new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'));
+
+    const orderQueryConditions = [
+      {
+        $or: [
+          { vendorId: { $in: businessIds } },
+          { vendor_id: { $in: businessIds } }
+        ]
+      },
+      {
+        type: { $nin: ['Job', 'Jobs', 'job', 'jobs', 'Application', 'application'] }
+      },
+      {
+        $or: [
+          { customerId: { $in: ids } },
+          { registrationId: { $in: ids } },
+          { memberId: { $in: ids } },
+          ...(emails.length > 0 ? [{ customer_email: { $in: emails } }, { candidateEmail: { $in: emails } }] : []),
+          ...(phones.length > 0 ? [{ customer_phone: { $in: phones } }, { phone: { $in: phones } }] : []),
+          ...(nameRegexes.length > 0 ? [{ memberName: { $in: nameRegexes } }, { customer_name: { $in: nameRegexes } }] : [])
+        ]
+      }
+    ];
+
+    const orders = await Order.find({ $and: orderQueryConditions })
+      .sort({ createdAt: -1, created_at: -1 })
+      .lean();
+
+    const mapped = orders.map(o => {
+      const isBooking = ['Stay', 'stay', 'Hotel', 'hotel', 'Travel', 'travel', 'Services', 'Service', 'service', 'services', 'Appointment', 'appointment', 'Booking', 'booking'].includes(o.type) || ['Stay', 'stay', 'Hotel', 'hotel', 'Travel', 'travel', 'Services', 'Service', 'service', 'services'].includes(o.category);
+      const firstItem = o.items && o.items[0];
+      const itemName = o.product_details || o.serviceName || o.roomName || o.roomNumber || (firstItem && firstItem.name) || o.packageName || (isBooking ? 'Booking Service' : 'Catalog Product');
+      const orderDate = o.appointmentDate || o.checkInDate || o.travelDate || o.orderDate || o.createdAt || o.created_at;
+
+      return {
+        _id: o._id,
+        order_number: o.order_number || o.id || o._id,
+        orderNumber: o.order_number || o.id || o._id,
+        type: o.type,
+        category: o.category || o.type,
+        itemName,
+        items: o.items || [],
+        amount: Number(o.finalAmount || o.totalAmount || o.amount || 0),
+        finalAmount: Number(o.finalAmount || o.totalAmount || o.amount || 0),
+        orderDate,
+        createdAt: o.createdAt || o.created_at,
+        created_at: o.created_at || o.createdAt,
+        appointmentDate: o.appointmentDate,
+        checkInDate: o.checkInDate,
+        checkOutDate: o.checkOutDate,
+        roomNumber: o.roomNumber,
+        appointmentTimeSlot: o.appointmentTimeSlot,
+        status: o.status || 'Order Received',
+        paymentStatus: o.paymentStatus || o.payment_status || 'Pending',
+        paymentMethod: o.paymentMethod || o.payment_method || 'N/A'
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: mapped,
+      total: mapped.length
+    });
+  } catch (error) {
+    console.error('Get Customer Purchases Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving customer purchases' });
+  }
+};
+
 // --- DELIVERY PARTNERS CRUD ---
 // @desc    Create a Delivery Partner (Vendor private)
 // @route   POST /api/vendor/delivery-partners
@@ -4054,7 +4225,14 @@ const getSalesPayments = async (req, res) => {
         : '';
       const customerRef = realCustId || (custPhone ? `${custName} (${maskedPhone})` : custName);
 
-      const txnId = o.transactionId || o.razorpayPaymentId || o.walletTxnId || o.paymentReference || o.transactionReference || null;
+      const isCod = (o.paymentMethod || o.payment_method || '').toLowerCase().includes('cash') || (o.paymentMethod || o.payment_method || '').toLowerCase().includes('cod');
+      let txnId = o.transactionId || o.razorpayPaymentId || o.walletTxnId || o.paymentReference || o.transactionReference || null;
+      if (txnId && typeof txnId === 'string' && (txnId.startsWith('TXN_ORD') || txnId.startsWith('TXN_BKG') || txnId === `TXN_${o.order_number}`)) {
+        txnId = null;
+      }
+      if (isCod && !o.razorpayPaymentId && !o.walletTxnId && (!o.transactionId || String(o.transactionId).startsWith('TXN_'))) {
+        txnId = null;
+      }
 
       return {
         _id: o._id,
@@ -4429,6 +4607,7 @@ module.exports = {
   updateOrderStatus,
   getOrderResume,
   getCustomers,
+  getCustomerPurchases,
   createDeliveryPartner,
   getDeliveryPartners,
   updateDeliveryPartner,
