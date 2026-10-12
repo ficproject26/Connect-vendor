@@ -51,9 +51,7 @@ app.use(
           "https://res.cloudinary.com",
           "https://*.cloudinary.com",
           "https://vendor.ficapp.in",
-          "https://*.ficapp.in",
-          "https://connect-vendor.onrender.com",
-          "https://*.onrender.com"
+          "https://*.ficapp.in"
         ],
         connectSrc: [
           "'self'",
@@ -67,12 +65,9 @@ app.use(
           "wss://127.0.0.1:*",
           "https://vendor.ficapp.in",
           "https://*.ficapp.in",
+          "wss://vendor.ficapp.in",
           "https://connect-vendor.vercel.app",
           "https://*.vercel.app",
-          "https://connect-vendor.onrender.com",
-          "wss://connect-vendor.onrender.com",
-          "https://*.onrender.com",
-          "wss://*.onrender.com",
           "https://api.razorpay.com",
           "https://*.razorpay.com",
           "https://res.cloudinary.com"

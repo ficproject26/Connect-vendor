@@ -42,7 +42,7 @@ class WebSocketClient {
     this.token = token;
     this.disconnect(); // Clean up existing connection
 
-    const backendUrl = getBackendUrl() || 'http://localhost:8002';
+    const backendUrl = getBackendUrl() || 'https://vendor.ficapp.in';
 
     this.socket = io(backendUrl, {
       auth: { token },

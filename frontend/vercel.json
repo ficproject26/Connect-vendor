@@ -2,8 +2,8 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist",
   "routes": [
-    { "src": "/api/(.*)", "dest": "https://connect-vendor.onrender.com/api/$1" },
-    { "src": "/uploads/(.*)", "dest": "https://connect-vendor.onrender.com/uploads/$1" },
+    { "src": "/api/(.*)", "dest": "https://vendor.ficapp.in/api/$1" },
+    { "src": "/uploads/(.*)", "dest": "https://vendor.ficapp.in/uploads/$1" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]

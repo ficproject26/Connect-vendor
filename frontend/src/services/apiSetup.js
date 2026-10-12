@@ -31,13 +31,8 @@ export const getBackendUrl = () => {
     return `http://${hostname || 'localhost'}:8002`;
   }
   
-  // 3. If deployed on HTTPS without envUrl, use relative path or fallback
-  if (isHttps) {
-    return '';
-  }
-
-  // Deployed backend URL fallback
-  return 'https://connect-vendor.onrender.com';
+  // 3. Fallback to production backend URL
+  return 'https://vendor.ficapp.in';
 };
 
 // Set up Axios request interceptor to dynamically rewrite backend URLs and inject headers
@@ -58,7 +53,7 @@ axios.interceptors.request.use(
         config.url.includes('13.203.197.69')
       ) {
         // Replaces localhost ports or stale cloud tunnels/IPs with active backendUrl
-        config.url = config.url.replace(/^https?:\/\/[^/]+/, backendUrl || 'https://connect-vendor.onrender.com');
+        config.url = config.url.replace(/^https?:\/\/[^/]+/, backendUrl || 'https://vendor.ficapp.in');
       } else if (config.url.startsWith('/api')) {
         config.url = backendUrl ? `${backendUrl}${config.url}` : config.url;
       }
@@ -109,7 +104,7 @@ const sanitizeResponseUrls = (val, backendUrl) => {
       return val.replace(/^https?:\/\/[^/]+/, backendUrl || '');
     }
     if (val.includes('vendor.ficapp.in/uploads/')) {
-      const activeB = (backendUrl && backendUrl.startsWith('http')) ? backendUrl : 'https://connect-vendor.onrender.com';
+      const activeB = (backendUrl && backendUrl.startsWith('http')) ? backendUrl : 'https://vendor.ficapp.in';
       return val.replace(/^https?:\/\/vendor\.ficapp\.in/, activeB);
     }
     return val;
@@ -145,14 +140,9 @@ axios.interceptors.response.use(
       config.url.includes('/api/auth/register')
     );
 
-    // Intercept 503 Service Unavailable / Suspended responses from Render
+    // Intercept 503 Service Unavailable responses
     if (error.response?.status === 503) {
-      const rawBody = typeof error.response.data === 'string' ? error.response.data : '';
-      const isRenderSuspended = rawBody.includes('service has been suspended') || rawBody.includes('Service Suspended');
-      const errorMsg = isRenderSuspended
-        ? 'Backend service on Render is suspended. Please resume "connect-vendor" in the Render Dashboard (dashboard.render.com).'
-        : 'Backend server is temporarily unavailable (HTTP 503). Please try again in a moment or resume the Render service.';
-      
+      const errorMsg = 'Backend server is temporarily unavailable (HTTP 503). Please try again in a moment.';
       if (typeof error.response.data !== 'object' || !error.response.data) {
         error.response.data = { success: false, message: errorMsg };
       } else if (!error.response.data.message) {
@@ -220,7 +210,7 @@ axios.interceptors.response.use(
 
     // On network error retry, fallback relative URL to explicit remote backend
     if (isNetworkError && config.url && config.url.startsWith('/api')) {
-      config.url = `https://connect-vendor.onrender.com${config.url}`;
+      config.url = `https://vendor.ficapp.in${config.url}`;
     }
 
     console.warn(
@@ -284,7 +274,7 @@ export const formatImageUrl = (url) => {
 
   let backend = getBackendUrl();
   if (!backend || !backend.startsWith('http')) {
-    backend = 'https://connect-vendor.onrender.com';
+    backend = 'https://vendor.ficapp.in';
   }
   if (backend.endsWith('/api')) {
     backend = backend.substring(0, backend.length - 4);

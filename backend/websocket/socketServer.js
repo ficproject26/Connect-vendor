@@ -29,6 +29,8 @@ class SocketServer {
     if (this.io) return this.io;
 
     const allowedOrigins = [
+      'https://vendor.ficapp.in',
+      'http://vendor.ficapp.in',
       'https://connect-vendor.vercel.app',
       'https://connect-admin-96pc.onrender.com',
       'http://localhost:5173',

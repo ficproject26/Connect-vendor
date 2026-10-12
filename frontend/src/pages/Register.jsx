@@ -465,7 +465,7 @@ const Register = () => {
       console.error('Registration error details:', err);
       const is503 = err.response?.status === 503 || (err.message && err.message.includes('503'));
       if (is503) {
-        setError(err.response?.data?.message || 'Backend server is temporarily suspended or unavailable on Render (HTTP 503). Please resume "connect-vendor" in the Render Dashboard (dashboard.render.com).');
+        setError(err.response?.data?.message || 'Backend server is temporarily unavailable (HTTP 503). Please try again in a moment.');
       } else {
         setError(err.response?.data?.message || err.message || 'Registration failed. Check details and try again.');
       }
