@@ -225,12 +225,12 @@ axios.interceptors.response.use(
 );
 
 // --- WAKE-UP PING ---
-// When the app loads, send a lightweight ping to wake up the Render backend
+// Send a lightweight ping to the API health endpoint
 const wakeUpBackend = async () => {
   try {
     const backendUrl = getBackendUrl();
     if (!backendUrl) return;
-    await fetch(`${backendUrl}/`, { method: 'GET', mode: 'cors' }).catch(() => {});
+    await fetch(`${backendUrl}/api/health`, { method: 'GET', mode: 'no-cors' }).catch(() => {});
   } catch (err) {
     // Ignore initial wake-up ping errors
   }

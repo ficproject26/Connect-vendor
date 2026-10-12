@@ -147,11 +147,11 @@ const corsOptions = {
     if (!origin) return callback(null, true);
 
     const isExplicitlyAllowed = allowedOrigins.includes(origin);
-    const isVercelPreview = /^https:\/\/connect-vendor([a-z0-9-]*)\.vercel\.app$/.test(origin);
+    const isVercelDomain = /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/.test(origin);
     const isFicappDomain = /^https?:\/\/([a-z0-9-]+\.)*ficapp\.in(:[0-9]+)?$/.test(origin);
     const isLocalDev = !isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(origin);
 
-    if (isExplicitlyAllowed || isVercelPreview || isFicappDomain || isLocalDev) {
+    if (isExplicitlyAllowed || isVercelDomain || isFicappDomain || isLocalDev) {
       return callback(null, true);
     }
 
@@ -337,9 +337,13 @@ app.use('/api/member', memberRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/realtime', realtimeRoutes);
 
-// Base API route
-app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to the Vendor API' });
+// Base API routes & Health Check
+app.get(['/', '/api', '/api/health'], (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Welcome to the Vendor API',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Error handling middleware (production-safe error masking)

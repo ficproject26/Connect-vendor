@@ -59,7 +59,7 @@ class SocketServer {
       cors: {
         origin: function (origin, callback) {
           if (!origin) return callback(null, true);
-          const isAllowed = allowedOrigins.includes(origin) || /^https:\/\/connect-vendor([a-z0-9-]*)\.vercel\.app$/.test(origin);
+          const isAllowed = allowedOrigins.includes(origin) || /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/.test(origin);
           if (isAllowed) return callback(null, true);
           return callback(new Error(`WebSocket connection denied by CORS: ${origin}`));
         },
