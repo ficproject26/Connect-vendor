@@ -1,11 +1,17 @@
 const mongoose = require('mongoose');
 const { Settlement, User, PlatformConfig } = require('../models/Schemas');
 
+let settlementsSeeded = false;
+
 // Helper to seed mock settlements if none exist
 const seedMockSettlementsIfNeeded = async () => {
+  if (settlementsSeeded) return;
   try {
     const count = await Settlement.countDocuments();
-    if (count > 0) return;
+    if (count > 0) {
+      settlementsSeeded = true;
+      return;
+    }
 
     // Get all approved vendors
     const vendors = await User.find({ role: 'Vendor', status: 'Approved' });
@@ -63,7 +69,7 @@ const getVendorSettlements = async (req, res) => {
     await seedMockSettlementsIfNeeded();
     
     const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
-    const user = await User.findById(parentUserId);
+    const user = await User.findById(parentUserId).select('-password').lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }

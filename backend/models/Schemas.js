@@ -109,6 +109,10 @@ UserSchema.index({ role: 1, status: 1 });
 UserSchema.index({ createdAt: -1 });
 UserSchema.index({ vendorId: 1 });
 UserSchema.index({ "businesses._id": 1 });
+UserSchema.index({ phone: 1 });
+UserSchema.index({ mobileNumber: 1 });
+UserSchema.index({ customerId: 1 });
+UserSchema.index({ registrationId: 1 });
 
 // Helper to normalize _id queries so both String and ObjectId match seamlessly
 const formatIdQuery = (val) => {
@@ -282,6 +286,10 @@ const ProductSchema = new mongoose.Schema({
 
 ProductSchema.index({ vendorId: 1, category: 1 });
 ProductSchema.index({ vendor_id: 1 });
+ProductSchema.index({ vendorId: 1, createdAt: -1 });
+ProductSchema.index({ vendor_id: 1, createdAt: -1 });
+ProductSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
+ProductSchema.index({ vendor_id: 1, status: 1, createdAt: -1 });
 ProductSchema.index({ vendorId: 1, mainCategory: 1, createdAt: -1 });
 ProductSchema.index({ vendorId: 1, type: 1, createdAt: -1 });
 ProductSchema.index({ category: 1, subcategory: 1 });
@@ -353,12 +361,21 @@ const OrderSchema = new mongoose.Schema({
   stockReduced: { type: Boolean, default: false }
 }, { timestamps: true, strict: false });
 
+OrderSchema.index({ vendorId: 1, createdAt: -1 });
+OrderSchema.index({ vendor_id: 1, createdAt: -1 });
 OrderSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
+OrderSchema.index({ vendor_id: 1, status: 1, createdAt: -1 });
+OrderSchema.index({ vendorId: 1, status: 1 });
+OrderSchema.index({ vendor_id: 1, status: 1 });
 OrderSchema.index({ vendorId: 1, type: 1, createdAt: -1 });
 OrderSchema.index({ vendor_id: 1, type: 1, createdAt: -1 });
 OrderSchema.index({ type: 1, createdAt: -1 });
 OrderSchema.index({ memberId: 1, createdAt: -1 });
 OrderSchema.index({ status: 1, createdAt: -1 });
+OrderSchema.index({ order_number: 1 });
+OrderSchema.index({ id: 1 });
+OrderSchema.index({ customerId: 1 });
+OrderSchema.index({ customerDisplayId: 1 });
 
 OrderSchema.pre('save', function(next) {
   if (this.type === 'Job') {
@@ -411,8 +428,13 @@ const CustomerSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 CustomerSchema.index({ vendorId: 1, createdAt: -1 });
+CustomerSchema.index({ vendor_id: 1, createdAt: -1 });
 CustomerSchema.index({ vendorId: 1, email: 1 });
 CustomerSchema.index({ vendorId: 1, phone: 1 });
+CustomerSchema.index({ phone: 1 });
+CustomerSchema.index({ email: 1 });
+CustomerSchema.index({ customerId: 1 });
+CustomerSchema.index({ registrationId: 1 });
 
 // --- PLATFORM CONFIG SCHEMA ---
 const PlatformConfigSchema = new mongoose.Schema({
@@ -444,6 +466,7 @@ const SettlementSchema = new mongoose.Schema({
 }, { timestamps: true, strict: false });
 
 SettlementSchema.index({ vendorId: 1, settlementDate: -1 });
+SettlementSchema.index({ vendorId: 1, status: 1, settlementDate: -1 });
 
 // --- PATIENT SCHEMA ---
 const PatientSchema = new mongoose.Schema({
@@ -574,6 +597,7 @@ const SubscriptionSchema = new mongoose.Schema({
 }, { timestamps: true, strict: false });
 
 SubscriptionSchema.index({ vendorId: 1, businessId: 1 });
+SubscriptionSchema.index({ vendorId: 1, businessId: 1, status: 1 });
 SubscriptionSchema.index({ vendorId: 1, status: 1 });
 SubscriptionSchema.index({ vendorId: 1, endDate: 1 });
 

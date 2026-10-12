@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import axios from 'axios';
 import { useSelector, useDispatch } from 'react-redux';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
@@ -18,9 +18,16 @@ import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl, formatImageUrl 
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 import { compressImage } from '../utils/imageCompressor';
-import SubscriptionManagement from './business/SubscriptionManagement';
-import VendorPayments from './payments/VendorPayments';
-import AddBusinessModal from '../components/business/AddBusinessModal';
+
+const SubscriptionManagement = lazy(() => import('./business/SubscriptionManagement'));
+const VendorPayments = lazy(() => import('./payments/VendorPayments'));
+const AddBusinessModal = lazy(() => import('../components/business/AddBusinessModal'));
+
+const LazyTabLoader = () => (
+  <div className="flex items-center justify-center p-12 min-h-[250px]">
+    <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+);
 import {
   CATEGORY_PRODUCTS,
   CATEGORY_DAILY_NEEDS,
@@ -544,6 +551,7 @@ const VendorDashboard = () => {
   useEffect(() => {
     const checkStatus = async () => {
       if (!user || user.role !== 'Vendor' || isCheckingStatusRef.current) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       isCheckingStatusRef.current = true;
       try {
         const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`, getAxiosConfig());
@@ -569,8 +577,17 @@ const VendorDashboard = () => {
     };
 
     checkStatus();
-    const intervalId = setInterval(checkStatus, 12000);
-    return () => clearInterval(intervalId);
+    const intervalId = setInterval(checkStatus, 30000);
+    const handleVis = () => {
+      if (document.visibilityState === 'visible') {
+        checkStatus();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVis);
+    };
   }, [user?._id, user?.role, dispatch]);
 
   const getActiveVendorType = () => {
@@ -2867,8 +2884,9 @@ const VendorDashboard = () => {
     }
 
     const fetchOrders = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
-        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig());
+        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders?limit=10&page=1`, getAxiosConfig());
         if (res.data.success && Array.isArray(res.data.data)) {
           const newOrders = res.data.data;
 
@@ -2898,9 +2916,18 @@ const VendorDashboard = () => {
     };
 
     fetchOrders();
-    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 5000;
+    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 15000;
     const interval = setInterval(fetchOrders, syncInterval);
-    return () => clearInterval(interval);
+    const handleVis = () => {
+      if (document.visibilityState === 'visible') {
+        fetchOrders();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVis);
+    };
   }, [token, user?._id, user?.role]);
 
   const DEFAULT_TIME_SLOTS = [
@@ -7840,7 +7867,9 @@ const VendorDashboard = () => {
 
         {/* Subscription Tab (Vendor) */}
         {activeTab === 'subscription' && (
-          <SubscriptionManagement user={user} setMessage={setMessage} />
+          <Suspense fallback={<LazyTabLoader />}>
+            <SubscriptionManagement user={user} setMessage={setMessage} />
+          </Suspense>
         )}
 
         {/* Queries Tab (Vendor) */}
@@ -8934,7 +8963,9 @@ const VendorDashboard = () => {
           </div>
         )}
         {activeTab === 'payments' && (
-          <VendorPayments />
+          <Suspense fallback={<LazyTabLoader />}>
+            <VendorPayments />
+          </Suspense>
         )}
 
         {/* Vendor Requests Tab (Admin) */}
@@ -10906,28 +10937,32 @@ required
       </Modal>
 
       {/* Add Business Modal */}
-      <AddBusinessModal
-        isOpen={isAddBusinessModalOpen}
-        onClose={() => setIsAddBusinessModalOpen(false)}
-        user={user}
-        onSuccess={(data) => {
-          if (data?.user) {
-            dispatch(updateUser(data.user));
-          }
-          if (data?.message) {
-            setMessage(data.message);
-          }
-          if (data?.isPendingApproval && typeof setNotifications === 'function') {
-            setNotifications(prev => [
-              {
-                id: Date.now() + Math.random(),
-                text: 'New business request submitted! Pending Pincode Admin review.'
-              },
-              ...(prev || [])
-            ]);
-          }
-        }}
-      />
+      {isAddBusinessModalOpen && (
+        <Suspense fallback={null}>
+          <AddBusinessModal
+            isOpen={isAddBusinessModalOpen}
+            onClose={() => setIsAddBusinessModalOpen(false)}
+            user={user}
+            onSuccess={(data) => {
+              if (data?.user) {
+                dispatch(updateUser(data.user));
+              }
+              if (data?.message) {
+                setMessage(data.message);
+              }
+              if (data?.isPendingApproval && typeof setNotifications === 'function') {
+                setNotifications(prev => [
+                  {
+                    id: Date.now() + Math.random(),
+                    text: 'New business request submitted! Pending Pincode Admin review.'
+                  },
+                  ...(prev || [])
+                ]);
+              }
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Business Details Modal */}
       {selectedBusinessForModal && (

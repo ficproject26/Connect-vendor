@@ -33,7 +33,11 @@ const connectDB = async () => {
 
   try {
     await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 10000
+      serverSelectionTimeoutMS: 10000,
+      maxPoolSize: 50,
+      minPoolSize: 5,
+      socketTimeoutMS: 45000,
+      family: 4
     });
     console.log('🚀 MongoDB connected successfully!');
     isMock = false;
@@ -45,19 +49,18 @@ const connectDB = async () => {
 };
 
 const getModel = (name, schema) => {
-  let mongooseModelCompiled = false;
+  let compiledModel = null;
   
   const getTarget = () => {
     if (mongoose.connection.readyState === 1) {
-      if (!mongooseModelCompiled) {
+      if (!compiledModel) {
         try {
-          mongoose.model(name, schema);
+          compiledModel = mongoose.model(name);
         } catch (e) {
-          // Model already compiled
+          compiledModel = mongoose.model(name, schema);
         }
-        mongooseModelCompiled = true;
       }
-      return mongoose.model(name);
+      return compiledModel;
     } else {
       return getMockModel(name);
     }

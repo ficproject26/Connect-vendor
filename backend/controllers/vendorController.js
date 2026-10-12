@@ -7,6 +7,44 @@ const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
 const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES, cacheManager } = require('../realtime/realtimeManager');
 const { findPincodeAdmin, CATEGORY_DOC_RULES } = require('../utils/territoryRouting');
 
+// High-performance cached vendor user lookup (short 30s TTL to absorb concurrent burst requests)
+const vendorUserCache = new Map();
+const getVendorUserCached = async (userId) => {
+  if (!userId) return null;
+  const idStr = userId.toString();
+  const cached = vendorUserCache.get(idStr);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.user;
+  }
+  const user = await User.findById(idStr).select('-password').lean();
+  if (user) {
+    vendorUserCache.set(idStr, {
+      user,
+      expiresAt: Date.now() + 30000 // 30s TTL
+    });
+  }
+  return user;
+};
+
+const invalidateVendorUserCache = (userId) => {
+  if (!userId) return;
+  vendorUserCache.delete(userId.toString());
+  cacheManager.invalidateVendorProfile(userId.toString()).catch(() => {});
+};
+
+// Cached Platform Config lookup (60s TTL)
+let cachedPlatformConfig = null;
+let platformConfigExpiresAt = 0;
+const getPlatformConfigCached = async () => {
+  if (cachedPlatformConfig && platformConfigExpiresAt > Date.now()) {
+    return cachedPlatformConfig;
+  }
+  const cfg = await PlatformConfig.findOne({}).lean();
+  cachedPlatformConfig = cfg || { commissionRate: 0 };
+  platformConfigExpiresAt = Date.now() + 60000;
+  return cachedPlatformConfig;
+};
+
 // Helper to validate Stay category hierarchy against database
 const validateCatalogCategoryHierarchy = async (mainCategory, subCatName, childCatName) => {
   const targetMain = (mainCategory || '').trim().toLowerCase();
@@ -141,16 +179,10 @@ const vendorHasJobCategories = (user) => {
 const getVendorAnalytics = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(parentUserId).lean();
+    const user = await getVendorUserCached(parentUserId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
-
-    // Bypass stale cache for real-time consistency on refresh
-    // const cachedAnalytics = await cacheManager.get('analytics', parentUserId.toString());
-    // if (cachedAnalytics) {
-    //   return res.status(200).json({ success: true, data: cachedAnalytics, _cached: true });
-    // }
 
     const businessIds = [parentUserId.toString()];
     if (user.businesses && user.businesses.length > 0) {
@@ -159,13 +191,13 @@ const getVendorAnalytics = async (req, res) => {
       });
     }
 
-    // Fetch vendor orders with lean() for fast query execution
+    // Fetch vendor orders with projection and lean() for fast query execution
     const rawOrders = await Order.find({
       $or: [
         { vendorId: { $in: businessIds } },
         { vendor_id: { $in: businessIds } }
       ]
-    }).lean();
+    }).select('vendorId vendor_id memberName customer_name memberId customer_id finalAmount totalAmount amount createdAt created_at orderDate date type status paymentStatus payment_status vendorPaymentStatus candidateEmail customer_email').lean();
 
     const orders = rawOrders.map(o => {
       const obj = o.toObject ? o.toObject() : o;
@@ -205,12 +237,31 @@ const getVendorAnalytics = async (req, res) => {
     const pendingOrdersCount = orders.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved', 'Order Received', 'Booking Received'].includes(o.status) && !isEligibleRevenueOrder(o)).length;
     
     const totalRevenue = eligibleOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
-    const dbCustomersCountList = await Customer.find({
-      $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
-      ]
-    });
+
+    const memberIds = [...new Set(orders.map(o => o.memberId).filter(Boolean))];
+
+    // Parallel execution for customer list, product counts, and active memberships
+    const [dbCustomersCountList, totalItemsCount, activeMembershipsCount] = await Promise.all([
+      Customer.find({
+        $or: [
+          { vendorId: { $in: businessIds } },
+          { vendor_id: { $in: businessIds } }
+        ]
+      }).select('name email').lean(),
+      Product.countDocuments({
+        $or: [
+          { vendorId: { $in: businessIds } },
+          { vendor_id: { $in: businessIds } }
+        ]
+      }),
+      memberIds.length > 0 ? MembershipCard.countDocuments({
+        userId: { $in: memberIds },
+        status: 'Active',
+        expiresAt: { $gt: new Date() }
+      }) : 0
+    ]);
+    const availableItemsCount = totalItemsCount;
+
     const customerKeySet = new Set();
     dbCustomersCountList.forEach(c => {
       const k = (c.name || c.email || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -221,18 +272,6 @@ const getVendorAnalytics = async (req, res) => {
       if (k && k !== 'customer' && k !== 'connectmember') customerKeySet.add(k);
     });
     const uniqueCustomersCount = customerKeySet.size;
-    const totalItemsCount = await Product.countDocuments({
-      $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
-      ]
-    });
-    const availableItemsCount = await Product.countDocuments({
-      $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
-      ]
-    });
 
     // Today's Revenue Calculation: Aligned with vendor business timezone (IST: UTC+05:30)
     const istOffsetMs = 5.5 * 60 * 60 * 1000;
@@ -249,14 +288,6 @@ const getVendorAnalytics = async (req, res) => {
         return dIST.toISOString().slice(0, 10) === todayISTStr;
       })
       .reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
-
-    // Active Memberships Count
-    const memberIds = [...new Set(orders.map(o => o.memberId).filter(Boolean))];
-    const activeMembershipsCount = await MembershipCard.countDocuments({
-      userId: { $in: memberIds },
-      status: 'Active',
-      expiresAt: { $gt: new Date() }
-    });
 
     // Revenue Trend Chart Data (daily completed revenue for the last 7 calendar days)
     const dailyRevenueMap = {};
@@ -1085,7 +1116,7 @@ const normalizeAddressStateForOrder = (obj) => {
 const getOrders = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(parentUserId);
+    const user = await getVendorUserCached(parentUserId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
@@ -1204,7 +1235,7 @@ const getOrders = async (req, res) => {
     const page = parseInt(req.query.page, 10);
     const limit = parseInt(req.query.limit, 10);
 
-    let query = Order.find(baseQuery).sort({ createdAt: -1, created_at: -1 }).lean();
+    let query = Order.find(baseQuery).sort({ createdAt: -1 }).lean();
 
     let total = 0;
     if (!isNaN(page) && !isNaN(limit) && limit > 0) {
@@ -1358,7 +1389,7 @@ const getOrders = async (req, res) => {
 const getBookings = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(parentUserId);
+    const user = await getVendorUserCached(parentUserId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
@@ -1438,7 +1469,7 @@ const getBookings = async (req, res) => {
     const page = parseInt(req.query.page, 10);
     const limit = parseInt(req.query.limit, 10);
 
-    let query = Order.find(baseQuery).sort({ createdAt: -1, created_at: -1 }).lean();
+    let query = Order.find(baseQuery).sort({ createdAt: -1 }).lean();
 
     let total = 0;
     if (!isNaN(page) && !isNaN(limit) && limit > 0) {
@@ -1897,7 +1928,7 @@ const getOrderById = async (req, res) => {
 const getApplications = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(parentUserId);
+    const user = await getVendorUserCached(parentUserId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
@@ -2524,7 +2555,7 @@ const getOrderResume = async (req, res) => {
 const getCustomers = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(parentUserId);
+    const user = await getVendorUserCached(parentUserId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
@@ -3086,12 +3117,12 @@ const deleteDeliveryPartner = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const vendorId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(vendorId);
+    const user = await getVendorUserCached(vendorId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    const userResponse = user.toObject();
+    const userResponse = { ...user };
     delete userResponse.password;
     userResponse.id = user._id;
 
@@ -3192,6 +3223,7 @@ const updateProfile = async (req, res) => {
 
     user.markModified('businesses');
     await user.save();
+    invalidateVendorUserCache(vendorId);
 
     const userObj = user.toObject ? user.toObject() : user;
     delete userObj.password;
@@ -4114,7 +4146,7 @@ const updateBusiness = async (req, res) => {
 const getSalesPayments = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
-    const user = await User.findById(parentUserId);
+    const user = await getVendorUserCached(parentUserId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
@@ -4126,8 +4158,8 @@ const getSalesPayments = async (req, res) => {
       });
     }
 
-    // Platform commission configuration
-    const config = await PlatformConfig.findOne({}) || { commissionRate: 0 };
+    // Platform commission configuration (cached)
+    const config = await getPlatformConfigCached();
     const defaultRate = Number(config.commissionRate) || 0;
 
     // Build base query across ALL vendor businesses and order categories
@@ -4245,7 +4277,7 @@ const getSalesPayments = async (req, res) => {
     }
 
     // Fetch all matching orders
-    const allOrders = await Order.find(query).sort({ createdAt: -1, created_at: -1 }).lean();
+    const allOrders = await Order.find(query).sort({ createdAt: -1 }).lean();
     const customerLookup = await buildCustomerLookupForOrders(allOrders);
 
     // Map each order to standard Sales Payment record

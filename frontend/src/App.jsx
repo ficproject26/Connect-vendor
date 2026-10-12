@@ -1,10 +1,16 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 
-import Login from './pages/auth/Login';
-import Register from './pages/Register';
-import VendorDashboard from './pages/VendorDashboard';
+const Login = lazy(() => import('./pages/auth/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const VendorDashboard = lazy(() => import('./pages/VendorDashboard'));
+
+const RouteLoading = () => (
+  <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+    <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+);
 
 // Custom Protected Route Wrapper
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -63,29 +69,31 @@ function App() {
     <Router>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col transition-colors duration-300">
         <main className="flex-1 flex flex-col">
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<Login />} />
-            <Route path="/login" element={<Navigate to="/" replace />} />
-            <Route path="/register" element={<Register />} />
+          <Suspense fallback={<RouteLoading />}>
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/" element={<Login />} />
+              <Route path="/login" element={<Navigate to="/" replace />} />
+              <Route path="/register" element={<Register />} />
 
-            {/* Direct convenience routes for Orders and Bookings with category query params */}
-            <Route path="/orders" element={<OrdersRedirect />} />
-            <Route path="/bookings" element={<BookingsRedirect />} />
+              {/* Direct convenience routes for Orders and Bookings with category query params */}
+              <Route path="/orders" element={<OrdersRedirect />} />
+              <Route path="/bookings" element={<BookingsRedirect />} />
 
-            {/* Protected Role-Based Dashboards */}
-            <Route 
-              path="/vendor/*" 
-              element={
-                <ProtectedRoute allowedRoles={['Vendor', 'Admin', 'Member']}>
-                  <VendorDashboard />
-                </ProtectedRoute>
-              } 
-            />
+              {/* Protected Role-Based Dashboards */}
+              <Route 
+                path="/vendor/*" 
+                element={
+                  <ProtectedRoute allowedRoles={['Vendor', 'Admin', 'Member']}>
+                    <VendorDashboard />
+                  </ProtectedRoute>
+                } 
+              />
 
-            {/* Redirect Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              {/* Redirect Fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </Router>

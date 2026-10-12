@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib');
 const { connectDB } = require('./config/db');
 
 // Load environment variables
@@ -200,18 +201,57 @@ if (!fs.existsSync(resumesDir)) {
   fs.mkdirSync(resumesDir, { recursive: true });
 }
 
+// Native HTTP Gzip Response Compression (compresses JSON/text >= 1KB)
+app.use((req, res, next) => {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (!acceptEncoding.includes('gzip')) {
+    return next();
+  }
+
+  const originalSend = res.send;
+  res.send = function (body) {
+    if (res.headersSent || !body) {
+      return originalSend.call(this, body);
+    }
+
+    const isCompressible = typeof body === 'string' || Buffer.isBuffer(body);
+    if (isCompressible) {
+      const buffer = Buffer.isBuffer(body) ? body : Buffer.from(body);
+      if (buffer.length >= 1024) {
+        try {
+          const gzipped = zlib.gzipSync(buffer, { level: 6 });
+          res.setHeader('Content-Encoding', 'gzip');
+          res.removeHeader('Content-Length');
+          return originalSend.call(this, gzipped);
+        } catch (e) {
+          return originalSend.call(this, body);
+        }
+      }
+    }
+    return originalSend.call(this, body);
+  };
+  next();
+});
+
+// Static assets caching headers (7 days with ETag validation)
+const staticCacheOptions = {
+  maxAge: '7d',
+  etag: true,
+  immutable: true
+};
+
 // Serve uploaded files statically with cross-origin headers
 app.use('/uploads/resumes', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
-}, express.static(resumesDir));
+}, express.static(resumesDir, staticCacheOptions));
 
 app.use('/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
-}, express.static(uploadsDir));
+}, express.static(uploadsDir, staticCacheOptions));
 
 // Smart fallback handler for candidate resumes if static file is missing from ephemeral disk
 app.get('/uploads/resumes/:filename', async (req, res, next) => {
