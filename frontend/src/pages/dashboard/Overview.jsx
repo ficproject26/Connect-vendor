@@ -737,7 +737,9 @@ const Overview = () => {
                         <tbody>
                           {recentOrdersList.map(order => (
                             <tr key={order._id} className="border-b border-slate-50 dark:border-slate-800/20 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                              <td className="px-6 py-4 text-xs font-semibold text-slate-500">#{order._id.substring(18)}</td>
+                              <td className="px-6 py-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                {order.order_number || order.orderNumber || order.id || order.bookingId || (order._id ? (order._id.length === 24 ? `#${order._id}` : order._id) : 'N/A')}
+                              </td>
                               <td className="px-6 py-4 text-xs font-semibold text-slate-800 dark:text-slate-200">{order.memberName}</td>
                               <td className="px-6 py-4 text-xs font-extrabold text-indigo-600 dark:text-indigo-455">₹{order.finalAmount || order.totalAmount}</td>
                               <td className="px-6 py-4">

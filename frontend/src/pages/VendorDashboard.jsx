@@ -1210,6 +1210,9 @@ const VendorDashboard = () => {
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [selectedSoldItem, setSelectedSoldItem] = useState(null);
   const [isSoldDetailsModalOpen, setIsSoldDetailsModalOpen] = useState(false);
+  const [salesInsightsData, setSalesInsightsData] = useState(null);
+  const [salesInsightsLoading, setSalesInsightsLoading] = useState(false);
+  const [salesInsightsError, setSalesInsightsError] = useState(null);
 
   // Admin & Member State Additions
   const [vendorRequests, setVendorRequests] = useState([]);
@@ -1639,6 +1642,7 @@ const VendorDashboard = () => {
 
   const getCustomerDisplayId = (order) => {
     if (!order) return 'N/A';
+    if (order.bookingHolder?.customerId && String(order.bookingHolder.customerId) !== 'FIC-CUST-100001') return String(order.bookingHolder.customerId);
     if (order.customerDisplayId && String(order.customerDisplayId).startsWith('FIC-CUST-') && String(order.customerDisplayId) !== 'FIC-CUST-100001') return String(order.customerDisplayId);
     if (order.customerId && String(order.customerId).startsWith('FIC-CUST-') && String(order.customerId) !== 'FIC-CUST-100001') return String(order.customerId);
     if (order.registrationId && String(order.registrationId).startsWith('REG-')) return String(order.registrationId);
@@ -1987,12 +1991,12 @@ const VendorDashboard = () => {
 
           // 2. Check top-level order properties (for direct bookings/appointments/services/travel/stay)
           if (!isMatch) {
-            const orderProdId = String(order.productId || order.product_details_id || order.serviceId || order.travelId || order.itemId || order.packageId || '').trim();
-            const orderProdDetails = (order.product_details || order.doctorName || order.serviceName || order.packageName || order.vehicleName || order.bikeName || order.carName || order.busName || order.title || order.name || '').trim().toLowerCase();
+            const orderProdId = String(order.productId || order.product_details_id || order.serviceId || order.travelId || order.itemId || order.packageId || order.roomId || order.hotelId || '').trim();
+            const orderProdDetails = (order.product_details || order.doctorName || order.serviceName || order.packageName || order.vehicleName || order.bikeName || order.carName || order.busName || order.roomName || order.roomNumber || order.hotelName || order.title || order.name || '').trim().toLowerCase();
 
-            if ((targetIdStr && orderProdId === targetIdStr) || (targetNameClean && orderProdDetails && (targetNameClean === orderProdDetails || orderProdDetails.includes(targetNameClean)))) {
+            if ((targetIdStr && orderProdId === targetIdStr) || (targetNameClean && orderProdDetails && (targetNameClean === orderProdDetails || orderProdDetails.includes(targetNameClean) || targetNameClean.includes(orderProdDetails)))) {
               isMatch = true;
-              qty = Number(order.quantity || order.seats || order.passengers || 1);
+              qty = Number(order.quantity || order.seats || order.passengers || order.roomsCount || 1);
               price = Number(order.finalAmount || order.totalAmount || order.amount || 0);
             }
           }
@@ -2028,9 +2032,25 @@ const VendorDashboard = () => {
     return { count, customersCount: uniqueCustomers.size > 0 ? uniqueCustomers.size : count, orders: itemOrders, revenue };
   };
 
-  const handleOpenSalesDetails = (item) => {
+  const handleOpenSalesDetails = async (item) => {
     setSelectedSoldItem(item);
     setIsSoldDetailsModalOpen(true);
+    setSalesInsightsLoading(true);
+    setSalesInsightsError(null);
+    setSalesInsightsData(null);
+    try {
+      const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/products/${item._id}/sales-insights`, getAxiosConfig());
+      if (res.data?.success && res.data?.data) {
+        setSalesInsightsData(res.data.data);
+      } else {
+        setSalesInsightsError(res.data?.message || 'Failed to load sales insights');
+      }
+    } catch (err) {
+      console.error('Error fetching sales insights:', err);
+      setSalesInsightsError(err.response?.data?.message || 'Failed to load sales insights');
+    } finally {
+      setSalesInsightsLoading(false);
+    }
   };
 
   const handleRedeemVendorChange = async (vendorId) => {
@@ -2680,17 +2700,10 @@ const VendorDashboard = () => {
     fetchTabData();
   }, [activeTab, activeBusinessId, orderCategoryFilter, bookingCategoryFilter]);
 
-  // Clear stale cached data when active business or user session changes
+  // Clear cached data only when user session changes
   useEffect(() => {
-    setOrders([]);
-    setBookings([]);
-    setApplications([]);
-    setCatalog([]);
-    setCustomers([]);
-    setAnalytics({});
-    setNotifications([]);
     prevOrdersRef.current = [];
-  }, [activeBusinessId, user?._id]);
+  }, [user?._id]);
 
   // Reset category filter if it doesn't match the current food type filter
   useEffect(() => {
@@ -4928,8 +4941,10 @@ const VendorDashboard = () => {
                         </thead>
                         <tbody>
                           {recentOrdersList.map(order => (
-                            <tr key={order._id} className="border-b border-slate-50 dark:border-slate-800/20 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                              <td className="px-6 py-4 text-xs font-semibold text-slate-500">#{order._id.substring(18)}</td>
+                            <tr key={order._id} onClick={() => setSelectedBillOrder(order)} className="border-b border-slate-50 dark:border-slate-800/20 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors cursor-pointer" title="Click to view order details">
+                              <td className="px-6 py-4 text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                                {order.order_number || order.orderNumber || order.id || order.bookingId || (order._id ? (order._id.length === 24 ? `#${order._id}` : order._id) : 'N/A')}
+                              </td>
                               <td className="px-6 py-4 text-xs font-semibold text-slate-800 dark:text-slate-200">{order.memberName}</td>
                               <td className="px-6 py-4 text-xs font-extrabold text-indigo-600 dark:text-indigo-455">₹{order.finalAmount || order.totalAmount}</td>
                               <td className="px-6 py-4">
@@ -5062,16 +5077,46 @@ const VendorDashboard = () => {
                 {/* ── Catalog Summary Cards ── */}
                 {(() => {
                   const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
-                  const bizOrders = orders.filter(o => !savedActiveId || o.vendorId === savedActiveId || o.vendor_id === savedActiveId);
+                  const allRecords = [
+                    ...(Array.isArray(orders) ? orders : []),
+                    ...(Array.isArray(bookings) ? bookings : [])
+                  ];
+                  const bizOrders = allRecords.filter(o => !savedActiveId || String(o.vendorId) === String(savedActiveId) || String(o.vendor_id) === String(savedActiveId));
 
                   const totalItems = catalog.length;
                   const totalOrders = bizOrders.length;
                   
-                  // Calculate revenue from completed orders
+                  // Calculate revenue accurately from catalog items of valid, completed / paid orders
                   const completedStatuses = ['Completed', 'Delivered', 'Checked Out', 'Hired', 'Enrolled'];
-                  const revenue = bizOrders
-                    .filter(o => completedStatuses.includes(o.status))
-                    .reduce((sum, o) => sum + (o.totalAmount || o.total || 0), 0);
+                  const catalogItemIds = new Set(catalog.map(c => String(c._id || c.id || '').trim()));
+                  const catalogItemNames = new Set(catalog.map(c => (c.name || '').trim().toLowerCase()));
+
+                  const eligibleBizOrders = bizOrders.filter(o => 
+                    o.status !== 'Cancelled' && 
+                    o.status !== 'Rejected' && 
+                    o.status !== 'Failed' &&
+                    (completedStatuses.includes(o.status) || o.paymentStatus === 'Paid' || o.payment_status === 'Paid' || o.vendorPaymentStatus === 'PAID')
+                  );
+
+                  let revenue = 0;
+                  eligibleBizOrders.forEach(o => {
+                    if (o.items && Array.isArray(o.items) && o.items.length > 0) {
+                      o.items.forEach(it => {
+                        const itId = String(it.productId || it._id || it.id || '').trim();
+                        const itName = (it.name || it.productName || '').trim().toLowerCase();
+                        if ((itId && catalogItemIds.has(itId)) || (itName && catalogItemNames.has(itName))) {
+                          const q = Number(it.quantity || it.qty || 1);
+                          const p = Number(it.price || 0);
+                          revenue += (p * q);
+                        }
+                      });
+                    } else if (o.product_details) {
+                      const pName = o.product_details.trim().toLowerCase();
+                      if (catalogItemNames.has(pName)) {
+                        revenue += Number(o.finalAmount || o.totalAmount || o.amount || 0);
+                      }
+                    }
+                  });
                   
                   // Pending orders
                   const pendingStatuses = ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'];
@@ -6223,7 +6268,7 @@ const VendorDashboard = () => {
                                     {/* Customer Name & ID */}
                                     <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                       <div>{b.bookingHolder?.name || b.memberName || b.customer_name || 'Customer'}</div>
-                                      <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {b.bookingHolder?.customerId || getCustomerDisplayId(b)}</div>
+                                      <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {(b.bookingHolder?.customerId && b.bookingHolder.customerId !== 'FIC-CUST-100001') ? b.bookingHolder.customerId : getCustomerDisplayId(b)}</div>
                                     </td>
 
                                     {/* Booking Type / Detail */}
@@ -11070,7 +11115,7 @@ required
                           required
                           value={partnerForm.name}
                           onChange={e => setPartnerForm({ ...partnerForm, name: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. David Miller"
                         />
                       </div>
@@ -11081,7 +11126,7 @@ required
                           required
                           value={partnerForm.phone}
                           onChange={e => setPartnerForm({ ...partnerForm, phone: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="+91 98765 12345"
                         />
                       </div>
@@ -11091,7 +11136,7 @@ required
                           type="email"
                           value={partnerForm.email}
                           onChange={e => setPartnerForm({ ...partnerForm, email: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. david@example.com"
                         />
                       </div>
@@ -11101,7 +11146,7 @@ required
                           type="date"
                           value={partnerForm.dob}
                           onChange={e => setPartnerForm({ ...partnerForm, dob: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
                       </div>
                       <div className="space-y-1">
@@ -11109,7 +11154,7 @@ required
                         <select
                           value={partnerForm.gender}
                           onChange={e => setPartnerForm({ ...partnerForm, gender: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         >
                           <option value="">Select Gender</option>
                           <option value="Male">Male</option>
@@ -11122,7 +11167,7 @@ required
                         <select
                           value={partnerForm.bloodGroup}
                           onChange={e => setPartnerForm({ ...partnerForm, bloodGroup: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         >
                           <option value="">Select Blood Group</option>
                           <option value="A+">A+</option>
@@ -11141,7 +11186,7 @@ required
                           type="text"
                           value={partnerForm.emergencyContact}
                           onChange={e => setPartnerForm({ ...partnerForm, emergencyContact: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. +91 99999 88888"
                         />
                       </div>
@@ -11161,7 +11206,7 @@ required
                           type="text"
                           value={partnerForm.address}
                           onChange={e => setPartnerForm({ ...partnerForm, address: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="House No, Street Name"
                         />
                       </div>
@@ -11171,7 +11216,7 @@ required
                           type="text"
                           value={partnerForm.city}
                           onChange={e => setPartnerForm({ ...partnerForm, city: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. New Delhi"
                         />
                       </div>
@@ -11181,7 +11226,7 @@ required
                           type="text"
                           value={partnerForm.state}
                           onChange={e => setPartnerForm({ ...partnerForm, state: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. Delhi"
                         />
                       </div>
@@ -11192,7 +11237,7 @@ required
                           maxLength={6}
                           value={partnerForm.pincode}
                           onChange={e => setPartnerForm({ ...partnerForm, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200 font-mono"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono"
                           placeholder="e.g. 110001"
                         />
                       </div>
@@ -11202,7 +11247,7 @@ required
                           type="text"
                           value={partnerForm.landmark}
                           onChange={e => setPartnerForm({ ...partnerForm, landmark: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. Near Metro Station"
                         />
                       </div>
@@ -11212,7 +11257,7 @@ required
                           type="text"
                           value={partnerForm.gpsLocation}
                           onChange={e => setPartnerForm({ ...partnerForm, gpsLocation: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="Latitude, Longitude"
                         />
                       </div>
@@ -11231,7 +11276,7 @@ required
                           type="text"
                           value={partnerForm.aadhaarNumber}
                           onChange={e => setPartnerForm({ ...partnerForm, aadhaarNumber: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. 1234 5678 9012"
                         />
                       </div>
@@ -11243,7 +11288,7 @@ required
                           type="text"
                           value={partnerForm.panNumber}
                           onChange={e => setPartnerForm({ ...partnerForm, panNumber: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. ABCDE1234F"
                         />
                       </div>
@@ -11264,7 +11309,7 @@ required
                           type="text"
                           value={partnerForm.drivingLicenseNumber}
                           onChange={e => setPartnerForm({ ...partnerForm, drivingLicenseNumber: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. DL-1234567890123"
                         />
                       </div>
@@ -11274,7 +11319,7 @@ required
                           type="date"
                           value={partnerForm.licenseExpiryDate}
                           onChange={e => setPartnerForm({ ...partnerForm, licenseExpiryDate: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
                       </div>
                       {renderFileField('License Front', 'licenseFront')}
@@ -11293,7 +11338,7 @@ required
                         <select
                           value={partnerForm.vehicleType}
                           onChange={e => setPartnerForm({ ...partnerForm, vehicleType: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         >
                           <option value="">Select Type</option>
                           <option value="Bicycle">Bicycle</option>
@@ -11308,7 +11353,7 @@ required
                           type="text"
                           value={partnerForm.vehicleBrand}
                           onChange={e => setPartnerForm({ ...partnerForm, vehicleBrand: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. Honda"
                         />
                       </div>
@@ -11318,7 +11363,7 @@ required
                           type="text"
                           value={partnerForm.vehicleModel}
                           onChange={e => setPartnerForm({ ...partnerForm, vehicleModel: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. Activa 6G"
                         />
                       </div>
@@ -11328,7 +11373,7 @@ required
                           type="text"
                           value={partnerForm.vehicleNumber}
                           onChange={e => setPartnerForm({ ...partnerForm, vehicleNumber: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. DL 1CA 1234"
                         />
                       </div>
@@ -11350,7 +11395,7 @@ required
                           type="text"
                           value={partnerForm.accountHolderName}
                           onChange={e => setPartnerForm({ ...partnerForm, accountHolderName: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. David Miller"
                         />
                       </div>
@@ -11360,7 +11405,7 @@ required
                           type="text"
                           value={partnerForm.bankName}
                           onChange={e => setPartnerForm({ ...partnerForm, bankName: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. HDFC Bank"
                         />
                       </div>
@@ -11370,7 +11415,7 @@ required
                           type="text"
                           value={partnerForm.accountNumber}
                           onChange={e => setPartnerForm({ ...partnerForm, accountNumber: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. 50100234567890"
                         />
                       </div>
@@ -11380,7 +11425,7 @@ required
                           type="text"
                           value={partnerForm.ifscCode}
                           onChange={e => setPartnerForm({ ...partnerForm, ifscCode: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. HDFC0000123"
                         />
                       </div>
@@ -11390,7 +11435,7 @@ required
                           type="text"
                           value={partnerForm.upiId}
                           onChange={e => setPartnerForm({ ...partnerForm, upiId: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. david@okhdfc"
                         />
                       </div>
@@ -11409,7 +11454,7 @@ required
                           type="text"
                           value={partnerForm.employeeId}
                           onChange={e => setPartnerForm({ ...partnerForm, employeeId: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. EMP-987"
                         />
                       </div>
@@ -11419,7 +11464,7 @@ required
                           type="text"
                           value={partnerForm.branch}
                           onChange={e => setPartnerForm({ ...partnerForm, branch: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. Downtown Office"
                         />
                       </div>
@@ -11429,7 +11474,7 @@ required
                           type="date"
                           value={partnerForm.joiningDate}
                           onChange={e => setPartnerForm({ ...partnerForm, joiningDate: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
                       </div>
                       <div className="space-y-1">
@@ -11437,7 +11482,7 @@ required
                         <select
                           value={partnerForm.workType}
                           onChange={e => setPartnerForm({ ...partnerForm, workType: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         >
                           <option value="">Select Work Type</option>
                           <option value="Full-Time">Full-Time</option>
@@ -11451,7 +11496,7 @@ required
                         <select
                           value={partnerForm.shift}
                           onChange={e => setPartnerForm({ ...partnerForm, shift: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         >
                           <option value="">Select Shift</option>
                           <option value="Morning">Morning</option>
@@ -11466,7 +11511,7 @@ required
                           type="text"
                           value={partnerForm.salary}
                           onChange={e => setPartnerForm({ ...partnerForm, salary: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. 25000"
                         />
                       </div>
@@ -11476,7 +11521,7 @@ required
                           type="text"
                           value={partnerForm.incentives}
                           onChange={e => setPartnerForm({ ...partnerForm, incentives: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. 5000"
                         />
                       </div>
@@ -11495,7 +11540,7 @@ required
                           type="text"
                           value={partnerForm.deliveryCategories}
                           onChange={e => setPartnerForm({ ...partnerForm, deliveryCategories: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. Food, Groceries"
                         />
                       </div>
@@ -11505,7 +11550,7 @@ required
                           type="text"
                           value={partnerForm.serviceAreas}
                           onChange={e => setPartnerForm({ ...partnerForm, serviceAreas: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. Sector 62, Indirapuram"
                         />
                       </div>
@@ -11515,7 +11560,7 @@ required
                           type="text"
                           value={partnerForm.workingDays}
                           onChange={e => setPartnerForm({ ...partnerForm, workingDays: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. Mon-Fri"
                         />
                       </div>
@@ -11525,7 +11570,7 @@ required
                           type="text"
                           value={partnerForm.workingHours}
                           onChange={e => setPartnerForm({ ...partnerForm, workingHours: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. 9 AM - 6 PM"
                         />
                       </div>
@@ -11535,7 +11580,7 @@ required
                           type="text"
                           value={partnerForm.maxDeliveryDistance}
                           onChange={e => setPartnerForm({ ...partnerForm, maxDeliveryDistance: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. 10 km"
                         />
                       </div>
@@ -11554,7 +11599,7 @@ required
                           type="text"
                           value={partnerForm.username}
                           onChange={e => setPartnerForm({ ...partnerForm, username: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. david_miller"
                         />
                       </div>
@@ -11564,7 +11609,7 @@ required
                           type="password"
                           value={partnerForm.password}
                           onChange={e => setPartnerForm({ ...partnerForm, password: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="••••••••"
                         />
                       </div>
@@ -11573,7 +11618,7 @@ required
                         <select
                           value={partnerForm.status}
                           onChange={e => setPartnerForm({ ...partnerForm, status: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         >
                           <option value="Available">Available</option>
                           <option value="On Delivery">On Delivery</option>
@@ -11585,7 +11630,7 @@ required
                         <select
                           value={partnerForm.accountStatus}
                           onChange={e => setPartnerForm({ ...partnerForm, accountStatus: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         >
                           <option value="Active">Active</option>
                           <option value="Suspended">Suspended</option>
@@ -11597,7 +11642,7 @@ required
                         <select
                           value={partnerForm.kycStatus}
                           onChange={e => setPartnerForm({ ...partnerForm, kycStatus: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         >
                           <option value="Pending">Pending</option>
                           <option value="Verified">Verified</option>
@@ -11619,7 +11664,7 @@ required
                           type="number"
                           value={partnerForm.totalDeliveries}
                           onChange={e => setPartnerForm({ ...partnerForm, totalDeliveries: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
                       </div>
                       <div className="space-y-1">
@@ -11628,7 +11673,7 @@ required
                           type="number"
                           value={partnerForm.completedDeliveries}
                           onChange={e => setPartnerForm({ ...partnerForm, completedDeliveries: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
                       </div>
                       <div className="space-y-1">
@@ -11637,7 +11682,7 @@ required
                           type="number"
                           value={partnerForm.cancelledDeliveries}
                           onChange={e => setPartnerForm({ ...partnerForm, cancelledDeliveries: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
                       </div>
                       <div className="space-y-1">
@@ -11646,7 +11691,7 @@ required
                           type="text"
                           value={partnerForm.customerRating}
                           onChange={e => setPartnerForm({ ...partnerForm, customerRating: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
                       </div>
                       <div className="space-y-1">
@@ -11655,7 +11700,7 @@ required
                           type="number"
                           value={partnerForm.totalEarnings}
                           onChange={e => setPartnerForm({ ...partnerForm, totalEarnings: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
                       </div>
                       <div className="space-y-1">
@@ -11664,7 +11709,7 @@ required
                           type="number"
                           value={partnerForm.performanceIncentives}
                           onChange={e => setPartnerForm({ ...partnerForm, performanceIncentives: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
                       </div>
                       <div className="space-y-1 col-span-2">
@@ -11673,7 +11718,7 @@ required
                           type="text"
                           value={partnerForm.averageDeliveryTime}
                           onChange={e => setPartnerForm({ ...partnerForm, averageDeliveryTime: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. 25 minutes"
                         />
                       </div>
@@ -11707,7 +11752,7 @@ required
                         <select
                           value={partnerForm.notificationSettings}
                           onChange={e => setPartnerForm({ ...partnerForm, notificationSettings: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         >
                           <option value="Enabled">Enabled</option>
                           <option value="Disabled">Disabled</option>
@@ -11718,7 +11763,7 @@ required
                         <select
                           value={partnerForm.gpsPermission}
                           onChange={e => setPartnerForm({ ...partnerForm, gpsPermission: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         >
                           <option value="Granted">Granted</option>
                           <option value="Denied">Denied</option>
@@ -11730,7 +11775,7 @@ required
                           type="text"
                           value={partnerForm.deviceInformation}
                           onChange={e => setPartnerForm({ ...partnerForm, deviceInformation: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. Android 13 - Samsung S22"
                         />
                       </div>
@@ -11740,7 +11785,7 @@ required
                           type="text"
                           value={partnerForm.appVersion}
                           onChange={e => setPartnerForm({ ...partnerForm, appVersion: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
                       </div>
                       <div className="space-y-1">
@@ -11749,7 +11794,7 @@ required
                           type="text"
                           value={partnerForm.loginActivity}
                           onChange={e => setPartnerForm({ ...partnerForm, loginActivity: e.target.value })}
-                          className="w-full bg-slate-50/80 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-800 dark:text-slate-200"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           placeholder="e.g. Last login: Today 09:30 AM"
                         />
                       </div>
@@ -12288,8 +12333,26 @@ required
         onClose={() => setIsSoldDetailsModalOpen(false)}
         title={`${selectedSoldItem ? selectedSoldItem.name : ''} - Sales Insights`}
       >
-        {selectedSoldItem && (() => {
+        {salesInsightsLoading ? (
+          <div className="py-12 text-center space-y-3">
+            <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <p className="text-xs text-slate-500 font-medium">Loading real-time sales insights...</p>
+          </div>
+        ) : salesInsightsError && !salesInsightsData ? (
+          <div className="py-8 text-center space-y-3">
+            <p className="text-xs text-red-500 font-semibold">{salesInsightsError}</p>
+            <button
+              onClick={() => handleOpenSalesDetails(selectedSoldItem)}
+              className="text-xs px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg font-bold hover:bg-slate-200 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        ) : selectedSoldItem && (() => {
           const salesData = getItemSalesData(selectedSoldItem._id, selectedSoldItem);
+          const totalCount = salesInsightsData ? salesInsightsData.totalSold : salesData.count;
+          const totalRev = salesInsightsData ? salesInsightsData.totalRevenue : salesData.revenue;
+          const ordersList = salesInsightsData ? salesInsightsData.recentCustomers : salesData.orders;
           const isTravelItem = vendorType.startsWith('Travel') || (selectedSoldItem.category || '').toLowerCase().includes('travel') || selectedMainCat === 'Travel';
           return (
             <div className="space-y-6 animate-fadeIn">
@@ -12306,7 +12369,7 @@ required
                      'Total Sold'}
                   </span>
                   <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
-                    {salesData.count}
+                    {totalCount}
                   </span>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 text-center">
@@ -12314,7 +12377,7 @@ required
                     Total Revenue
                   </span>
                   <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                    ₹{salesData.revenue.toLocaleString()}
+                    ₹{totalRev.toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -12341,26 +12404,34 @@ required
                   Recent Customers
                 </h4>
                 
-                {salesData.orders.length === 0 ? (
+                {ordersList.length === 0 ? (
                   <div className="text-center py-6 text-slate-500 dark:text-slate-400 text-sm italic bg-slate-50/50 dark:bg-slate-950/20 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
                     No transactions recorded for this item yet.
                   </div>
                 ) : (
                   <div className="max-h-[200px] overflow-y-auto pr-1 space-y-2">
-                    {salesData.orders.map((ord, idx) => {
+                    {ordersList.map((ord, idx) => {
                       const isJobItem = vendorType.startsWith('Job') || selectedSoldItem.category === 'Jobs';
                       return (
                         <div key={idx} className="flex justify-between items-center p-3 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200/50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                           <div>
-                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{ord.memberName}</div>
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 flex-wrap">
+                              <span>{ord.memberName || 'Customer'}</span>
+                              {ord.customerId && ord.customerId !== 'N/A' && ord.customerId !== 'FIC-CUST-100001' && (
+                                <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/50 px-1.5 py-0.2 rounded border border-indigo-200/40 dark:border-indigo-800/40">
+                                  {ord.customerId}
+                                </span>
+                              )}
+                            </div>
                             <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                               {ord.date}
-                              {!isJobItem && ` • Qty: ${ord.quantity}`}
+                              {ord.phone && ` • ${ord.phone}`}
+                              {!isJobItem && ` • Qty: ${ord.quantity || 1}`}
                             </div>
                           </div>
-                          <div className="text-right">
+                          <div className="text-right shrink-0">
                             {!isJobItem && (
-                              <div className="text-xs font-bold text-slate-850 dark:text-slate-150">₹{ord.amount}</div>
+                              <div className="text-xs font-bold text-slate-850 dark:text-slate-150">₹{(ord.amount || 0).toLocaleString()}</div>
                             )}
                             <span className={`inline-block text-[9px] font-extrabold px-1.5 py-0.5 rounded-full ${!isJobItem ? 'mt-1' : ''} ${
                               ord.status === 'Completed' || ord.status === 'Delivered' || ord.status === 'Checked Out' ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/35' :
@@ -12606,9 +12677,13 @@ required
               displayStatus = selectedBillOrder.paymentStatus === 'Completed' ? 'Confirmed' : 'Booking Received';
             }
 
+            const resolvedHolderId = (selectedBillOrder.bookingHolder?.customerId && selectedBillOrder.bookingHolder.customerId !== 'FIC-CUST-100001')
+              ? selectedBillOrder.bookingHolder.customerId
+              : formatCustomerId(selectedBillOrder, customers);
+
             const holder = {
               name: selectedBillOrder.bookingHolder?.name || selectedBillOrder.memberName || selectedBillOrder.customer_name || 'Customer',
-              customerId: formatCustomerId(selectedBillOrder, customers),
+              customerId: resolvedHolderId,
               phone: selectedBillOrder.bookingHolder?.phone || selectedBillOrder.customer_phone || selectedBillOrder.phone || '',
               email: selectedBillOrder.bookingHolder?.email || selectedBillOrder.customer_email || selectedBillOrder.email || '',
               address: getCustomerAddress(selectedBillOrder),
@@ -12627,6 +12702,23 @@ required
             if (adultsCount + childrenCount > 0 && totalGuestsCount < (adultsCount + childrenCount)) {
               totalGuestsCount = adultsCount + childrenCount + infantsCount;
             }
+
+            const hasValidVehicleOrArrival = Boolean(
+              (selectedBillOrder.travelType && selectedBillOrder.travelType !== 'Not provided') ||
+              (selectedBillOrder.vehicleType && selectedBillOrder.vehicleType !== 'Not provided') ||
+              (selectedBillOrder.vehicleNumber && selectedBillOrder.vehicleNumber !== 'Not provided') ||
+              (selectedBillOrder.pickupDrop && selectedBillOrder.pickupDrop !== 'Not provided') ||
+              (selectedBillOrder.vehicleDetails?.vehicleNumber && selectedBillOrder.vehicleDetails.vehicleNumber !== 'Not provided') ||
+              (selectedBillOrder.vehicleDetails?.vehicleType && selectedBillOrder.vehicleDetails.vehicleType !== 'Not provided') ||
+              (selectedBillOrder.vehicleDetails?.travellingBy && selectedBillOrder.vehicleDetails.travellingBy !== 'Not provided') ||
+              (selectedBillOrder.vehicleDetails?.travelType && selectedBillOrder.vehicleDetails.travelType !== 'Not provided') ||
+              (selectedBillOrder.vehicleDetails?.pickupDrop && selectedBillOrder.vehicleDetails.pickupDrop !== 'Not provided')
+            );
+
+            let nextSecNum = 6;
+            const vehicleSecNum = hasValidVehicleOrArrival ? nextSecNum++ : null;
+            const paymentSecNum = nextSecNum++;
+            const historySecNum = nextSecNum++;
 
             const rawHistory = Array.isArray(selectedBillOrder.statusHistory) && selectedBillOrder.statusHistory.length > 0
               ? selectedBillOrder.statusHistory
@@ -12992,45 +13084,47 @@ required
                   )}
                 </div>
 
-                {/* 6. TRAVEL & VEHICLE DETAILS */}
-                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
-                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-                    <Truck size={13} className="text-amber-500" />
-                    6. Travel & Arrival / Vehicle Information
+                {/* TRAVEL & VEHICLE DETAILS (Only if supported travel / arrival details exist) */}
+                {hasValidVehicleOrArrival && (
+                  <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                      <Truck size={13} className="text-amber-500" />
+                      {vehicleSecNum}. Travel & Arrival / Vehicle Information
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-semibold block">Travelling By</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                          {selectedBillOrder.travelType || selectedBillOrder.vehicleDetails?.travellingBy || selectedBillOrder.vehicleDetails?.travelType || 'Not provided'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-semibold block">Vehicle Type</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                          {selectedBillOrder.vehicleType || selectedBillOrder.vehicleDetails?.vehicleType || 'Not provided'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-semibold block">Vehicle Number</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {selectedBillOrder.vehicleNumber || selectedBillOrder.vehicleDetails?.vehicleNumber || 'Not provided'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-semibold block">Pickup / Drop Info</span>
+                        <span className="font-medium text-slate-700 dark:text-slate-300">
+                          {selectedBillOrder.pickupDrop || selectedBillOrder.vehicleDetails?.pickupDrop || selectedBillOrder.specialRequests || 'Not provided'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-semibold block">Travelling By</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
-                        {selectedBillOrder.travelType || selectedBillOrder.vehicleDetails?.travellingBy || selectedBillOrder.vehicleDetails?.travelType || 'Not provided'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-semibold block">Vehicle Type</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
-                        {selectedBillOrder.vehicleType || selectedBillOrder.vehicleDetails?.vehicleType || 'Not provided'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-semibold block">Vehicle Number</span>
-                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                        {selectedBillOrder.vehicleNumber || selectedBillOrder.vehicleDetails?.vehicleNumber || 'Not provided'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-semibold block">Pickup / Drop Info</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">
-                        {selectedBillOrder.pickupDrop || selectedBillOrder.vehicleDetails?.pickupDrop || selectedBillOrder.specialRequests || 'Not provided'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                )}
 
-                {/* 7. PAYMENT DETAILS */}
+                {/* PAYMENT DETAILS */}
                 <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
                   <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
                     <CreditCard size={13} className="text-emerald-500" />
-                    7. Payment & Billing Breakdown
+                    {paymentSecNum}. Payment & Billing Breakdown
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     <div>
@@ -13072,11 +13166,11 @@ required
                   </div>
                 </div>
 
-                {/* 8. STATUS TIMELINE / HISTORY */}
+                {/* STATUS TIMELINE / HISTORY */}
                 <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 space-y-3">
                   <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
                     <Clock size={13} className="text-blue-500" />
-                    8. Status History
+                    {historySecNum}. Status History
                   </div>
                   <div className="space-y-2">
                     {rawHistory.map((item, hIdx) => (
@@ -13565,7 +13659,7 @@ required
               placeholder="e.g. John Doe"
               value={appointmentForm.memberName}
               onChange={e => setAppointmentForm({ ...appointmentForm, memberName: e.target.value })}
-              className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
           </div>
 
@@ -13577,7 +13671,7 @@ required
                 placeholder="e.g. phone or email"
                 value={appointmentForm.memberId}
                 onChange={e => setAppointmentForm({ ...appointmentForm, memberId: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
             <div className="space-y-1.5 sm:col-span-1">
@@ -13585,7 +13679,7 @@ required
               <select
                 value={appointmentForm.gender || ''}
                 onChange={e => setAppointmentForm({ ...appointmentForm, gender: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-800 dark:text-slate-200"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               >
                 <option value="">Select Gender</option>
                 <option value="Male">Male</option>
@@ -13603,7 +13697,7 @@ required
                 placeholder="e.g. 35"
                 value={appointmentForm.age || ''}
                 onChange={e => setAppointmentForm({ ...appointmentForm, age: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
           </div>
@@ -13622,7 +13716,7 @@ required
                   finalAmount: doc ? doc.price : ''
                 });
               }}
-              className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             >
               <option value="">-- Choose Doctor --</option>
               {catalog.map(doc => (
@@ -13641,7 +13735,7 @@ required
                 required
                 value={appointmentForm.appointmentDate}
                 onChange={e => setAppointmentForm({ ...appointmentForm, appointmentDate: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
 
@@ -13652,7 +13746,7 @@ required
                 value={appointmentForm.appointmentTimeSlot}
                 onChange={e => setAppointmentForm({ ...appointmentForm, appointmentTimeSlot: e.target.value })}
                 disabled={!appointmentForm.productId || !appointmentForm.appointmentDate}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 disabled:opacity-50"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 disabled:opacity-50"
               >
                 <option value="">-- Choose Slot --</option>
                 {(() => {
@@ -13688,7 +13782,7 @@ required
                 placeholder="Prefilled fee"
                 value={appointmentForm.finalAmount}
                 onChange={e => setAppointmentForm({ ...appointmentForm, finalAmount: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
 
@@ -13697,7 +13791,7 @@ required
               <select
                 value={appointmentForm.status}
                 onChange={e => setAppointmentForm({ ...appointmentForm, status: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               >
                 <option value="Accepted">Accepted</option>
                 <option value="Pending">Pending</option>
@@ -13744,7 +13838,7 @@ required
               placeholder="e.g. John Doe"
               value={bookingForm.memberName}
               onChange={e => setBookingForm({ ...bookingForm, memberName: e.target.value })}
-              className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
           </div>
 
@@ -13761,7 +13855,7 @@ required
                 placeholder="e.g. phone or email"
                 value={bookingForm.memberId}
                 onChange={e => setBookingForm({ ...bookingForm, memberId: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
 
@@ -13772,7 +13866,7 @@ required
               <select
                 value={bookingForm.gender || ''}
                 onChange={e => setBookingForm({ ...bookingForm, gender: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-800 dark:text-slate-200"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               >
                 <option value="">Select Gender</option>
                 <option value="Male">Male</option>
@@ -13793,7 +13887,7 @@ required
                 placeholder="e.g. 28"
                 value={bookingForm.age || ''}
                 onChange={e => setBookingForm({ ...bookingForm, age: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
           </div>
@@ -13914,7 +14008,7 @@ required
                   finalAmount: terms.ordersName === 'Orders' ? basePrice * bookingForm.quantity : basePrice
                 });
               }}
-              className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             >
               <option value="">-- Choose {terms.catalogItem} --</option>
               {catalog.map(item => (
@@ -13936,7 +14030,7 @@ required
                   required
                   value={bookingForm.appointmentDate}
                   onChange={e => setBookingForm({ ...bookingForm, appointmentDate: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
 
@@ -13949,7 +14043,7 @@ required
                     required
                     value={bookingForm.appointmentTimeSlot}
                     onChange={e => setBookingForm({ ...bookingForm, appointmentTimeSlot: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-800 dark:text-slate-200"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                   >
                     {[...Array(14).keys()].map(n => (
                       <option key={n + 1} value={String(n + 1)}>{n + 1} Night{n > 0 ? 's' : ''}</option>
@@ -13960,7 +14054,7 @@ required
                     required
                     value={bookingForm.appointmentTimeSlot}
                     onChange={e => setBookingForm({ ...bookingForm, appointmentTimeSlot: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-800 dark:text-slate-200"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                   >
                     <option value="">-- Choose Slot --</option>
                     {DEFAULT_TIME_SLOTS.map(slot => (
@@ -13981,7 +14075,7 @@ required
                   placeholder="e.g. 302"
                   value={bookingForm.roomNumber}
                   onChange={e => setBookingForm({ ...bookingForm, roomNumber: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500"
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
             )}
@@ -14004,7 +14098,7 @@ required
                       finalAmount: basePrice * qty
                     });
                   }}
-                  className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-800 dark:text-slate-200"
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
             )}
@@ -14016,7 +14110,7 @@ required
                 placeholder="Total Price"
                 value={bookingForm.finalAmount}
                 onChange={e => setBookingForm({ ...bookingForm, finalAmount: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-800 dark:text-slate-200"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
 
@@ -14025,7 +14119,7 @@ required
               <select
                 value={bookingForm.status}
                 onChange={e => setBookingForm({ ...bookingForm, status: e.target.value })}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-850 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-800 dark:text-slate-200"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               >
                 {terms.orderStatuses.filter(s => s !== 'Cancelled').map(status => (
                   <option key={status} value={status}>{status}</option>

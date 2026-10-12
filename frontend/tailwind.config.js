@@ -8,6 +8,14 @@ export default {
   theme: {
     extend: {
       colors: {
+        slate: {
+          150: '#e2e8f0',
+          350: '#94a3b8',
+          355: '#94a3b8',
+          455: '#64748b',
+          850: '#1e293b',
+          955: '#0f172a',
+        },
         primary: {
           50: '#f5f3ff',
           100: '#ede9fe',

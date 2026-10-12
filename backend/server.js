@@ -153,8 +153,9 @@ const corsOptions = {
     const isExplicitlyAllowed = allowedOrigins.includes(origin);
     const isVercelPreview = /^https:\/\/connect-vendor([a-z0-9-]*)\.vercel\.app$/.test(origin);
     const isFicappDomain = /^https?:\/\/([a-z0-9-]+\.)*ficapp\.in(:[0-9]+)?$/.test(origin);
+    const isLocalDev = !isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(origin);
 
-    if (isExplicitlyAllowed || isVercelPreview || isFicappDomain) {
+    if (isExplicitlyAllowed || isVercelPreview || isFicappDomain || isLocalDev) {
       return callback(null, true);
     }
 

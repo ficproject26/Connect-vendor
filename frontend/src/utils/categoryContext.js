@@ -118,6 +118,35 @@ export const isBookingCategory = (cat) => {
  */
 export const getRecordCategory = (record) => {
   if (!record) return '';
-  const raw = record.type || record.category || (record.staySchedule ? 'Stay' : '') || record.items?.[0]?.category || record.items?.[0]?.mainCategory || '';
+  // Check explicit stay markers first
+  if (record.staySchedule || record.checkInDate || record.roomNumber || record.roomName || record.roomDetails) {
+    return CATEGORY_STAY;
+  }
+  const rawType = String(record.type || '').trim().toLowerCase();
+  const rawCategory = String(record.category || '').trim().toLowerCase();
+  if (['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawType) || ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawCategory)) {
+    return CATEGORY_STAY;
+  }
+  if (['travel', 'travels', 'package', 'packages', 'bus', 'vehicle'].includes(rawType) || ['travel', 'travels', 'package', 'packages'].includes(rawCategory)) {
+    return CATEGORY_TRAVEL;
+  }
+  if (['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawType) || ['service', 'services', 'appointment', 'hospital', 'technician'].includes(rawCategory) || record.appointmentDate || record.doctorName) {
+    return CATEGORY_SERVICES;
+  }
+  if (record.items && Array.isArray(record.items) && record.items.length > 0) {
+    const itCat = String(record.items[0]?.category || record.items[0]?.mainCategory || '').trim().toLowerCase();
+    if (['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(itCat)) return CATEGORY_STAY;
+    if (['travel', 'travels', 'package'].includes(itCat)) return CATEGORY_TRAVEL;
+    if (['service', 'services', 'hospital'].includes(itCat)) return CATEGORY_SERVICES;
+    if (['products', 'product', 'electronics', 'furniture'].includes(itCat)) return CATEGORY_PRODUCTS;
+    if (['daily needs', 'daily need', 'grocery', 'pharmacy', 'snacks'].includes(itCat)) return CATEGORY_DAILY_NEEDS;
+    if (['food', 'restaurant'].includes(itCat)) return CATEGORY_FOOD;
+  }
+  // Check product_details or item name heuristics
+  const detailStr = String(record.product_details || record.items?.[0]?.name || '').toLowerCase();
+  if (/hotel|resort|pg|room|suite|villa/i.test(detailStr)) {
+    return CATEGORY_STAY;
+  }
+  const raw = record.type || record.category || record.items?.[0]?.category || record.items?.[0]?.mainCategory || '';
   return normalizeCategory(raw);
 };

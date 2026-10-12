@@ -221,8 +221,8 @@ const getVendorSettlements = async (req, res) => {
 
       // Build Payment ID & Reference traceable to database
       const paymentId = matchedPayment?.paymentId || s.paymentId || `PAY-VND-${sIdSuffix}`;
-      const referenceId = s.referenceId || matchedPayment?.transactionReference || `SETTL-${sIdSuffix}`;
-      const transactionId = matchedPayment?.transactionReference || `TXN-${sIdSuffix}`;
+      const transactionId = matchedPayment?.transactionReference || s.transactionReference || `TXN-${sIdSuffix}`;
+      const referenceId = s.referenceId || s.gatewayReference || s.utrNumber || s.bankReference || matchedPayment?.referenceId || matchedPayment?.utrNumber || matchedPayment?.bankReference || null;
 
       // Period calculation
       let periodLabel = '';
@@ -292,7 +292,7 @@ const getVendorSettlements = async (req, res) => {
         _id: p._id,
         paymentId: p.paymentId || `PAY-${pIdStr.slice(-6).toUpperCase()}`,
         transactionId: p.transactionReference || `TXN-${pIdStr.slice(-6).toUpperCase()}`,
-        referenceId: p.transactionReference || `REF-${pIdStr.slice(-6).toUpperCase()}`,
+        referenceId: p.referenceId || p.utrNumber || p.bankReference || null,
         vendorName: user.name,
         vendorId: `VND-${String(matchedBiz?._id || user._id).slice(-6).toUpperCase()}`,
         businessName: matchedBiz?.businessName || p.recipientName || user.businessName || user.name,
@@ -340,7 +340,7 @@ const getVendorSettlements = async (req, res) => {
       const day = now.getDay();
       const diffToMonday = day === 0 ? 6 : day - 1;
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday, 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday + 6, 23, 59, 59, 999);
     } else if (duration === 'This Month') {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
@@ -359,7 +359,8 @@ const getVendorSettlements = async (req, res) => {
     }
 
     let filtered = combinedRecords.filter(item => {
-      const itemTime = new Date(item.paymentDate).getTime();
+      const parsedDate = new Date(item.paymentDate);
+      const itemTime = isNaN(parsedDate.getTime()) ? (item.createdAt ? new Date(item.createdAt).getTime() : 0) : parsedDate.getTime();
       if (startDate && itemTime < startDate.getTime()) return false;
       if (endDate && itemTime > endDate.getTime()) return false;
       return true;

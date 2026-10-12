@@ -19,18 +19,18 @@ const Customers = () => {
   };
 
   const formatCustomerId = (c) => {
-    if (!c) return 'FIC-CUST-100001';
+    if (!c) return 'N/A';
     if (typeof c === 'object') {
-      if (c.customerDisplayId && String(c.customerDisplayId).startsWith('FIC-CUST-')) return String(c.customerDisplayId);
-      if (c.customerId && String(c.customerId).startsWith('FIC-CUST-')) return String(c.customerId);
-      if (c.registrationId && String(c.registrationId).startsWith('FIC-CUST-')) return String(c.registrationId);
-      if (c.memberId && String(c.memberId).startsWith('FIC-CUST-')) return String(c.memberId);
-      if (c.id && String(c.id).startsWith('FIC-CUST-')) return String(c.id);
-      if (c._id && String(c._id).startsWith('FIC-CUST-')) return String(c._id);
+      if (c.customerDisplayId && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
+      if (c.customerId && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
+      if (c.registrationId && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
+      if (c.memberId && String(c.memberId) !== 'FIC-CUST-100001' && !c.memberId.includes('@')) return String(c.memberId);
+      if (c.id && String(c.id) !== 'FIC-CUST-100001') return String(c.id);
+      if (c._id && String(c._id) !== 'FIC-CUST-100001') return String(c._id);
     }
     const rawId = String(c).trim();
-    if (rawId.startsWith('FIC-CUST-')) return rawId;
-    return 'FIC-CUST-100001';
+    if (rawId && rawId !== 'FIC-CUST-100001') return rawId;
+    return 'N/A';
   };
 
   return (

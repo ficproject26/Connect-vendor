@@ -370,7 +370,7 @@ export default function VendorPayments() {
   const handleClearSalesFilters = () => {
     setSalesSearch('');
     setSalesStatus('All');
-    setSalesDuration('Today');
+    setSalesDuration('All');
     setSalesFromDate('');
     setSalesToDate('');
     setSalesDateError('');
@@ -495,6 +495,7 @@ export default function VendorPayments() {
                   }}
                   className="w-full px-3 py-2 text-sm rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#faed26]/50"
                 >
+                  <option value="All">All Duration</option>
                   <option value="Today">Today</option>
                   <option value="This Week">This Week</option>
                   <option value="This Month">This Month</option>
@@ -1124,12 +1125,20 @@ export default function VendorPayments() {
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80">
-                <div className="text-slate-400 font-medium mb-1">Order / Reference ID</div>
-                <div className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                <div className="text-slate-400 font-medium mb-1">
+                  {['Stay', 'Travel', 'Services', 'Appointments'].includes(selectedSaleDetail.category) ? 'Booking Reference ID' : 'Order ID'}
+                </div>
+                <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
                   {selectedSaleDetail.orderId}
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80">
+                <div className="text-slate-400 font-medium mb-1">Transaction ID</div>
+                <div className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                  {selectedSaleDetail.transactionId || 'Not available'}
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80 sm:col-span-2">
                 <div className="text-slate-400 font-medium mb-1">Customer Reference</div>
                 <div className="font-semibold text-slate-800 dark:text-slate-200">
                   {selectedSaleDetail.customerReference || selectedSaleDetail.customerName || 'Customer'}
@@ -1276,7 +1285,7 @@ export default function VendorPayments() {
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
                   <div className="text-slate-400 font-medium mb-1">Reference ID</div>
                   <div className="font-mono font-bold text-slate-900 dark:text-slate-100">
-                    {selectedAdminDetail.referenceId || '-'}
+                    {selectedAdminDetail.referenceId && selectedAdminDetail.referenceId !== selectedAdminDetail.transactionId ? selectedAdminDetail.referenceId : 'Not available'}
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">

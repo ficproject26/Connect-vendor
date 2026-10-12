@@ -34,7 +34,8 @@ const {
   updateBusiness,
   getSalesPayments,
   getBusinessRequests,
-  resubmitBusinessRequest
+  resubmitBusinessRequest,
+  getProductSalesInsights
 } = require('../controllers/vendorController');
 
 const { uploadToCloudinary } = require('../config/cloudinary');
@@ -105,6 +106,7 @@ router.get('/analytics', getVendorAnalytics);
 // Product / Service Catalog CRUD
 router.post('/products', createProduct);
 router.get('/products', getProducts);
+router.get('/products/:id/sales-insights', getProductSalesInsights);
 router.put('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
 

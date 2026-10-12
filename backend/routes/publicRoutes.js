@@ -442,7 +442,8 @@ router.post('/orders', async (req, res) => {
         const vType = vendor.baseVendorType || vendor.vendorType;
         const isHospital = vType && (vType === 'Hospital' || vType.startsWith('Hospital Vendor'));
         if (isHospital) orderType = 'Appointment';
-        else if (vType && (vType.startsWith('Hotel') || vType.startsWith('Service Provider Vendor'))) orderType = 'Booking';
+        else if (vType && (vType.startsWith('Hotel') || vType.startsWith('Stay'))) orderType = 'Stay';
+        else if (vType && (vType.startsWith('Service Provider Vendor') || vType.startsWith('Service'))) orderType = 'Booking';
       }
     }
 
@@ -517,6 +518,7 @@ router.post('/orders', async (req, res) => {
       memberId: memberId || 'cust_dhanush',
       memberName: req.body.candidateName || memberName || req.body.customer_name || 'Customer',
       type: orderType,
+      category: req.body.category || (orderType === 'Stay' ? 'Stay' : (orderType === 'Appointment' ? 'Services' : undefined)),
       items: items || [],
       totalAmount: totalAmount ?? finalAmount,
       discountApplied: discountApplied || 0,

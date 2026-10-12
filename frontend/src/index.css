@@ -55,21 +55,39 @@
   height: 48px;
 }
 .dark .glass-input {
-  @apply bg-slate-950/60 border-white/10 text-white placeholder-slate-500/70;
+  @apply bg-slate-950/80 border-slate-700 text-slate-100 placeholder-slate-400;
 }
 
 .glass-input:hover {
   @apply border-primary-400/70 bg-white/80 !important;
 }
 .dark .glass-input:hover {
-  @apply border-primary-500/35 bg-slate-900/80 !important;
+  @apply border-primary-500/50 bg-slate-900/90 !important;
 }
 
 .glass-input:focus {
   @apply border-primary-500 bg-white ring-2 ring-primary-500/10 shadow-lg !important;
 }
 .dark .glass-input:focus {
-  @apply border-primary-500 bg-slate-950/95 shadow-primary-500/5 !important;
+  @apply border-primary-500 bg-slate-950 shadow-primary-500/10 !important;
+}
+
+/* Global Dark Mode Form Controls Contrast & Browser Inversion */
+.dark input,
+.dark select,
+.dark textarea {
+  color-scheme: dark;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1;
+}
+
+.dark select option {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
 }
 
 /* Keyframes for premium floating meshes */
