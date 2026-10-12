@@ -1043,15 +1043,29 @@ const buildCustomerLookupForOrders = async (orders) => {
     orCustConditions.push({ mobileNumber: { $in: phones } });
   }
 
-  // Fetch all Customer documents (collection has only 27 records) plus matching Users
-  const [dbCustomers, memberUsers] = await Promise.all([
+  const orderObjIds = orders.map(o => o._id).filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
+  const orderStrIds = orders.map(o => String(o._id));
+  const orderNumbers = orders.map(o => o.order_number || o.id).filter(Boolean);
+
+  // Fetch all Customer documents plus matching Users and related Payments in parallel
+  const [dbCustomers, memberUsers, relatedPayments] = await Promise.all([
     Customer.find({}).select('name email phone mobileNumber customerId registrationId _id address street city state pincode aadhaar pan role status addresses').lean(),
     orCustConditions.length > 0
       ? User.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id aadhaar pan role').lean()
+      : Promise.resolve([]),
+    mongoose.connection.db
+      ? mongoose.connection.db.collection('payments').find({
+          sourceModel: 'Order',
+          $or: [
+            { sourceId: { $in: [...orderObjIds, ...orderStrIds, ...orderNumbers] } }
+          ]
+        }).toArray()
       : Promise.resolve([])
   ]);
 
   const customerLookup = {
+    byOrderId: {},
+    paymentsByOrderId: {},
     byPhone: {},
     byEmail: {},
     byName: {},
@@ -1061,6 +1075,24 @@ const buildCustomerLookupForOrders = async (orders) => {
     entitiesByEmail: {},
     entitiesByName: {}
   };
+
+  if (Array.isArray(relatedPayments)) {
+    relatedPayments.forEach(p => {
+      const sId = String(p.sourceId);
+      customerLookup.paymentsByOrderId[sId] = p;
+      if (p.recipientId && p.recipientId !== 'FIC-CUST-100001') {
+        customerLookup.byOrderId[sId] = p.recipientId;
+      }
+      const pPhone = (p.recipientPhone || '').toString().replace(/[^0-9]/g, '');
+      if (pPhone && pPhone.length >= 10 && p.recipientId && p.recipientId !== 'FIC-CUST-100001') {
+        customerLookup.byPhone[pPhone.slice(-10)] = p.recipientId;
+      }
+      const pEmail = (p.recipientEmail || '').trim().toLowerCase();
+      if (pEmail && pEmail.includes('@') && p.recipientId && p.recipientId !== 'FIC-CUST-100001') {
+        customerLookup.byEmail[pEmail] = p.recipientId;
+      }
+    });
+  }
 
   const registerCustomerInLookup = (cust) => {
     if (!cust) return;
@@ -1294,6 +1326,13 @@ const getOrders = async (req, res) => {
         resolvedCustomerId = String(obj.memberId);
       }
 
+      // Check payment recipientId
+      if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
+        if (customerLookup.byOrderId && customerLookup.byOrderId[String(obj._id)]) {
+          resolvedCustomerId = customerLookup.byOrderId[String(obj._id)];
+        }
+      }
+
       // If still unresolved or defaulted to placeholder, look up genuine customer record
       if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
         const oPhone = (obj.customer_phone || obj.phone || '').toString().replace(/[^0-9]/g, '');
@@ -1312,17 +1351,21 @@ const getOrders = async (req, res) => {
       }
 
       if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
-        if (obj.memberId && obj.memberId !== 'cust_dhanush' && !obj.memberId.startsWith('FIC-CUST-100001')) {
-          resolvedCustomerId = String(obj.memberId);
-        } else if (obj.customerId && obj.customerId !== 'FIC-CUST-100001') {
-          resolvedCustomerId = String(obj.customerId);
-        } else {
-          resolvedCustomerId = 'N/A';
-        }
+        resolvedCustomerId = 'N/A';
       }
 
       obj.customerId = resolvedCustomerId;
       obj.customerDisplayId = resolvedCustomerId;
+
+      // Ensure transactional orders never have stray job application fields
+      delete obj.jobTitle;
+      delete obj.candidateResume;
+      delete obj.candidateEmail;
+      delete obj.candidateEducation;
+      delete obj.candidatePhone;
+      delete obj.candidateAddress;
+      delete obj.applicationId;
+      delete obj.jobId;
 
       if (obj.memberId && membershipMap[obj.memberId.toString()]) {
         obj.membershipPlanName = membershipMap[obj.memberId.toString()];
@@ -1362,6 +1405,20 @@ const getOrders = async (req, res) => {
         }
       } else if (isCodOrder && ['Delivered', 'Completed'].includes(obj.status)) {
         pStatus = 'Paid';
+      }
+
+      // Cross-reference genuine payment from payments collection
+      const matchedPayment = customerLookup.paymentsByOrderId ? customerLookup.paymentsByOrderId[String(obj._id)] : null;
+      if (matchedPayment) {
+        if (matchedPayment.transactionReference || matchedPayment.paymentId) {
+          obj.transactionId = matchedPayment.transactionReference || matchedPayment.paymentId;
+        }
+        if (matchedPayment.paymentDate) {
+          obj.paidAt = matchedPayment.paymentDate;
+        }
+        if (matchedPayment.status === 'PAID') {
+          pStatus = 'Paid';
+        }
       }
 
       obj.paymentMethod = pMethod;
@@ -1536,13 +1593,12 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     resolvedCustomerId = matchedCustomer.customerId || matchedCustomer.registrationId || matchedCustomer.customerDisplayId || (String(matchedCustomer._id).startsWith('FIC-CUST-') ? String(matchedCustomer._id) : null);
   }
   if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
-    if (obj.memberId && obj.memberId !== 'cust_dhanush' && !obj.memberId.startsWith('FIC-CUST-100001')) {
-      resolvedCustomerId = String(obj.memberId);
-    } else if (obj.customerId && obj.customerId !== 'FIC-CUST-100001') {
-      resolvedCustomerId = String(obj.customerId);
-    } else {
-      resolvedCustomerId = 'N/A';
+    if (customerLookup && customerLookup.byOrderId && customerLookup.byOrderId[String(obj._id)]) {
+      resolvedCustomerId = customerLookup.byOrderId[String(obj._id)];
     }
+  }
+  if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
+    resolvedCustomerId = 'N/A';
   }
 
   obj.customerId = resolvedCustomerId;
@@ -1563,9 +1619,15 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
   }
 
   // Booking Holder / Primary Customer Details
-  const customerAddress = matchedCustomer?.address
-    ? `${matchedCustomer.address}${matchedCustomer.city ? `, ${matchedCustomer.city}` : ''}${matchedCustomer.state ? `, ${matchedCustomer.state}` : ''}${matchedCustomer.pincode ? ` - ${matchedCustomer.pincode}` : ''}`
-    : (obj.customer_address || obj.deliveryAddress || 'Not provided');
+  let customerAddress = obj.customer_address || obj.deliveryAddress || obj.shippingAddress;
+  if (!customerAddress || customerAddress === 'N/A' || customerAddress === 'Bangalore Center') {
+    if (matchedCustomer?.address) {
+      customerAddress = matchedCustomer.address;
+    } else {
+      customerAddress = 'Not provided';
+    }
+  }
+  customerAddress = deduplicateAddressSegments(customerAddress);
 
   obj.bookingHolder = {
     name: matchedCustomer?.name || obj.memberName || obj.customer_name || 'Customer',
@@ -1615,7 +1677,9 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     );
   };
 
-  const isTravel = isTravelTerm(rawType) ||
+  const isTravel = rawType === 'travel' ||
+                   rawCat === 'travel' ||
+                   isTravelTerm(rawType) ||
                    isTravelTerm(rawCat) ||
                    isTravelTerm(rawSubCat) ||
                    isTravelTerm(prodCat) ||
@@ -1665,6 +1729,16 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     obj.type = 'Food';
   }
 
+  // Ensure non-job records never keep stray job application fields
+  if (!isJob) {
+    delete obj.jobTitle;
+    delete obj.candidateResume;
+    delete obj.candidateEmail;
+    delete obj.candidateEducation;
+    delete obj.applicationId;
+    delete obj.jobId;
+  }
+
   // Deduplicate address on booking holder if present
   if (obj.bookingHolder && obj.bookingHolder.address) {
     obj.bookingHolder.address = deduplicateAddressSegments(obj.bookingHolder.address);
@@ -1687,7 +1761,7 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
 
     // Schedule & Timing (Check-in & Check-out)
     const rawCheckInDate = obj.checkInDate || obj.appointmentDate;
-    let checkInDate = rawCheckInDate || (obj.createdAt ? new Date(obj.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Not provided');
+    let checkInDate = rawCheckInDate || 'Not provided';
     let checkInTime = obj.checkInTime || '';
     let checkOutDate = obj.checkOutDate || obj.departureDate || '';
     let checkOutTime = obj.checkOutTime || '';
@@ -1740,15 +1814,19 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
 
   // Travel specific schedule and vehicle details
   if (isTravel) {
-    const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || obj.appointmentDate || (obj.createdAt ? String(obj.createdAt).substring(0, 10) : 'Not provided');
-    const departureTimeVal = obj.departureTime || obj.time || obj.appointmentTimeSlot || obj.schedule || 'Not provided';
+    const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || obj.appointmentDate || obj.checkInDate || 'Not provided';
+    const departureTimeVal = obj.departureTime || obj.time || obj.appointmentTimeSlot || obj.bookingTime || obj.schedule || 'Not provided';
     obj.travelDate = travelDateVal;
     obj.departureTime = departureTimeVal;
 
     let resolvedVehicleType = 'Vehicle';
-    if (/car/i.test(detailStr) || /car/i.test(prodCat) || /car/i.test(rawCat) || /car/i.test(rawSubCat)) resolvedVehicleType = 'Car';
-    else if (/bus/i.test(detailStr) || /bus/i.test(prodCat) || /bus/i.test(rawCat) || /bus/i.test(rawSubCat)) resolvedVehicleType = 'Bus';
-    else if (/bike/i.test(detailStr) || /bike/i.test(prodCat) || /bike/i.test(rawCat) || /bike/i.test(rawSubCat)) resolvedVehicleType = 'Bike';
+    if (/non\s*ac\s*car/i.test(detailStr) || /non\s*ac\s*car/i.test(prodName)) resolvedVehicleType = 'Non-AC Car';
+    else if (/ac\s*car/i.test(detailStr) || /ac\s*car/i.test(prodName)) resolvedVehicleType = 'AC Car';
+    else if (/car/i.test(detailStr) || /car/i.test(prodCat) || /car/i.test(rawCat) || /car/i.test(rawSubCat) || /car/i.test(prodName)) resolvedVehicleType = 'Car';
+    else if (/non\s*ac\s*bus/i.test(detailStr) || /non\s*ac\s*bus/i.test(prodName)) resolvedVehicleType = 'Non-AC Bus';
+    else if (/ac\s*bus/i.test(detailStr) || /ac\s*bus/i.test(prodName)) resolvedVehicleType = 'AC Bus';
+    else if (/bus/i.test(detailStr) || /bus/i.test(prodCat) || /bus/i.test(rawCat) || /bus/i.test(rawSubCat) || /bus/i.test(prodName)) resolvedVehicleType = 'Bus';
+    else if (/bike/i.test(detailStr) || /bike/i.test(prodCat) || /bike/i.test(rawCat) || /bike/i.test(rawSubCat) || /bike/i.test(prodName)) resolvedVehicleType = 'Bike';
 
     obj.vehicleType = obj.vehicleType || resolvedVehicleType;
     obj.vehicleDetails = {
@@ -1764,7 +1842,7 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
 
   // Services specific details
   if (isServices) {
-    obj.appointmentDate = obj.appointmentDate || (obj.createdAt ? String(obj.createdAt).substring(0, 10) : 'Not provided');
+    obj.appointmentDate = obj.appointmentDate || 'Not provided';
     obj.appointmentTimeSlot = obj.appointmentTimeSlot || 'Not provided';
     obj.serviceName = obj.serviceName || obj.product_details || firstItem.name || 'Service Consultation';
   }
@@ -2612,26 +2690,38 @@ const getCustomers = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    const businessIds = [parentUserId.toString()];
+    const businessIds = [
+      parentUserId.toString(),
+      ...(user.vendorId ? [String(user.vendorId)] : []),
+      ...(user.registrationId ? [String(user.registrationId)] : []),
+      ...(user._id ? [String(user._id)] : [])
+    ];
     if (user.businesses && user.businesses.length > 0) {
       user.businesses.forEach(b => {
         if (b._id) businessIds.push(b._id.toString());
+        if (b.id) businessIds.push(b.id.toString());
+        if (b.vendorId) businessIds.push(String(b.vendorId));
       });
     }
+    const uniqueBusinessIds = [...new Set(businessIds.filter(Boolean))];
+    const objectIds = uniqueBusinessIds.filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
+    const allMatchIds = [...uniqueBusinessIds, ...objectIds];
 
     const [dbCustomers, rawOrders] = await Promise.all([
       Customer.find({
         $or: [
-          { vendorId: { $in: businessIds } },
-          { vendor_id: { $in: businessIds } }
+          { vendorId: { $in: allMatchIds } },
+          { vendor_id: { $in: allMatchIds } }
         ]
       }).lean(),
       Order.find({
         $or: [
-          { vendorId: { $in: businessIds } },
-          { vendor_id: { $in: businessIds } }
+          { vendorId: { $in: allMatchIds } },
+          { vendor_id: { $in: allMatchIds } },
+          { 'items.vendorId': { $in: allMatchIds } },
+          { 'items.vendor_id': { $in: allMatchIds } }
         ]
-      }).select('vendorId vendor_id memberName customer_name candidateEmail customer_email memberId customer_phone phone mobileNumber contactNumber candidatePhone memberPhone customer_address address deliveryAddress shippingAddress location candidateAddress memberAddress finalAmount totalAmount amount customerId registrationId').lean()
+      }).select('vendorId vendor_id memberName customer_name candidateEmail customer_email memberId customer_phone phone mobileNumber contactNumber candidatePhone memberPhone customer_address address deliveryAddress shippingAddress location candidateAddress memberAddress finalAmount totalAmount amount customerId registrationId paymentStatus payment_status status type category order_number id _id').lean()
     ]);
 
     const customerMap = {};
@@ -2808,10 +2898,11 @@ const getCustomers = async (req, res) => {
         // Exclude job candidate applications from customer transactional purchase history
         if (o.type && APPLICATION_BASED_TYPES.includes(o.type)) return false;
 
-        // Exclude failed, cancelled, or rejected transactions
+        // Strictly include only successfully paid / completed transactions
         const rawPayStatus = (o.paymentStatus || o.payment_status || '').toLowerCase();
         const rawStatus = (o.status || '').toLowerCase();
-        if (rawPayStatus === 'failed' || ['cancelled', 'rejected', 'failed'].includes(rawStatus)) return false;
+        const isPaid = ['paid', 'successful', 'completed'].includes(rawPayStatus) || ['delivered', 'completed', 'checked out'].includes(rawStatus);
+        if (!isPaid) return false;
 
         const oNameClean = (o.memberName || o.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
         const oEmailClean = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
@@ -2823,8 +2914,19 @@ const getCustomers = async (req, res) => {
         return false;
       });
 
-      cust.ordersCount = custOrders.length;
-      cust.totalSpent = custOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
+      // Deduplicate orders to avoid counting the same transaction multiple times
+      const uniqueCustOrders = [];
+      const seenOrdIds = new Set();
+      for (const ord of custOrders) {
+        const oId = String(ord._id || ord.order_number || ord.id);
+        if (!seenOrdIds.has(oId)) {
+          seenOrdIds.add(oId);
+          uniqueCustOrders.push(ord);
+        }
+      }
+
+      cust.ordersCount = uniqueCustOrders.length;
+      cust.totalSpent = uniqueCustOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
 
       // Canonical Customer ID matching
       let canonicalId = (cust.customerId && cust.customerId !== 'FIC-CUST-100001') 
@@ -2847,28 +2949,6 @@ const getCustomers = async (req, res) => {
         }
       }
 
-      if (!canonicalId || canonicalId === 'FIC-CUST-100001' || String(canonicalId).startsWith('cust_')) {
-        if (custNameClean === 'swetha' || custNameClean === 'swethaj') {
-          canonicalId = 'FIC-CUST-774974';
-        } else if (custNameClean === 'sri' || custNameClean === 'sribhavanim') {
-          canonicalId = 'FIC-CUST-214155';
-        } else if (custNameClean === 'connectmember') {
-          canonicalId = 'FIC-CUST-462259';
-        } else if (custNameClean === 'karthika' || custNameClean === 'karthilka') {
-          canonicalId = 'FIC-CUST-212785';
-        } else if (custNameClean === 'moorthy') {
-          canonicalId = 'FIC-CUST-154981';
-        } else if (custNameClean === 'suman') {
-          canonicalId = 'FIC-CUST-108913';
-        } else if (custNameClean === 'saravnan' || custNameClean === 'saravanan') {
-          canonicalId = 'REG-20260923-5106';
-        } else if (custNameClean === 'saran') {
-          canonicalId = 'FIC-CUST-228288';
-        } else if (custNameClean.includes('dhanush')) {
-          canonicalId = 'FIC-CUST-930348';
-        }
-      }
-
       if (!canonicalId || canonicalId === 'FIC-CUST-100001') {
         canonicalId = cust._id && !String(cust._id).startsWith('cust_') ? String(cust._id) : 'N/A';
       }
@@ -2876,6 +2956,7 @@ const getCustomers = async (req, res) => {
       cust.customerId = canonicalId;
       cust.customerDisplayId = canonicalId;
       cust.registrationId = canonicalId;
+      cust.address = deduplicateAddressSegments(cust.address) || 'Not provided';
     });
 
     const finalCustomers = Object.values(customerMap);
@@ -4222,6 +4303,8 @@ const getSalesPayments = async (req, res) => {
       });
     }
     const uniqueBusinessIds = [...new Set(businessIds.filter(Boolean))];
+    const objectIds = uniqueBusinessIds.filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
+    const allMatchIds = [...uniqueBusinessIds, ...objectIds];
 
     // Platform commission configuration (cached)
     const config = await getPlatformConfigCached();
@@ -4230,8 +4313,10 @@ const getSalesPayments = async (req, res) => {
     // Build base query across ALL vendor businesses and order categories
     const query = {
       $or: [
-        { vendorId: { $in: uniqueBusinessIds } },
-        { vendor_id: { $in: uniqueBusinessIds } }
+        { vendorId: { $in: allMatchIds } },
+        { vendor_id: { $in: allMatchIds } },
+        { 'items.vendorId': { $in: allMatchIds } },
+        { 'items.vendor_id': { $in: allMatchIds } }
       ]
     };
 
@@ -4288,7 +4373,7 @@ const getSalesPayments = async (req, res) => {
       endDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday + 6, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'This Month') {
       startDate = new Date(Date.UTC(istYear, istMonth, 1, 0, 0, 0, 0) - istOffsetMs);
-      endDate = new Date(Date.UTC(istYear, istMonth + 1, 0, 23, 59, 59, 999) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth, 1 + 31, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'This Year') {
       startDate = new Date(Date.UTC(istYear, 0, 1, 0, 0, 0, 0) - istOffsetMs);
       endDate = new Date(Date.UTC(istYear, 11, 31, 23, 59, 59, 999) - istOffsetMs);
@@ -4343,10 +4428,22 @@ const getSalesPayments = async (req, res) => {
 
     // Fetch all matching orders sorted newest first
     const allOrders = await Order.find(query).sort({ created_at: -1, createdAt: -1, _id: -1 }).lean();
-    const customerLookup = await buildCustomerLookupForOrders(allOrders);
+
+    // Deduplicate orders by _id to avoid any duplicate payment rows
+    const seenOrderIds = new Set();
+    const uniqueOrders = [];
+    for (const o of allOrders) {
+      const oId = String(o._id);
+      if (!seenOrderIds.has(oId)) {
+        seenOrderIds.add(oId);
+        uniqueOrders.push(o);
+      }
+    }
+
+    const customerLookup = await buildCustomerLookupForOrders(uniqueOrders);
 
     // Map each order to standard Sales Payment record
-    const mappedRecords = allOrders.map((o) => {
+    const mappedRecords = uniqueOrders.map((o) => {
       const orderDate = o.createdAt || o.created_at || new Date();
       const saleAmount = Number(o.totalAmount || o.finalAmount || o.amount || 0);
       const discount = Number(o.discountApplied || o.discount || 0);
@@ -4356,27 +4453,40 @@ const getSalesPayments = async (req, res) => {
         : Math.round(saleAmount * (effectiveRate / 100));
       const vendorNet = saleAmount - commissionAmount - (o.otherDeductions || 0);
 
+      const matchedPayment = customerLookup.paymentsByOrderId ? customerLookup.paymentsByOrderId[String(o._id)] : null;
+
       // Determine standardized payment status: 'Successful', 'Failed', 'Hold'
-      const rawPayStatus = (o.paymentStatus || o.payment_status || '').toLowerCase();
+      const rawPayStatus = (o.paymentStatus || o.payment_status || (matchedPayment ? matchedPayment.status : '') || '').toLowerCase();
       const rawStatus = (o.status || '').toLowerCase();
-      let paymentStatus = 'Successful';
+      const isCod = (o.paymentMethod || o.payment_method || '').toLowerCase().includes('cash') || (o.paymentMethod || o.payment_method || '').toLowerCase().includes('cod');
+
+      let paymentStatus = 'Hold';
       if (rawPayStatus === 'failed' || ['cancelled', 'rejected', 'failed'].includes(rawStatus)) {
         paymentStatus = 'Failed';
-      } else if (rawPayStatus === 'pending' || rawPayStatus === 'hold' || ['pending', 'processing', 'hold', 'on hold', 'interviewing', 'applied'].includes(rawStatus)) {
+      } else if (rawPayStatus === 'paid' || rawPayStatus === 'successful' || rawPayStatus === 'completed' || ['delivered', 'completed', 'checked out'].includes(rawStatus) || (matchedPayment && matchedPayment.status === 'PAID')) {
+        paymentStatus = (isCod && !['delivered', 'completed', 'checked out'].includes(rawStatus)) ? 'Hold' : 'Successful';
+      } else {
         paymentStatus = 'Hold';
-      } else if (rawPayStatus === 'paid' || ['order received', 'delivered', 'checked out', 'completed', 'confirmed', 'accepted'].includes(rawStatus)) {
-        paymentStatus = 'Successful';
       }
 
       // Business category normalized
       let category = o.type || o.category || 'Product';
-      if (/product/i.test(category)) category = 'Product';
-      else if (/food|restaurant/i.test(category)) category = 'Food';
-      else if (/daily/i.test(category)) category = 'Daily Needs';
-      else if (/service/i.test(category)) category = 'Services';
-      else if (/stay|hotel/i.test(category)) category = 'Stay';
-      else if (/travel/i.test(category)) category = 'Travel';
-      else if (/job/i.test(category)) category = 'Jobs';
+      const detailStr = String(o.product_details || (o.items && o.items[0]?.name) || '');
+      if (/car|bus|bike|travel|cab|transport/i.test(category) || /car|bus|bike|travel|cab|transport/i.test(detailStr) || (o.items && o.items.some(it => /car|bus|bike|travel|cab|transport/i.test(it?.name || '')))) {
+        category = 'Travel';
+      } else if (/stay|hotel|room|resort/i.test(category) || /room|suite|villa|resort|hotel/i.test(detailStr)) {
+        category = 'Stay';
+      } else if (/food|restaurant/i.test(category) || /food|biryani|pizza|burger/i.test(detailStr)) {
+        category = 'Food';
+      } else if (/daily/i.test(category)) {
+        category = 'Daily Needs';
+      } else if (/service/i.test(category) || o.doctorName) {
+        category = 'Services';
+      } else if (/job/i.test(category)) {
+        category = 'Jobs';
+      } else {
+        category = 'Product';
+      }
 
       // Item Name / Description
       let itemName = 'Item Purchase';
@@ -4400,7 +4510,16 @@ const getSalesPayments = async (req, res) => {
       const custEmail = (o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
       const custNameClean = custName.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
-      let realCustId = (o.customerId && o.customerId !== 'FIC-CUST-100001') ? o.customerId : (o.customerDisplayId && o.customerDisplayId !== 'FIC-CUST-100001') ? o.customerDisplayId : null;
+      let realCustId = (matchedPayment?.recipientId && matchedPayment.recipientId !== 'FIC-CUST-100001')
+        ? matchedPayment.recipientId
+        : (customerLookup.byOrderId && customerLookup.byOrderId[String(o._id)])
+        ? customerLookup.byOrderId[String(o._id)]
+        : (o.customerId && o.customerId !== 'FIC-CUST-100001')
+        ? o.customerId
+        : (o.customerDisplayId && o.customerDisplayId !== 'FIC-CUST-100001')
+        ? o.customerDisplayId
+        : null;
+
       if (!realCustId) {
         if (custPhone.length >= 10 && customerLookup.byPhone[custPhone.slice(-10)]) {
           realCustId = customerLookup.byPhone[custPhone.slice(-10)];
@@ -4418,16 +4537,16 @@ const getSalesPayments = async (req, res) => {
         : '';
       const customerRef = realCustId || (custPhone ? `${custName} (${maskedPhone})` : custName);
 
-      const isCod = (o.paymentMethod || o.payment_method || '').toLowerCase().includes('cash') || (o.paymentMethod || o.payment_method || '').toLowerCase().includes('cod');
-      // Preserve genuine transaction ID from database
-      const txnId = o.transactionId || o.razorpayPaymentId || o.walletTxnId || o.paymentReference || o.transactionReference || null;
+      // Preserve genuine transaction ID from payments collection or order
+      const txnId = matchedPayment?.transactionReference || matchedPayment?.paymentId || o.transactionId || o.razorpayPaymentId || o.walletTxnId || o.paymentReference || null;
+      const paymentDate = matchedPayment?.paymentDate || o.paidAt || orderDate;
 
       return {
         _id: o._id,
         transactionId: txnId,
         orderId: o.order_number || o.id || o._id,
         saleDate: orderDate,
-        paymentDate: orderDate,
+        paymentDate: paymentDate,
         category,
         itemName,
         customerName: custName,
@@ -4438,7 +4557,7 @@ const getSalesPayments = async (req, res) => {
         deductions: discount,
         vendorReceivedAmount: Math.max(0, vendorNet),
         paymentStatus,
-        paymentMethod: o.paymentMethod || o.payment_method || 'Online (Wallet / UPI)',
+        paymentMethod: o.paymentMethod || o.payment_method || (isCod ? 'Cash on Delivery' : 'Online (Wallet / UPI)'),
         rawStatus: o.status,
         items: o.items || []
       };

@@ -138,6 +138,8 @@ export const getRecordCategory = (record) => {
 
   // 1. Travel check takes priority to prevent vehicle bookings from ever becoming Stay
   if (
+    rawType === 'travel' ||
+    rawCategory === 'travel' ||
     isTravelTerm(rawType) || 
     isTravelTerm(rawCategory) || 
     isTravelTerm(rawSubCat) ||
@@ -196,7 +198,7 @@ export const getRecordCategory = (record) => {
     const itSub = String(record.items[0]?.subcategory || '').trim().toLowerCase();
     const itName = String(record.items[0]?.name || '').trim().toLowerCase();
 
-    if (isTravelTerm(itCat) || isTravelTerm(itSub) || isTravelTerm(itName)) return CATEGORY_TRAVEL;
+    if (itCat === 'travel' || isTravelTerm(itCat) || isTravelTerm(itSub) || isTravelTerm(itName)) return CATEGORY_TRAVEL;
     if (['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(itCat) || /room|suite|villa|hotel|resort/i.test(itName)) return CATEGORY_STAY;
     if (['service', 'services', 'hospital'].includes(itCat)) return CATEGORY_SERVICES;
     if (['products', 'product', 'electronics', 'furniture'].includes(itCat)) return CATEGORY_PRODUCTS;
@@ -204,8 +206,8 @@ export const getRecordCategory = (record) => {
     if (['food', 'restaurant'].includes(itCat)) return CATEGORY_FOOD;
   }
 
-  // 9. Date heuristics fallback (only if not already classified)
-  if (record.checkInDate && !record.travelDate) {
+  // 9. Date heuristics fallback (only if not already classified and strictly not travel)
+  if (record.checkInDate && !record.travelDate && !isTravelTerm(rawType) && !isTravelTerm(rawCategory) && !isTravelTerm(detailStr)) {
     return CATEGORY_STAY;
   }
   if (record.appointmentDate) {

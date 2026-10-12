@@ -470,7 +470,8 @@ const Orders = () => {
                           </thead>
                           <tbody>
                             {filteredOrders.map(order => {
-                              const isJob = vendorType.startsWith('Job') || terms.ordersName === 'Applications' || order.type === 'Job Application' || Boolean(order.candidateResume || order.candidateEmail);
+                              const isOrderCategory = ['Food', 'Products', 'Daily Needs', 'Stay', 'Travel', 'Services', 'food', 'products', 'daily needs', 'stay', 'travel', 'services', 'Order', 'order'].includes(order.type || order.category);
+                              const isJob = !isOrderCategory && (vendorType.startsWith('Job') || terms.ordersName === 'Applications' || order.type === 'Job Application' || order.type === 'Job');
                               const isService = (vendorType.startsWith('Hospital') || vendorType.startsWith('Service') || vendorType.startsWith('Education') || terms.ordersName === 'Bookings' || terms.ordersName === 'Appointments' || terms.ordersName === 'Services') && !isJob;
 
                               return (
@@ -522,7 +523,7 @@ const Orders = () => {
                                        </td>
                                       {/* Job Location */}
                                       <td className="px-6 py-4 text-xs text-slate-650 dark:text-slate-400">
-                                        {order.customer_address || 'Koramangala, Bangalore'}
+                                        {order.customer_address || 'Not provided'}
                                       </td>
                                     </>
                                   ) : isService ? (
@@ -531,7 +532,7 @@ const Orders = () => {
                                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                         <div>{order.memberName || order.customer_name || 'N/A'}</div>
                                         <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {getCustomerDisplayId(order)}</div>
-                                        <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">Order ID: #{order.order_number || order.id || order._id}</div>
+                                        <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">Order ID: #{String(order.order_number || order.id || order._id).replace(/^#+/, '')}</div>
                                       </td>
                                       {/* Service Type */}
                                       <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">

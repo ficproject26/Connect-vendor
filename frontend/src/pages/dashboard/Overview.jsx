@@ -746,7 +746,7 @@ const Overview = () => {
                               title="Click to view order details"
                             >
                               <td className="px-6 py-4 text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
-                                #{order.order_number || order.orderNumber || order.id || order._id || 'N/A'}
+                                #{String(order.order_number || order.orderNumber || order.id || order._id || 'N/A').replace(/^#+/, '')}
                               </td>
                               <td className="px-6 py-4 text-xs font-semibold text-slate-800 dark:text-slate-200">{order.memberName}</td>
                               <td className="px-6 py-4 text-xs font-extrabold text-indigo-600 dark:text-indigo-455">₹{order.finalAmount || order.totalAmount}</td>

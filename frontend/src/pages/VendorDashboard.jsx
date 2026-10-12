@@ -244,17 +244,14 @@ export const getRecordClassification = (record) => {
   const rawSubCat = String(record.subcategory || record.subCategory || '').trim().toUpperCase();
   const sourceEntity = String(record.sourceEntity || record.recordType || '').trim().toUpperCase();
 
-  const isOrderCategory = ['FOOD', 'FOODS', 'RESTAURANT', 'PRODUCTS', 'PRODUCT', 'DAILY NEEDS', 'DAILY_NEEDS', 'GROCERY'].includes(rawType) ||
-                          ['FOOD', 'FOODS', 'RESTAURANT', 'PRODUCTS', 'PRODUCT', 'DAILY NEEDS', 'DAILY_NEEDS', 'GROCERY'].includes(rawCat);
+  const isOrderCategory = ['ORDER', 'ORDERS', 'FOOD', 'FOODS', 'RESTAURANT', 'PRODUCTS', 'PRODUCT', 'DAILY NEEDS', 'DAILY_NEEDS', 'GROCERY'].includes(rawType) ||
+                          ['ORDER', 'ORDERS', 'FOOD', 'FOODS', 'RESTAURANT', 'PRODUCTS', 'PRODUCT', 'DAILY NEEDS', 'DAILY_NEEDS', 'GROCERY'].includes(rawCat);
 
-  // 1. Explicit Job Application check (never true for products/food/daily needs/stay/travel/services)
+  // 1. Explicit Job Application check (never true for orders, stay, travel, or services)
   if (!isOrderCategory) {
     if (sourceEntity === 'APPLICATION' || sourceEntity === 'JOB_APPLICATION') return 'JOB_APPLICATION';
     if (['JOB', 'JOBS', 'JOB_APPLICATION', 'APPLICATION'].includes(rawType)) return 'JOB_APPLICATION';
     if (['JOB', 'JOBS'].includes(rawCat) && !rawType) return 'JOB_APPLICATION';
-    if ((record.candidateResume || record.resumeUrl || record.resume) && !['TRAVEL', 'STAY', 'HOTEL', 'SERVICES', 'SERVICE', 'HOSPITAL'].includes(rawType)) {
-      return 'JOB_APPLICATION';
-    }
   }
 
   // 2. Booking types (Travel, Stay, Services, Appointments)
@@ -298,10 +295,11 @@ export const getCustomerMetrics = (customer, orders = []) => {
 
   const matchedOrders = orders.filter(o => {
     if (!o) return false;
-    // Do not count failed, cancelled, or rejected orders in totalSpent
+    // Strictly include only successfully paid or completed transactions
     const rawPayStatus = (o.paymentStatus || o.payment_status || '').toLowerCase();
     const rawStatus = (o.status || '').toLowerCase();
-    if (rawPayStatus === 'failed' || ['cancelled', 'rejected', 'failed'].includes(rawStatus)) return false;
+    const isPaid = ['paid', 'successful', 'completed'].includes(rawPayStatus) || ['delivered', 'completed', 'checked out'].includes(rawStatus);
+    if (!isPaid) return false;
 
     const oNameClean = (o.memberName || o.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     const oEmailClean = (o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '') || '').trim().toLowerCase();
@@ -311,8 +309,19 @@ export const getCustomerMetrics = (customer, orders = []) => {
     return false;
   });
 
-  const matchedCount = matchedOrders.length;
-  const matchedTotalSpent = matchedOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
+  // Deduplicate orders
+  const uniqueOrders = [];
+  const seenIds = new Set();
+  for (const ord of matchedOrders) {
+    const id = String(ord._id || ord.order_number || ord.id);
+    if (!seenIds.has(id)) {
+      seenIds.add(id);
+      uniqueOrders.push(ord);
+    }
+  }
+
+  const matchedCount = uniqueOrders.length;
+  const matchedTotalSpent = uniqueOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
 
   return {
     count: matchedCount > 0 ? matchedCount : baseCount,
@@ -1857,12 +1866,7 @@ const VendorDashboard = () => {
       return `Pincode: ${order.pincode || order.postalCode}`;
     }
 
-    const nameFallback = (order.memberName || order.customer_name || order.name || '').trim();
-    if (nameFallback && nameFallback !== 'Customer' && nameFallback !== 'Connect Member') {
-      return `${nameFallback} (Main Center)`;
-    }
-
-    return 'Bangalore Center';
+    return 'Not provided';
   };
 
   const getBookingTimeSlot = (order) => {
@@ -1871,12 +1875,6 @@ const VendorDashboard = () => {
       return order.appointmentTimeSlot;
     }
     if (order.bookingTime) return order.bookingTime;
-    if (order.createdAt || order.created_at) {
-      const d = new Date(order.createdAt || order.created_at);
-      if (!isNaN(d.getTime())) {
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-      }
-    }
     return '10:30 AM';
   };
 
@@ -1934,7 +1932,7 @@ const VendorDashboard = () => {
     if (travelYMD && travelYMD === targetDateStr) return true;
 
     if (!checkInYMD && !apptYMD && !travelYMD) {
-      const fallbackYMD = parseDateToYMD(b.bookingDate || b.date || b.orderDate || b.createdAt || b.created_at);
+      const fallbackYMD = parseDateToYMD(b.bookingDate || b.date || b.orderDate);
       if (fallbackYMD && fallbackYMD === targetDateStr) return true;
     }
     return false;
@@ -1947,7 +1945,7 @@ const VendorDashboard = () => {
     const rawType = (b.type || b.category || b.subNavbarCategory || b.subcategory || '').toLowerCase();
     const isTravelTerm = (s) => ['travel', 'package', 'bus', 'vehicle', 'cab', 'car', 'bike', 'transport'].some(k => s === k || s.includes(k));
     if (isTravelTerm(rawType)) return true;
-    if (b.vehicleType || b.travelDate || b.departureTime || b.boardingPoint || b.droppingPoint || b.busName || b.carName || b.bikeName) return true;
+    if (b.vehicleType || b.travelDate || b.departureTime || b.boardingPoint || b.droppingPoint || b.busName || b.carName || b.bikeName || b.vehicleDetails) return true;
     const detailStr = String(b.product_details || (b.items && b.items[0]?.name) || '').toLowerCase();
     if (isTravelTerm(detailStr)) return true;
     return false;
@@ -1991,7 +1989,7 @@ const VendorDashboard = () => {
       };
     }
 
-    let checkInDate = b.checkInDate || b.appointmentDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Not provided');
+    let checkInDate = b.checkInDate || b.appointmentDate || 'Not provided';
     let checkInTime = b.checkInTime || '';
     let checkOutDate = b.checkOutDate || b.departureDate || '';
     let checkOutTime = b.checkOutTime || '';
@@ -5130,9 +5128,22 @@ const VendorDashboard = () => {
                         </thead>
                         <tbody>
                           {recentOrdersList.map(order => (
-                            <tr key={order._id} onClick={() => { setSelectedBillOrder(order); setIsBillModalOpen(true); }} className="border-b border-slate-50 dark:border-slate-800/20 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors cursor-pointer" title="Click to view order details">
+                            <tr key={order._id} onClick={async () => {
+                              setSelectedBillOrder(order);
+                              setIsBillModalOpen(true);
+                              try {
+                                const orderId = order._id || order.id || order.order_number;
+                                const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders/${orderId}`, getAxiosConfig());
+                                if (res.data && (res.data.order || res.data.booking || res.data.data)) {
+                                  const enriched = res.data.order || res.data.booking || res.data.data;
+                                  setSelectedBillOrder(enriched);
+                                }
+                              } catch (fetchErr) {
+                                // Fallback to current order object
+                              }
+                            }} className="border-b border-slate-50 dark:border-slate-800/20 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors cursor-pointer" title="Click to view order details">
                               <td className="px-6 py-4 text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
-                                #{order.order_number || order.orderNumber || order.id || order._id || 'N/A'}
+                                #{String(order.order_number || order.orderNumber || order.id || order._id || 'N/A').replace(/^#+/, '')}
                               </td>
                               <td className="px-6 py-4 text-xs font-semibold text-slate-800 dark:text-slate-200">{order.memberName}</td>
                               <td className="px-6 py-4 text-xs font-extrabold text-indigo-600 dark:text-indigo-455">₹{order.finalAmount || order.totalAmount}</td>
@@ -7567,7 +7578,7 @@ const VendorDashboard = () => {
                                 </span>
                               </div>
                               <div className="bg-slate-50/50 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-100/50 dark:border-slate-900/30 text-center">
-                                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">{terms.customerSpentLabel.replace('Total ', '').replace(' (₹)', '')}</span>
+                                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Total Spent</span>
                                 <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">₹{metrics.totalSpent}</span>
                               </div>
                             </div>
@@ -12942,6 +12953,12 @@ required
                       <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.appointmentTimeSlot || selectedBillOrder.bookingTime || 'Standard Slot'}</span>
                     </div>
                     <div>
+                      <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Vehicle / Travel Type</span>
+                      <span className="font-extrabold text-blue-600 dark:text-blue-400">
+                        {selectedBillOrder.vehicleType || selectedBillOrder.travelType || selectedBillOrder.vehicleDetails?.vehicleType || selectedBillOrder.vehicleDetails?.travelType || selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Travel Booking'}
+                      </span>
+                    </div>
+                    <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Guests / Passengers</span>
                       <span className="font-extrabold text-blue-600 dark:text-blue-400">
                         {selectedBillOrder.guests || selectedBillOrder.numberOfGuests || selectedBillOrder.adults || selectedBillOrder.quantity || 1} Person(s)
@@ -13534,8 +13551,15 @@ required
                   <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 mb-2">
                     <CheckCircle2 size={24} />
                   </div>
-                  <h4 className="text-lg font-black uppercase tracking-wider text-slate-900 dark:text-white">Service Booking Details</h4>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Service: {selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Service Booking'}</p>
+                  <h4 className="text-lg font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                    {Boolean(selectedBillOrder.doctorName || selectedBillOrder.patientName || selectedBillOrder.specialty) ? "Appointment Details" : "Service Booking Details"}
+                  </h4>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                    {Boolean(selectedBillOrder.doctorName || selectedBillOrder.patientName || selectedBillOrder.specialty)
+                      ? `Doctor: ${selectedBillOrder.doctorName || 'Specialist'}${selectedBillOrder.specialty ? ` • ${selectedBillOrder.specialty}` : ''}`
+                      : `Service: ${selectedBillOrder.product_details || (selectedBillOrder.items && selectedBillOrder.items[0]?.name) || 'Service Booking'}`
+                    }
+                  </p>
                 </div>
 
                 {/* Details grid */}
@@ -13549,6 +13573,18 @@ required
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Customer ID</span>
                       <span className="font-mono text-slate-500 dark:text-slate-400 truncate block">{getCustomerDisplayId(selectedBillOrder)}</span>
                     </div>
+                    {Boolean(selectedBillOrder.patientName) && (
+                      <div>
+                        <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Patient Name</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedBillOrder.patientName}</span>
+                      </div>
+                    )}
+                    {Boolean(selectedBillOrder.doctorName) && (
+                      <div>
+                        <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Doctor / Specialist</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedBillOrder.doctorName} {selectedBillOrder.specialty ? `(${selectedBillOrder.specialty})` : ''}</span>
+                      </div>
+                    )}
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Address</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{getCustomerAddress(selectedBillOrder)}</span>
