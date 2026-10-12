@@ -35,10 +35,27 @@ const getProductMainCategory = (itemCategory, vType) => {
   if (itemCategory && Object.keys(COMPLETE_CAT_TAXONOMY).includes(itemCategory)) {
     return itemCategory;
   }
+  const cleanItemCat = String(itemCategory || '').trim().toLowerCase();
+  if (['bus', 'car', 'bike', 'cab', 'travel', 'travels', 'package', 'packages', 'tour', 'tours'].includes(cleanItemCat)) {
+    return 'Travel';
+  }
+  if (['food', 'foods', 'restaurant', 'dining'].includes(cleanItemCat)) {
+    return 'Food';
+  }
+  if (['stay', 'hotel', 'hotels', 'resort', 'room'].includes(cleanItemCat)) {
+    return 'Stay';
+  }
+  if (['job', 'jobs', 'application'].includes(cleanItemCat)) {
+    return 'Jobs';
+  }
+  if (['service', 'services', 'hospital', 'clinic'].includes(cleanItemCat)) {
+    return 'Services';
+  }
+
   const mainFromTax = getItemMainCategory(itemCategory);
   if (mainFromTax) return mainFromTax;
 
-  const type = vType || '';
+  const type = String(vType || '').trim();
   if (type.startsWith('Store') || type.startsWith('Electronics') || type.startsWith('Home & Furniture')) {
     return 'Products';
   }
@@ -57,7 +74,7 @@ const getProductMainCategory = (itemCategory, vType) => {
   if (type.startsWith('Education')) {
     return 'Education';
   }
-  if (type.startsWith('Travel Agency')) {
+  if (type.startsWith('Travel') || type.startsWith('Tour') || type.startsWith('Transport')) {
     return 'Travel';
   }
   if (type.startsWith('Hospital') || type.startsWith('Service')) {

@@ -327,34 +327,49 @@ const getVendorSettlements = async (req, res) => {
       });
     });
 
-    // Date range & duration filtering
-    const now = new Date();
+    // Date range & duration filtering in IST timezone (UTC+05:30)
     const duration = req.query.duration || 'All';
     let startDate = null;
     let endDate = null;
 
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(Date.now() + istOffsetMs);
+    const istYear = istNow.getUTCFullYear();
+    const istMonth = istNow.getUTCMonth();
+    const istDay = istNow.getUTCDate();
+    const istDayOfWeek = istNow.getUTCDay(); // 0 is Sunday
+
     if (duration === 'Today') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      startDate = new Date(Date.UTC(istYear, istMonth, istDay, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth, istDay, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'This Week') {
-      const day = now.getDay();
-      const diffToMonday = day === 0 ? 6 : day - 1;
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday, 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday + 6, 23, 59, 59, 999);
+      const diffToMonday = istDayOfWeek === 0 ? 6 : istDayOfWeek - 1;
+      startDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday + 6, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'This Month') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      startDate = new Date(Date.UTC(istYear, istMonth, 1, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth + 1, 0, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'This Year') {
-      startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+      startDate = new Date(Date.UTC(istYear, 0, 1, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, 11, 31, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'Custom') {
       if (req.query.startDate) {
-        startDate = new Date(req.query.startDate);
-        startDate.setHours(0, 0, 0, 0);
+        const parts = String(req.query.startDate).split('-');
+        if (parts.length === 3) {
+          startDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 0, 0, 0, 0) - istOffsetMs);
+        } else {
+          startDate = new Date(req.query.startDate);
+          startDate.setHours(0, 0, 0, 0);
+        }
       }
       if (req.query.endDate) {
-        endDate = new Date(req.query.endDate);
-        endDate.setHours(23, 59, 59, 999);
+        const parts = String(req.query.endDate).split('-');
+        if (parts.length === 3) {
+          endDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59, 999) - istOffsetMs);
+        } else {
+          endDate = new Date(req.query.endDate);
+          endDate.setHours(23, 59, 59, 999);
+        }
       }
     }
 

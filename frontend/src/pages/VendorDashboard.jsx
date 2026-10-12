@@ -121,10 +121,27 @@ const getProductMainCategory = (itemCategory, vType) => {
   if (itemCategory && Object.keys(COMPLETE_CAT_TAXONOMY).includes(itemCategory)) {
     return itemCategory;
   }
+  const cleanItemCat = String(itemCategory || '').trim().toLowerCase();
+  if (['bus', 'car', 'bike', 'cab', 'travel', 'travels', 'package', 'packages', 'tour', 'tours'].includes(cleanItemCat)) {
+    return 'Travel';
+  }
+  if (['food', 'foods', 'restaurant', 'dining'].includes(cleanItemCat)) {
+    return 'Food';
+  }
+  if (['stay', 'hotel', 'hotels', 'resort', 'room'].includes(cleanItemCat)) {
+    return 'Stay';
+  }
+  if (['job', 'jobs', 'application'].includes(cleanItemCat)) {
+    return 'Jobs';
+  }
+  if (['service', 'services', 'hospital', 'clinic'].includes(cleanItemCat)) {
+    return 'Services';
+  }
+
   const mainFromTax = getItemMainCategory(itemCategory);
   if (mainFromTax) return mainFromTax;
 
-  const type = vType || '';
+  const type = String(vType || '').trim();
   if (type.startsWith('Store') || type.startsWith('Electronics') || type.startsWith('Home & Furniture')) {
     return 'Products';
   }
@@ -143,7 +160,7 @@ const getProductMainCategory = (itemCategory, vType) => {
   if (type.startsWith('Education')) {
     return 'Education';
   }
-  if (type.startsWith('Travel Agency')) {
+  if (type.startsWith('Travel') || type.startsWith('Tour') || type.startsWith('Transport')) {
     return 'Travel';
   }
   if (type.startsWith('Hospital') || type.startsWith('Service')) {
@@ -1870,11 +1887,27 @@ const VendorDashboard = () => {
     return false;
   };
 
+  const isTravelBooking = (b) => {
+    if (!b) return false;
+    const cat = getRecordCategory(b);
+    if (cat === CATEGORY_TRAVEL) return true;
+    const rawType = (b.type || b.category || b.subNavbarCategory || '').toLowerCase();
+    if (['travel', 'travels', 'bus', 'car', 'bike', 'cab', 'transport'].includes(rawType)) return true;
+    if (b.vehicleType || b.travelDate || b.departureTime || b.boardingPoint || b.droppingPoint || b.busName || b.carName || b.bikeName) return true;
+    return false;
+  };
+
   const isStayBooking = (b) => {
     if (!b) return false;
+    if (isTravelBooking(b)) return false;
+    const cat = getRecordCategory(b);
+    if (cat === CATEGORY_STAY) return true;
+    if (cat === CATEGORY_TRAVEL || cat === CATEGORY_FOOD || cat === 'Jobs' || cat === CATEGORY_SERVICES || cat === CATEGORY_PRODUCTS || cat === CATEGORY_DAILY_NEEDS) return false;
     const rawType = (b.type || b.category || b.subNavbarCategory || '').toLowerCase();
     if (rawType === 'stay' || rawType === 'hotel') return true;
-    if (b.staySchedule || b.checkInDate || b.roomNumber) return true;
+    if (b.roomNumber || (b.roomDetails && b.roomDetails.name)) return true;
+    if (b.staySchedule && !b.vehicleType && !b.travelDate && !b.departureTime) return true;
+    if (b.checkInDate && !b.vehicleType && !b.travelDate && !b.departureTime) return true;
     if (b.product_details && /room|suite|villa|resort|hotel/i.test(b.product_details)) return true;
     if (b.items && Array.isArray(b.items) && b.items.some(it => /room|suite|villa|resort|hotel/i.test(it?.name || ''))) return true;
     return false;
@@ -2002,12 +2035,23 @@ const VendorDashboard = () => {
 
   const formatOrderDate = (order) => {
     if (!order) return 'N/A';
-    const rawDate = order.createdAt || order.created_at || order.orderDate || order.date || order.applicationDate || order.appointmentDate || order.updatedAt;
+    const isBooking = Boolean(
+      order.travelDate || 
+      order.journeyDate || 
+      order.appointmentDate || 
+      order.checkInDate || 
+      isBookingCategory(getRecordCategory(order)) ||
+      ['Stay', 'Travel', 'Services', 'Jobs', 'Hospital'].includes(order.type || order.category)
+    );
+    const rawDate = isBooking
+      ? (order.travelDate || order.journeyDate || order.appointmentDate || order.checkInDate || order.bookingDate || order.createdAt || order.created_at || order.orderDate || order.date)
+      : (order.createdAt || order.created_at || order.orderDate || order.date || order.applicationDate || order.appointmentDate || order.updatedAt);
     if (rawDate) {
       const d = new Date(rawDate);
       if (!isNaN(d.getTime())) {
         return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
       }
+      return String(rawDate);
     }
     if (order._id && typeof order._id === 'string' && order._id.length === 24) {
       try {
@@ -4676,8 +4720,10 @@ const VendorDashboard = () => {
           // Top Selling Items (max 5)
           const getTopSellingData = () => {
             const itemMap = {};
+            const isTravelBiz = vendorType.startsWith('Travel') || terms.catalogName === 'Travel Routes';
             orders.forEach(o => {
               if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+                if (isTravelBiz && !(isTravelBooking(o) || o.type === 'Travel' || o.category === 'Travel')) return;
                 const itemList = (o.items && o.items.length > 0) ? o.items : (o.product_details ? [{ name: o.product_details, productId: o.productId, quantity: 1 }] : []);
                 itemList.forEach(item => {
                   const catMatch = catalog.find(c => 
@@ -5009,7 +5055,7 @@ const VendorDashboard = () => {
                       <table className="w-full text-left border-collapse">
                         <thead>
                           <tr className="border-b border-slate-100 dark:border-slate-800/50 text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-                            <th className="px-6 py-4">Order ID</th>
+                            <th className="px-6 py-4">{terms.ordersName === 'Bookings' ? 'Booking ID' : 'Order ID'}</th>
                             <th className="px-6 py-4">Customer Name</th>
                             <th className="px-6 py-4">Amount</th>
                             <th className="px-6 py-4">Status</th>
@@ -5077,7 +5123,9 @@ const VendorDashboard = () => {
                               <p className="text-[10px] text-slate-400 truncate">{customer.phone || customer.email || 'No Contact'}</p>
                             </div>
                             <div className="text-right">
-                              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{metrics.count} bookings</p>
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                {metrics.count} {terms.ordersName === 'Applications' ? (metrics.count === 1 ? 'application' : 'applications') : terms.ordersName === 'Orders' ? (metrics.count === 1 ? 'order' : 'orders') : (metrics.count === 1 ? 'booking' : 'bookings')}
+                              </p>
                               <p className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">₹{metrics.totalSpent}</p>
                             </div>
                           </div>
@@ -5158,7 +5206,15 @@ const VendorDashboard = () => {
                     ...(Array.isArray(orders) ? orders : []),
                     ...(Array.isArray(bookings) ? bookings : [])
                   ];
-                  const bizOrders = allRecords.filter(o => !savedActiveId || String(o.vendorId) === String(savedActiveId) || String(o.vendor_id) === String(savedActiveId));
+                  const isTravelCatalog = vendorType.startsWith('Travel') || terms.catalogName === 'Travel Routes' || terms.catalogItem === 'Travel Route';
+                  const bizOrders = allRecords.filter(o => {
+                    const matchBiz = !savedActiveId || String(o.vendorId) === String(savedActiveId) || String(o.vendor_id) === String(savedActiveId);
+                    if (!matchBiz) return false;
+                    if (isTravelCatalog) {
+                      return isTravelBooking(o) || o.type === 'Travel' || o.category === 'Travel';
+                    }
+                    return true;
+                  });
 
                   const totalItems = catalog.length;
                   const totalOrders = bizOrders.length;
@@ -5210,7 +5266,7 @@ const VendorDashboard = () => {
                           (item.id && String(c._id) === String(item.id)) ||
                           c.name === item.name
                         );
-                        const rawName = item.name || o.product_details || 'Unknown';
+                        const rawName = item.name || o.product_details || o.vehicleType || o.vehicleDetails?.vehicleName || 'Travel Route';
                         const name = catMatch ? catMatch.name : rawName;
                         itemSalesMap[name] = (itemSalesMap[name] || 0) + (item.quantity || 1);
                       });
@@ -5230,7 +5286,7 @@ const VendorDashboard = () => {
 
                   let soldLabel = 'sold';
                   if (type.startsWith('Job')) soldLabel = 'applied';
-                  else if (type.startsWith('Service') || type.startsWith('Hospital') || type.startsWith('Hotel')) soldLabel = 'booked';
+                  else if (type.startsWith('Service') || type.startsWith('Hospital') || type.startsWith('Hotel') || type.startsWith('Travel') || terms.catalogName === 'Travel Routes') soldLabel = 'booked';
                   else if (type.startsWith('Education')) soldLabel = 'enrolled';
 
 
@@ -6379,19 +6435,69 @@ const VendorDashboard = () => {
                                     </td>
 
                                     {/* Booking Type / Detail */}
-                                    <td className="px-6 py-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                                      <div>
-                                        {isStayBooking(b)
-                                          ? (b.roomName || (b.roomDetails && b.roomDetails.name) || (b.roomNumber ? `Room #${b.roomNumber}` : null) || (b.items && b.items[0]?.name) || b.product_details || 'Deluxe Room')
-                                          : (b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` :
-                                             b.roomNumber ? `🏨 Room: ${b.roomNumber}` :
-                                             b.serviceName || (b.items && b.items[0]?.name) || b.product_details || b.type || 'Reservation')}
-                                      </div>
-                                      {(b.type || isStayBooking(b)) && (
-                                        <span className="inline-block text-[9px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">
-                                          {isStayBooking(b) ? 'STAY' : b.type}
-                                        </span>
-                                      )}
+                                    <td className="px-6 py-4 text-xs">
+                                      {(() => {
+                                        const isStay = isStayBooking(b);
+                                        const isTravel = isTravelBooking(b);
+                                        const cat = getRecordCategory(b);
+
+                                        let detailTitle = 'Booking / Reservation';
+                                        let subInfo = null;
+                                        let badgeLabel = 'BOOKING';
+                                        let badgeColor = 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300';
+
+                                        if (isTravel || cat === CATEGORY_TRAVEL) {
+                                          badgeLabel = 'TRAVEL';
+                                          badgeColor = 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300';
+                                          const vehicle = b.vehicleDetails?.vehicleName || b.vehicleType || b.product_details || (b.items && b.items[0]?.name) || 'Travel Route';
+                                          detailTitle = `🚌 ${vehicle}`;
+                                          if (b.boardingPoint || b.droppingPoint || b.route) {
+                                            subInfo = `${b.boardingPoint || 'Origin'} ➔ ${b.droppingPoint || 'Destination'}`;
+                                          }
+                                        } else if (isStay || cat === CATEGORY_STAY) {
+                                          badgeLabel = 'STAY';
+                                          badgeColor = 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300';
+                                          detailTitle = b.roomName || (b.roomDetails && b.roomDetails.name) || (b.roomNumber ? `Room #${b.roomNumber}` : null) || (b.items && b.items[0]?.name) || b.product_details || 'Deluxe Room';
+                                          if (b.roomNumber && !detailTitle.includes(`Room #${b.roomNumber}`)) {
+                                            subInfo = `Room: ${b.roomNumber}`;
+                                          }
+                                        } else if (cat === 'Jobs' || b.jobTitle || b.candidateResume) {
+                                          badgeLabel = 'JOBS';
+                                          badgeColor = 'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300';
+                                          detailTitle = `💼 ${b.jobTitle || b.product_details || 'Job Application'}`;
+                                          if (b.department || b.jobLocation) {
+                                            subInfo = `${b.department ? `${b.department} • ` : ''}${b.jobLocation || ''}`;
+                                          }
+                                        } else if (cat === CATEGORY_FOOD || b.foodType) {
+                                          badgeLabel = 'FOOD';
+                                          badgeColor = 'bg-orange-100 text-orange-700 dark:bg-orange-950/70 dark:text-orange-300';
+                                          detailTitle = `🍽️ ${(b.items && b.items.map(it => it.name).join(', ')) || b.product_details || 'Dining Reservation'}`;
+                                          if (b.tableNumber) subInfo = `Table #${b.tableNumber}`;
+                                        } else if (cat === CATEGORY_SERVICES || b.doctorName || b.serviceName) {
+                                          badgeLabel = 'SERVICES';
+                                          badgeColor = 'bg-teal-100 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300';
+                                          detailTitle = b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` : (b.serviceName || (b.items && b.items[0]?.name) || b.product_details || 'Service Appointment');
+                                          if (b.doctorSpecialization) subInfo = b.doctorSpecialization;
+                                        } else {
+                                          detailTitle = (b.items && b.items[0]?.name) || b.product_details || b.type || 'Reservation';
+                                        }
+
+                                        return (
+                                          <div className="space-y-1">
+                                            <div className="font-bold text-slate-850 dark:text-slate-100 leading-snug">
+                                              {detailTitle}
+                                            </div>
+                                            {subInfo && (
+                                              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate max-w-[200px]">
+                                                {subInfo}
+                                              </div>
+                                            )}
+                                            <span className={`inline-block text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md ${badgeColor}`}>
+                                              {badgeLabel}
+                                            </span>
+                                          </div>
+                                        );
+                                      })()}
                                     </td>
 
                                     {/* Schedule & Timing */}
@@ -6426,11 +6532,45 @@ const VendorDashboard = () => {
                                             </div>
                                           </div>
                                         );
+                                      })() : isTravelBooking(b) ? (() => {
+                                        const rawJourneyDate = b.travelDate || b.journeyDate || b.appointmentDate || b.bookingDate || b.date;
+                                        let formattedJourneyDate = 'Not provided';
+                                        if (rawJourneyDate) {
+                                          const d = new Date(rawJourneyDate);
+                                          formattedJourneyDate = !isNaN(d.getTime())
+                                            ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                                            : String(rawJourneyDate);
+                                        }
+                                        const depTime = b.departureTime || b.appointmentTimeSlot || b.time || b.boardingTime || 'Not provided';
+                                        return (
+                                          <div className="space-y-1 py-0.5">
+                                            <div className="leading-tight">
+                                              <div className="text-[9px] font-extrabold uppercase tracking-wider text-blue-500 dark:text-blue-400 flex items-center gap-1">
+                                                <span>🛫</span> Journey Date
+                                              </div>
+                                              <div className="font-bold text-slate-850 dark:text-slate-200 text-xs mt-0.5">
+                                                {formattedJourneyDate}
+                                              </div>
+                                            </div>
+                                            <div className="leading-tight pt-1 border-t border-slate-150/70 dark:border-slate-800">
+                                              <div className="text-[9px] font-extrabold uppercase tracking-wider text-indigo-500 dark:text-indigo-400 flex items-center gap-1">
+                                                <span>⌚</span> Departure Time
+                                              </div>
+                                              <div className="text-[10px] font-bold text-indigo-650 dark:text-indigo-400 mt-0.5">
+                                                {depTime}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
                                       })() : (
                                         <div>
-                                          <div>📅 {b.appointmentDate || b.checkInDate || (b.createdAt ? b.createdAt.substring(0, 10) : 'N/A')}</div>
+                                          <div>📅 {(() => {
+                                            const rawD = b.appointmentDate || b.checkInDate || b.date || b.bookingDate || (b.createdAt ? b.createdAt.substring(0, 10) : 'N/A');
+                                            const d = new Date(rawD);
+                                            return !isNaN(d.getTime()) ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : String(rawD);
+                                          })()}</div>
                                           <div className="text-[10px] text-indigo-650 dark:text-indigo-400 font-bold mt-0.5">
-                                            ⌚ {b.appointmentTimeSlot || getBookingTimeSlot(b)}
+                                            ⌚ {b.appointmentTimeSlot || getBookingTimeSlot(b) || b.time || 'Standard Slot'}
                                           </div>
                                         </div>
                                       )}

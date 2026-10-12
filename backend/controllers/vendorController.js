@@ -190,10 +190,21 @@ const getVendorAnalytics = async (req, res) => {
     const totalOrdersCount = ordersOnly.length;
     const totalBookingsCount = bookingsOnly.length;
     const totalApplicationsCount = applicationsOnly.length;
-    const completedOrders = orders.filter(o => ['Completed', 'Delivered', 'Checked Out', 'Hired', 'Enrolled'].includes(o.status));
-    const pendingOrdersCount = orders.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'].includes(o.status)).length;
+    // Eligible paid / completed orders for authoritative financial calculations
+    const isEligibleRevenueOrder = (o) => {
+      if (!o) return false;
+      const s = String(o.status || '').trim().toLowerCase();
+      if (['cancelled', 'rejected', 'failed'].includes(s)) return false;
+      const isPaid = (o.paymentStatus === 'Paid' || o.payment_status === 'Paid' || o.vendorPaymentStatus === 'PAID');
+      const isCompleted = ['completed', 'delivered', 'checked out', 'hired', 'enrolled'].includes(s);
+      return isPaid || isCompleted;
+    };
+
+    const eligibleOrders = orders.filter(isEligibleRevenueOrder);
+    const completedOrders = orders.filter(o => ['Completed', 'Delivered', 'Checked Out', 'Hired', 'Enrolled'].includes(o.status) || o.paymentStatus === 'Paid' || o.payment_status === 'Paid');
+    const pendingOrdersCount = orders.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved', 'Order Received', 'Booking Received'].includes(o.status) && !isEligibleRevenueOrder(o)).length;
     
-    const totalRevenue = completedOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
+    const totalRevenue = eligibleOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
     const dbCustomersCountList = await Customer.find({
       $or: [
         { vendorId: { $in: businessIds } },
@@ -220,18 +231,22 @@ const getVendorAnalytics = async (req, res) => {
       $or: [
         { vendorId: { $in: businessIds } },
         { vendor_id: { $in: businessIds } }
-      ],
-      status: 'Available'
+      ]
     });
 
-    // Today's Revenue Calculation
-    const todayDateString = new Date().toDateString();
-    const todayRevenue = completedOrders
+    // Today's Revenue Calculation: Aligned with vendor business timezone (IST: UTC+05:30)
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const nowIST = new Date(Date.now() + istOffsetMs);
+    const todayISTStr = nowIST.toISOString().slice(0, 10);
+
+    const todayRevenue = eligibleOrders
       .filter(o => {
         const rawDate = o.createdAt || o.created_at || o.orderDate || o.date;
         if (!rawDate) return false;
         const d = new Date(rawDate);
-        return !isNaN(d.getTime()) && d.toDateString() === todayDateString;
+        if (isNaN(d.getTime())) return false;
+        const dIST = new Date(d.getTime() + istOffsetMs);
+        return dIST.toISOString().slice(0, 10) === todayISTStr;
       })
       .reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
 
@@ -246,13 +261,18 @@ const getVendorAnalytics = async (req, res) => {
     // Revenue Trend Chart Data (daily completed revenue for the last 7 calendar days)
     const dailyRevenueMap = {};
     for (let i = 6; i >= 0; i--) {
-      const d = new Date();
+      const d = new Date(nowIST);
       d.setDate(d.getDate() - i);
-      const key = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const key = d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
       dailyRevenueMap[key] = 0;
     }
-    completedOrders.forEach(o => {
-      const key = new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    eligibleOrders.forEach(o => {
+      const rawDate = o.createdAt || o.created_at || o.orderDate || o.date;
+      if (!rawDate) return;
+      const d = new Date(rawDate);
+      if (isNaN(d.getTime())) return;
+      const dIST = new Date(d.getTime() + istOffsetMs);
+      const key = dIST.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
       if (dailyRevenueMap[key] !== undefined) {
         dailyRevenueMap[key] += Number(o.finalAmount || o.totalAmount || o.amount || 0);
       }
@@ -265,13 +285,18 @@ const getVendorAnalytics = async (req, res) => {
     // Monthly Revenue Chart Data (completed revenue for the last 6 calendar months)
     const monthlyRevenueMap = {};
     for (let i = 5; i >= 0; i--) {
-      const d = new Date();
+      const d = new Date(nowIST);
       d.setMonth(d.getMonth() - i);
-      const key = d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+      const key = d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
       monthlyRevenueMap[key] = 0;
     }
-    completedOrders.forEach(o => {
-      const key = new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+    eligibleOrders.forEach(o => {
+      const rawDate = o.createdAt || o.created_at || o.orderDate || o.date;
+      if (!rawDate) return;
+      const d = new Date(rawDate);
+      if (isNaN(d.getTime())) return;
+      const dIST = new Date(d.getTime() + istOffsetMs);
+      const key = dIST.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
       if (monthlyRevenueMap[key] !== undefined) {
         monthlyRevenueMap[key] += Number(o.finalAmount || o.totalAmount || o.amount || 0);
       }
@@ -1522,73 +1547,146 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     contactEmail: user?.email || 'Not provided'
   };
 
-  // Product / Room details
+  // Determine true business category for the booking
+  const rawType = String(obj.type || '').trim().toLowerCase();
+  const rawCat = String(obj.category || '').trim().toLowerCase();
+  const detailStr = String(obj.product_details || (obj.items && obj.items[0]?.name) || '').toLowerCase();
+
+  const isTravel = ['travel', 'travels', 'package', 'packages', 'bus', 'vehicle', 'cab', 'car', 'bike'].includes(rawType) ||
+                   ['travel', 'travels', 'package', 'packages', 'bus', 'vehicle', 'cab', 'car', 'bike'].includes(rawCat) ||
+                   Boolean(obj.travelDate || obj.journeyDate || obj.vehicleType || obj.busName || obj.carName || obj.bikeName) ||
+                   /travel|bus|cab|car|bike|tour/i.test(detailStr);
+
+  const isStay = !isTravel && (
+    ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawType) ||
+    ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawCat) ||
+    Boolean(obj.roomNumber || obj.roomName || (obj.items && obj.items[0]?.category === 'Stay')) ||
+    /room|suite|villa|resort|hotel|cottage/i.test(detailStr)
+  );
+
+  const isServices = !isTravel && !isStay && (
+    ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawType) ||
+    ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawCat) ||
+    Boolean(obj.doctorName || obj.appointmentDate)
+  );
+
+  const isJob = ['job', 'jobs', 'application', 'job_application'].includes(rawType) || 
+                Boolean(obj.candidateResume || obj.applicationId);
+
+  const isFood = ['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(rawType);
+
+  if (isTravel) {
+    obj.category = 'Travel';
+    obj.type = 'Travel';
+  } else if (isStay) {
+    obj.category = 'Stay';
+    obj.type = 'Stay';
+  } else if (isServices) {
+    obj.category = 'Services';
+    obj.type = 'Services';
+  } else if (isJob) {
+    obj.category = 'Jobs';
+    obj.type = 'Job';
+  } else if (isFood) {
+    obj.category = 'Food';
+    obj.type = 'Food';
+  }
+
+  // Product / Room details for Stay
   const firstItem = (obj.items && obj.items[0]) || {};
   const targetProdId = firstItem.productId || obj.productId;
   const matchedProd = targetProdId && productMap ? productMap[String(targetProdId)] : null;
 
-  obj.roomDetails = {
-    name: matchedProd?.name || firstItem.name || obj.roomName || obj.product_details || 'Deluxe Room',
-    type: matchedProd?.subcategory || matchedProd?.category || obj.roomType || firstItem.subcategory || 'Deluxe Room',
-    category: matchedProd?.subcategory || obj.roomCategory || obj.subcategory || 'Stay',
-    id: String(matchedProd?._id || targetProdId || 'Not provided'),
-    roomNumber: obj.roomNumber || matchedProd?.roomNumber || 'Not assigned',
-    roomsCount: Number(obj.roomsCount || obj.roomCount || firstItem.quantity || 1),
-    nightsCount: Number(obj.nightsCount || obj.nights || obj.numberOfNights || 1),
-    price: Number(matchedProd?.price || firstItem.price || obj.amount || 0)
-  };
+  if (isStay) {
+    obj.roomDetails = {
+      name: matchedProd?.name || firstItem.name || obj.roomName || obj.product_details || 'Deluxe Room',
+      type: matchedProd?.subcategory || matchedProd?.category || obj.roomType || firstItem.subcategory || 'Deluxe Room',
+      category: matchedProd?.subcategory || obj.roomCategory || obj.subcategory || 'Stay',
+      id: String(matchedProd?._id || targetProdId || 'Not provided'),
+      roomNumber: obj.roomNumber || matchedProd?.roomNumber || 'Not assigned',
+      roomsCount: Number(obj.roomsCount || obj.roomCount || firstItem.quantity || 1),
+      nightsCount: Number(obj.nightsCount || obj.nights || obj.numberOfNights || 1),
+      price: Number(matchedProd?.price || firstItem.price || obj.amount || 0)
+    };
 
-  // Schedule & Timing (Check-in & Check-out)
-  const rawCheckInDate = obj.checkInDate || obj.appointmentDate;
-  let checkInDate = rawCheckInDate || (obj.createdAt ? new Date(obj.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Not provided');
-  let checkInTime = obj.checkInTime || '';
-  let checkOutDate = obj.checkOutDate || obj.departureDate || '';
-  let checkOutTime = obj.checkOutTime || '';
+    // Schedule & Timing (Check-in & Check-out)
+    const rawCheckInDate = obj.checkInDate || obj.appointmentDate;
+    let checkInDate = rawCheckInDate || (obj.createdAt ? new Date(obj.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Not provided');
+    let checkInTime = obj.checkInTime || '';
+    let checkOutDate = obj.checkOutDate || obj.departureDate || '';
+    let checkOutTime = obj.checkOutTime || '';
 
-  // Parse time range if appointmentTimeSlot has "02:00 PM - 06:00 PM"
-  if ((!checkInTime || !checkOutTime) && obj.appointmentTimeSlot && obj.appointmentTimeSlot.includes('-')) {
-    const parts = obj.appointmentTimeSlot.split('-').map(s => s.trim());
-    if (!checkInTime && parts[0]) checkInTime = parts[0];
-    if (!checkOutTime && parts[1]) checkOutTime = parts[1];
-  }
-
-  // Derive check-out date if missing from check-in + nights
-  if (!checkOutDate && checkInDate && checkInDate !== 'Not provided') {
-    const nights = Number(obj.roomDetails.nightsCount || 1);
-    const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '');
-    const parsedDate = new Date(cleanDateStr);
-    if (!isNaN(parsedDate.getTime())) {
-      const outD = new Date(parsedDate);
-      outD.setDate(outD.getDate() + nights);
-      checkOutDate = outD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    // Parse time range if appointmentTimeSlot has "02:00 PM - 06:00 PM"
+    if ((!checkInTime || !checkOutTime) && obj.appointmentTimeSlot && obj.appointmentTimeSlot.includes('-')) {
+      const parts = obj.appointmentTimeSlot.split('-').map(s => s.trim());
+      if (!checkInTime && parts[0]) checkInTime = parts[0];
+      if (!checkOutTime && parts[1]) checkOutTime = parts[1];
     }
+
+    // Derive check-out date if missing from check-in + nights
+    if (!checkOutDate && checkInDate && checkInDate !== 'Not provided') {
+      const nights = Number(obj.roomDetails.nightsCount || 1);
+      const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '');
+      const parsedDate = new Date(cleanDateStr);
+      if (!isNaN(parsedDate.getTime())) {
+        const outD = new Date(parsedDate);
+        outD.setDate(outD.getDate() + nights);
+        checkOutDate = outD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+    }
+
+    obj.staySchedule = {
+      checkInDate: checkInDate || 'Not provided',
+      checkInTime: checkInTime || 'Not provided',
+      checkOutDate: checkOutDate || 'Not provided',
+      checkOutTime: checkOutTime || 'Not provided',
+      scheduledCheckInDate: checkInDate || 'Not provided',
+      scheduledCheckInTime: checkInTime || 'Not provided',
+      scheduledCheckOutDate: checkOutDate || 'Not provided',
+      scheduledCheckOutTime: checkOutTime || 'Not provided',
+      actualCheckIn: obj.actualCheckIn || null,
+      actualCheckInDate: obj.actualCheckInDate || null,
+      actualCheckInTime: obj.actualCheckInTime || null,
+      actualCheckOut: obj.actualCheckOut || null,
+      actualCheckOutDate: obj.actualCheckOutDate || null,
+      actualCheckOutTime: obj.actualCheckOutTime || null
+    };
+
+    obj.checkInDate = obj.staySchedule.checkInDate;
+    obj.checkInTime = obj.staySchedule.checkInTime;
+    obj.checkOutDate = obj.staySchedule.checkOutDate;
+    obj.checkOutTime = obj.staySchedule.checkOutTime;
+  } else {
+    // Explicitly ensure non-stay bookings do NOT have misleading staySchedule or fake check-in
+    delete obj.staySchedule;
+    delete obj.roomDetails;
   }
 
-  obj.staySchedule = {
-    checkInDate: checkInDate || 'Not provided',
-    checkInTime: checkInTime || 'Not provided',
-    checkOutDate: checkOutDate || 'Not provided',
-    checkOutTime: checkOutTime || 'Not provided',
-    scheduledCheckInDate: checkInDate || 'Not provided',
-    scheduledCheckInTime: checkInTime || 'Not provided',
-    scheduledCheckOutDate: checkOutDate || 'Not provided',
-    scheduledCheckOutTime: checkOutTime || 'Not provided',
-    actualCheckIn: obj.actualCheckIn || null,
-    actualCheckInDate: obj.actualCheckInDate || null,
-    actualCheckInTime: obj.actualCheckInTime || null,
-    actualCheckOut: obj.actualCheckOut || null,
-    actualCheckOutDate: obj.actualCheckOutDate || null,
-    actualCheckOutTime: obj.actualCheckOutTime || null
-  };
+  // Travel specific schedule and vehicle details
+  if (isTravel) {
+    const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || obj.appointmentDate || (obj.createdAt ? String(obj.createdAt).substring(0, 10) : 'Not provided');
+    const departureTimeVal = obj.departureTime || obj.time || obj.appointmentTimeSlot || obj.schedule || 'Not provided';
+    obj.travelDate = travelDateVal;
+    obj.departureTime = departureTimeVal;
+    obj.vehicleDetails = {
+      travelType: obj.travelType || obj.vehicleDetails?.travelType || 'Road',
+      vehicleType: obj.vehicleType || (['Bus', 'AC Bus', 'Non ACBus'].some(v => detailStr.includes(v.toLowerCase())) ? 'Bus' : (['Car', 'Non Ac Car'].some(v => detailStr.includes(v.toLowerCase())) ? 'Car' : (['Bike'].some(v => detailStr.includes(v.toLowerCase())) ? 'Bike' : (obj.product_details || 'Vehicle')))),
+      vehicleNumber: obj.vehicleNumber || obj.vehicleDetails?.vehicleNumber || null,
+      numberOfVehicles: obj.numberOfVehicles || obj.vehicleDetails?.numberOfVehicles || 1,
+      pickupDropInfo: obj.pickupDropInfo || obj.boardingPoint || obj.droppingPoint || null,
+      boardingPoint: obj.boardingPoint || obj.from || obj.source || obj.vehicleDetails?.boardingPoint || null,
+      droppingPoint: obj.droppingPoint || obj.to || obj.destination || obj.vehicleDetails?.droppingPoint || null
+    };
+  }
 
-  // Keep top-level keys synchronized
-  obj.checkInDate = obj.staySchedule.checkInDate;
-  obj.checkInTime = obj.staySchedule.checkInTime;
-  obj.checkOutDate = obj.staySchedule.checkOutDate;
-  obj.checkOutTime = obj.staySchedule.checkOutTime;
+  // Services specific details
+  if (isServices) {
+    obj.appointmentDate = obj.appointmentDate || (obj.createdAt ? String(obj.createdAt).substring(0, 10) : 'Not provided');
+    obj.appointmentTimeSlot = obj.appointmentTimeSlot || 'Not provided';
+    obj.serviceName = obj.serviceName || obj.product_details || firstItem.name || 'Service Consultation';
+  }
 
   // Guest details & list (already resolved above)
-
   const adults = obj.adults !== undefined ? Number(obj.adults) : (obj.adultsCount !== undefined ? Number(obj.adultsCount) : (rawGuestList.length > 0 ? rawGuestList.length : 1));
   const children = obj.children !== undefined ? Number(obj.children) : (obj.childrenCount !== undefined ? Number(obj.childrenCount) : 0);
   const infants = obj.infants !== undefined ? Number(obj.infants) : (obj.infantsCount !== undefined ? Number(obj.infantsCount) : 0);
@@ -1620,7 +1718,6 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
       });
     });
   } else {
-    // Single / Primary booking holder
     formattedGuests.push({
       guestNumber: 1,
       isPrimary: true,
@@ -1641,23 +1738,14 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
   obj.guestList = formattedGuests;
   obj.resolvedGuestList = formattedGuests;
 
-  // Vehicle Details
-  obj.vehicleDetails = {
-    travelType: obj.travelType || obj.vehicleDetails?.travelType || null,
-    vehicleType: obj.vehicleType || obj.vehicleDetails?.vehicleType || null,
-    vehicleNumber: obj.vehicleNumber || obj.vehicleDetails?.vehicleNumber || null,
-    numberOfVehicles: obj.numberOfVehicles || obj.vehicleDetails?.numberOfVehicles || null,
-    pickupDropInfo: obj.pickupDropInfo || obj.boardingPoint || obj.droppingPoint || null,
-    boardingPoint: obj.boardingPoint || obj.vehicleDetails?.boardingPoint || null,
-    droppingPoint: obj.droppingPoint || obj.vehicleDetails?.droppingPoint || null
-  };
-
-  // Status mapping for Bookings: Replace product-like "Order Received" with legitimate booking status
-  const isStay = obj.type === 'Stay' || obj.category === 'Stay' || (obj.items && obj.items[0]?.category === 'Stay');
-  if (isStay && (obj.status === 'Order Received' || !obj.status)) {
-    obj.status = (obj.paymentStatus === 'Paid' || obj.payment_status === 'Paid') ? 'Confirmed' : 'Pending';
-  } else if (!isStay && (obj.status === 'Order Received' || !obj.status || obj.status === 'Pending')) {
-    obj.status = 'Booking Received';
+  // Status mapping for Bookings: Replace generic "Order Received" with legitimate booking status
+  const isPaid = (obj.paymentStatus === 'Paid' || obj.payment_status === 'Paid');
+  if (obj.status === 'Order Received' || !obj.status || obj.status === 'Pending') {
+    if (isStay || isTravel || isServices) {
+      obj.status = isPaid ? 'Confirmed' : 'Pending';
+    } else {
+      obj.status = 'Booking Received';
+    }
   }
 
   // Status history
@@ -1667,7 +1755,7 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
         status: 'Booking Created',
         timestamp: obj.createdAt || new Date().toISOString(),
         updatedBy: 'Customer / Booking System',
-        notes: `Stay booking initiated for ${obj.roomDetails.name}`
+        notes: `Booking initiated for ${isStay ? (obj.roomDetails?.name || 'Stay') : isTravel ? (obj.vehicleDetails?.vehicleType || 'Travel') : (obj.product_details || 'Service')}`
       }
     ];
     if (obj.status && obj.status !== 'Pending') {
@@ -1678,13 +1766,6 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
         notes: `Booking status is currently ${obj.status}`
       });
     }
-  }
-
-  const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || obj.bookingDate || obj.appointmentDate;
-  if (travelDateVal) {
-    obj.travelDate = travelDateVal;
-  } else if ((obj.type === 'Travel' || obj.type === 'travel') && (obj.created_at || obj.createdAt)) {
-    obj.travelDate = (obj.created_at || obj.createdAt).substring(0, 10);
   }
 
   normalizeAddressStateForOrder(obj);
@@ -4089,34 +4170,49 @@ const getSalesPayments = async (req, res) => {
       });
     }
 
-    // Date range / Duration filter
-    const now = new Date();
+    // Date range / Duration filter in IST timezone (UTC+05:30)
     const duration = req.query.duration || 'All';
     let startDate = null;
     let endDate = null;
 
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(Date.now() + istOffsetMs);
+    const istYear = istNow.getUTCFullYear();
+    const istMonth = istNow.getUTCMonth();
+    const istDay = istNow.getUTCDate();
+    const istDayOfWeek = istNow.getUTCDay(); // 0 is Sunday
+
     if (duration === 'Today') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      startDate = new Date(Date.UTC(istYear, istMonth, istDay, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth, istDay, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'This Week') {
-      const day = now.getDay();
-      const diffToMonday = day === 0 ? 6 : day - 1;
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday, 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday + 6, 23, 59, 59, 999);
+      const diffToMonday = istDayOfWeek === 0 ? 6 : istDayOfWeek - 1;
+      startDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday + 6, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'This Month') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      startDate = new Date(Date.UTC(istYear, istMonth, 1, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth + 1, 0, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'This Year') {
-      startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+      startDate = new Date(Date.UTC(istYear, 0, 1, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, 11, 31, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'Custom') {
       if (req.query.startDate) {
-        startDate = new Date(req.query.startDate);
-        startDate.setHours(0, 0, 0, 0);
+        const parts = String(req.query.startDate).split('-');
+        if (parts.length === 3) {
+          startDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 0, 0, 0, 0) - istOffsetMs);
+        } else {
+          startDate = new Date(req.query.startDate);
+          startDate.setHours(0, 0, 0, 0);
+        }
       }
       if (req.query.endDate) {
-        endDate = new Date(req.query.endDate);
-        endDate.setHours(23, 59, 59, 999);
+        const parts = String(req.query.endDate).split('-');
+        if (parts.length === 3) {
+          endDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59, 999) - istOffsetMs);
+        } else {
+          endDate = new Date(req.query.endDate);
+          endDate.setHours(23, 59, 59, 999);
+        }
       }
     }
 

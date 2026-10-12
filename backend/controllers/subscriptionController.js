@@ -201,8 +201,22 @@ const getSubscriptions = async (req, res) => {
     const now = new Date();
     const approverInfo = await resolveApproverInfo(req.user);
 
-    // Fetch all active or recent subscriptions for this vendor
-    const existingSubscriptions = await Subscription.find({ vendorId }).lean();
+    const parentUserId = (req.user.parentUserId || req.user._id || req.user.id || '').toString();
+    const currentUserId = (req.user._id || req.user.id || '').toString();
+    const allVendorAndBizIds = [parentUserId, currentUserId].filter(Boolean);
+    businesses.forEach(b => {
+      if (b && b._id) allVendorAndBizIds.push(b._id.toString());
+      if (b && b.id) allVendorAndBizIds.push(b.id.toString());
+    });
+
+    // Fetch all active or recent subscriptions for this vendor across all business and vendor IDs
+    const existingSubscriptions = await Subscription.find({
+      $or: [
+        { vendorId: { $in: allVendorAndBizIds } },
+        { businessId: { $in: allVendorAndBizIds } }
+      ]
+    }).sort({ endDate: -1, createdAt: -1 }).lean();
+
     const subMap = new Map();
     for (const sub of existingSubscriptions) {
       // Auto-expire subscriptions if endDate passed
@@ -210,7 +224,15 @@ const getSubscriptions = async (req, res) => {
         await Subscription.findByIdAndUpdate(sub._id, { status: 'Expired' });
         sub.status = 'Expired';
       }
-      subMap.set(String(sub.businessId), sub);
+      const bKey = String(sub.businessId);
+      if (!subMap.has(bKey)) {
+        subMap.set(bKey, sub);
+      } else {
+        const prev = subMap.get(bKey);
+        if (prev.status !== 'Active' && sub.status === 'Active') {
+          subMap.set(bKey, sub);
+        }
+      }
     }
 
     // Map each business with its authoritative subscription info
@@ -348,7 +370,23 @@ const getSubscriptionHistory = async (req, res) => {
     }
 
     const { periodType, startDate, endDate, businessId } = req.query;
-    const query = { vendorId };
+
+    const parentUserId = (req.user.parentUserId || req.user._id || req.user.id || '').toString();
+    const currentUserId = (req.user._id || req.user.id || '').toString();
+    const allVendorAndBizIds = [parentUserId, currentUserId].filter(Boolean);
+    if (req.user.businesses && Array.isArray(req.user.businesses)) {
+      req.user.businesses.forEach(b => {
+        if (b && b._id) allVendorAndBizIds.push(b._id.toString());
+        if (b && b.id) allVendorAndBizIds.push(b.id.toString());
+      });
+    }
+
+    const query = {
+      $or: [
+        { vendorId: { $in: allVendorAndBizIds } },
+        { businessId: { $in: allVendorAndBizIds } }
+      ]
+    };
 
     if (businessId && businessId !== 'all') {
       query.businessId = businessId;
@@ -419,8 +457,24 @@ const getSubscriptionSummary = async (req, res) => {
       label = `${selectedYear}`;
     }
 
-    // Run real database aggregation
-    const matchFilter = { vendorId, ...dateMatch };
+    const parentUserId = (req.user.parentUserId || req.user._id || req.user.id || '').toString();
+    const currentUserId = (req.user._id || req.user.id || '').toString();
+    const allVendorAndBizIds = [parentUserId, currentUserId].filter(Boolean);
+    if (req.user.businesses && Array.isArray(req.user.businesses)) {
+      req.user.businesses.forEach(b => {
+        if (b && b._id) allVendorAndBizIds.push(b._id.toString());
+        if (b && b.id) allVendorAndBizIds.push(b.id.toString());
+      });
+    }
+
+    // Run real database aggregation across all vendor and business identifiers
+    const matchFilter = {
+      $or: [
+        { vendorId: { $in: allVendorAndBizIds } },
+        { businessId: { $in: allVendorAndBizIds } }
+      ],
+      ...dateMatch
+    };
 
     const [stats] = await SubscriptionPayment.aggregate([
       { $match: matchFilter },
@@ -692,8 +746,19 @@ const verifySubscriptionPayment = async (req, res) => {
       });
     }
 
-    // Requirement 5: Calculate validity (1 month from payment date, month-end safe)
-    const { startDate, endDate } = calculateSubscriptionValidity(new Date());
+    // Calculate validity: If renewing an already active subscription with future expiry, extend from existing endDate
+    let calcBaseDate = new Date();
+    const existingSubCheck = await Subscription.findOne({
+      $or: [
+        { vendorId, businessId: String(businessId), status: 'Active' },
+        { businessId: String(businessId), status: 'Active' }
+      ]
+    }).sort({ endDate: -1 });
+
+    if (existingSubCheck && existingSubCheck.endDate && new Date(existingSubCheck.endDate) > new Date()) {
+      calcBaseDate = new Date(existingSubCheck.endDate);
+    }
+    const { startDate, endDate } = calculateSubscriptionValidity(calcBaseDate);
 
     const targetBiz = (req.user.businesses || []).find(b => String(b._id) === String(businessId)) || {};
     const geo = resolveGeoCoordinates(targetBiz, req.user);
@@ -707,7 +772,7 @@ const verifySubscriptionPayment = async (req, res) => {
     payment.paymentMethod = paymentMethod;
     payment.validFrom = startDate;
     payment.validUntil = endDate;
-    payment.paymentDate = startDate;
+    payment.paymentDate = new Date();
     payment.state = geo.state;
     payment.district = geo.district;
     payment.division = geo.division;
@@ -718,9 +783,11 @@ const verifySubscriptionPayment = async (req, res) => {
     // Requirement 2: Vendor Business-wise Subscription
     // Update or create active subscription record
     let subscription = await Subscription.findOne({ 
-      vendorId, 
-      businessId: String(businessId) 
-    });
+      $or: [
+        { vendorId, businessId: String(businessId) },
+        { businessId: String(businessId) }
+      ]
+    }).sort({ endDate: -1 });
 
     const subFields = {
       subscriptionId: payment.subscriptionId,
@@ -735,8 +802,8 @@ const verifySubscriptionPayment = async (req, res) => {
       startDate,
       endDate,
       nextDueDate: endDate,
-      paymentDate: startDate,
-      lastPaymentDate: startDate,
+      paymentDate: new Date(),
+      lastPaymentDate: new Date(),
       billingCycle: 'Monthly',
       paymentStatus: 'PAID',
       paymentId: payment.paymentId,
@@ -767,10 +834,19 @@ const verifySubscriptionPayment = async (req, res) => {
       });
     }
 
-    // Update business in User document for fast indexed lookups
+    // Update business in User document for fast indexed lookups across sessions/re-logins
     try {
-      await User.updateOne(
-        { _id: req.user._id, "businesses._id": String(businessId) },
+      const bizIdFilters = [String(businessId)];
+      if (mongoose.Types.ObjectId.isValid(businessId)) {
+        bizIdFilters.push(new mongoose.Types.ObjectId(businessId));
+      }
+      const userIds = [req.user._id, req.user.parentUserId].filter(Boolean);
+
+      await User.updateMany(
+        { 
+          _id: { $in: userIds },
+          "businesses._id": { $in: bizIdFilters }
+        },
         { 
           $set: { 
             "businesses.$.subscriptionStatus": 'Active',
@@ -829,10 +905,16 @@ const verifySubscriptionPayment = async (req, res) => {
  */
 const getBusinessSubscription = async (req, res) => {
   try {
-    const vendorId = req.user._id ? req.user._id.toString() : '';
-    const { businessId } = req.params;
+    const parentUserId = (req.user.parentUserId || req.user._id || req.user.id || '').toString();
+    const currentUserId = (req.user._id || req.user.id || '').toString();
+    const allVendorAndBizIds = [parentUserId, currentUserId].filter(Boolean);
 
-    const sub = await Subscription.findOne({ vendorId, businessId: String(businessId) }).lean();
+    const sub = await Subscription.findOne({
+      $or: [
+        { vendorId: { $in: allVendorAndBizIds }, businessId: String(businessId) },
+        { businessId: String(businessId) }
+      ]
+    }).sort({ endDate: -1, createdAt: -1 }).lean();
     if (!sub) {
       return res.status(200).json({
         success: true,

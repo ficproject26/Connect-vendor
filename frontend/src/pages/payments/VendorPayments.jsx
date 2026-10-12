@@ -657,25 +657,30 @@ export default function VendorPayments() {
                           <td className="py-3 px-4 font-mono text-xs text-slate-400 font-medium">
                             {serial}
                           </td>
-                          <td className="py-3 px-4 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
-                            {(() => {
-                              const isCod = (item.paymentMethod || '').toLowerCase().includes('cash') || (item.paymentMethod || '').toLowerCase().includes('cod');
-                              const isSynthetic = item.transactionId && (
-                                item.transactionId === item.orderId ||
-                                item.transactionId.startsWith('TXN_ORD') ||
-                                item.transactionId.startsWith('TXN_BKG') ||
-                                item.transactionId.startsWith('TXN_RD') ||
-                                item.transactionId === `TXN_${item.orderId}`
-                              );
-                              if (!item.transactionId || isSynthetic) {
-                                return (
-                                  <span className="text-slate-400 italic font-sans font-normal">
-                                    {isCod ? 'Pending collection' : 'Not generated'}
-                                  </span>
+                          <td className="py-3 px-4 font-mono text-xs">
+                            <div className="font-semibold text-slate-800 dark:text-slate-200">
+                              {(() => {
+                                const isCod = (item.paymentMethod || '').toLowerCase().includes('cash') || (item.paymentMethod || '').toLowerCase().includes('cod');
+                                const isSynthetic = item.transactionId && (
+                                  item.transactionId === item.orderId ||
+                                  item.transactionId.startsWith('TXN_ORD') ||
+                                  item.transactionId.startsWith('TXN_BKG') ||
+                                  item.transactionId.startsWith('TXN_RD') ||
+                                  item.transactionId === `TXN_${item.orderId}`
                                 );
-                              }
-                              return item.transactionId;
-                            })()}
+                                if (!item.transactionId || isSynthetic) {
+                                  return (
+                                    <span className="text-slate-400 italic font-sans font-normal">
+                                      {isCod ? 'Pending collection' : 'Not generated'}
+                                    </span>
+                                  );
+                                }
+                                return item.transactionId;
+                              })()}
+                            </div>
+                            <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">
+                              {['Stay', 'Travel', 'Services', 'Appointments'].includes(item.category) ? 'Ref: ' : 'Order: '}{item.orderId || '-'}
+                            </div>
                           </td>
                           <td className="py-3 px-4 text-xs text-slate-500 dark:text-slate-400">
                             {formatDate(item.saleDate)}
@@ -972,13 +977,11 @@ export default function VendorPayments() {
                           {/* 3. TRANSACTION / REFERENCE ID */}
                           <td className="py-3.5 px-3 font-mono">
                             <div className="font-semibold text-slate-700 dark:text-slate-300">
-                              {item.transactionId || item.referenceId || '-'}
+                              {item.transactionId || '-'}
                             </div>
-                            {item.transactionId && item.referenceId && item.transactionId !== item.referenceId && (
-                              <div className="text-[11px] text-slate-400 font-normal">
-                                Ref: {item.referenceId}
-                              </div>
-                            )}
+                            <div className="text-[11px] text-slate-400 font-normal">
+                              Ref: {item.referenceId && item.referenceId !== item.transactionId ? item.referenceId : (item.paymentId || '-')}
+                            </div>
                           </td>
 
                           {/* 4. VENDOR / RECIPIENT */}
