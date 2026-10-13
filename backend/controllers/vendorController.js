@@ -3442,35 +3442,39 @@ const updateProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    if (req.body.panNo !== undefined && String(req.body.panNo).trim() !== '') {
-      if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(String(req.body.panNo).toUpperCase().trim())) {
-        return res.status(400).json({ success: false, message: 'Invalid PAN format. Must be 10 characters (5 letters, 4 digits, 1 letter, e.g. ABCDE1234F).' });
+    // Sanitize and normalize inputs gracefully without breaking legacy records
+    if (req.body.mobileNumber !== undefined && req.body.mobileNumber !== null) {
+      let cleanMobile = String(req.body.mobileNumber).replace(/\D/g, '');
+      if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) {
+        cleanMobile = cleanMobile.slice(-10);
+      }
+      if (cleanMobile.length === 10) {
+        req.body.mobileNumber = cleanMobile;
       }
     }
-    if (req.body.aadhaarNo !== undefined && String(req.body.aadhaarNo).trim() !== '') {
-      if (!/^\d{12}$/.test(String(req.body.aadhaarNo).trim())) {
-        return res.status(400).json({ success: false, message: 'Invalid Aadhaar format. Must be exactly 12 numeric digits.' });
+    if (req.body.postalCode !== undefined && req.body.postalCode !== null) {
+      const cleanPostal = String(req.body.postalCode).replace(/\D/g, '').slice(0, 6);
+      if (cleanPostal.length === 6) {
+        req.body.postalCode = cleanPostal;
       }
     }
-    if (req.body.mobileNumber !== undefined && String(req.body.mobileNumber).trim() !== '') {
-      if (!/^\d{10}$/.test(String(req.body.mobileNumber).trim())) {
-        return res.status(400).json({ success: false, message: 'Invalid Phone Number. Mobile number must be exactly 10 digits.' });
+    if (req.body.panNo !== undefined && req.body.panNo !== null) {
+      const cleanPan = String(req.body.panNo).toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
+      if (cleanPan && cleanPan !== 'NA' && cleanPan !== 'N/A') {
+        req.body.panNo = cleanPan;
       }
     }
-    if (req.body.postalCode !== undefined && String(req.body.postalCode).trim() !== '') {
-      if (!/^\d{6}$/.test(String(req.body.postalCode).trim())) {
-        return res.status(400).json({ success: false, message: 'Invalid Pincode. Must be exactly 6 digits.' });
+    if (req.body.aadhaarNo !== undefined && req.body.aadhaarNo !== null) {
+      const cleanAadhaar = String(req.body.aadhaarNo).replace(/\D/g, '').slice(0, 12);
+      if (cleanAadhaar.length === 12) {
+        req.body.aadhaarNo = cleanAadhaar;
       }
     }
-    if (req.body.email !== undefined && String(req.body.email).trim() !== '') {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(req.body.email).trim())) {
-        return res.status(400).json({ success: false, message: 'Invalid Email format. Please enter a valid email address.' });
-      }
+    if (req.body.email !== undefined && req.body.email !== null) {
+      req.body.email = String(req.body.email).trim().toLowerCase();
     }
-    if (req.body.gstNumber !== undefined && String(req.body.gstNumber).trim() !== '' && String(req.body.gstNumber).trim() !== 'N/A') {
-      if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(String(req.body.gstNumber).toUpperCase().trim())) {
-        return res.status(400).json({ success: false, message: 'Invalid GSTIN format. Standard GSTIN must be 15 characters.' });
-      }
+    if (req.body.gstNumber !== undefined && req.body.gstNumber !== null) {
+      req.body.gstNumber = String(req.body.gstNumber).toUpperCase().trim();
     }
 
     const keys = [
@@ -4328,15 +4332,21 @@ const updateBusiness = async (req, res) => {
     const businessId = req.params.id;
     const { businessName, vendorType, address, pincode, phone, category, subcategory, street, city, state, country, panNo, aadhaarNo, companyRegNo, logo, businessLicense, bankName, accountHolderName, accountNo, ifscCode, swiftCode } = req.body;
 
-    const pinVal = pincode || req.body.pinCode || req.body.postalCode;
-    if (pinVal !== undefined && String(pinVal).trim() !== '') {
-      if (!/^\d{6}$/.test(String(pinVal).trim())) {
-        return res.status(400).json({ success: false, message: 'Invalid Pincode. Pincode must be exactly 6 numeric digits.' });
+    let pinVal = pincode || req.body.pinCode || req.body.postalCode;
+    if (pinVal !== undefined && pinVal !== null) {
+      const cleanPin = String(pinVal).replace(/\D/g, '').slice(0, 6);
+      if (cleanPin.length === 6) {
+        pinVal = cleanPin;
       }
     }
-    if (phone !== undefined && String(phone).trim() !== '') {
-      if (!/^\d{10}$/.test(String(phone).trim())) {
-        return res.status(400).json({ success: false, message: 'Invalid Phone Number. Phone number must be exactly 10 numeric digits.' });
+    let cleanPhone = phone;
+    if (cleanPhone !== undefined && cleanPhone !== null) {
+      let digits = String(cleanPhone).replace(/\D/g, '');
+      if (digits.length > 10 && digits.startsWith('91')) {
+        digits = digits.slice(-10);
+      }
+      if (digits.length === 10) {
+        cleanPhone = digits;
       }
     }
 
@@ -4369,7 +4379,7 @@ const updateBusiness = async (req, res) => {
         biz.pincode = pinVal;
         biz.postalCode = pinVal;
       }
-      if (phone !== undefined) biz.phone = phone;
+      if (cleanPhone !== undefined) biz.phone = cleanPhone;
       if (panNo !== undefined) biz.panNo = panNo;
       if (aadhaarNo !== undefined) biz.aadhaarNo = aadhaarNo;
       if (companyRegNo !== undefined) biz.companyRegNo = companyRegNo;
@@ -4394,7 +4404,7 @@ const updateBusiness = async (req, res) => {
           user.pincode = pinVal;
           user.postalCode = pinVal;
         }
-        if (phone !== undefined) user.mobileNumber = phone;
+        if (cleanPhone !== undefined) user.mobileNumber = cleanPhone;
         if (panNo !== undefined) user.panNo = panNo;
         if (aadhaarNo !== undefined) user.aadhaarNo = aadhaarNo;
         if (companyRegNo !== undefined) user.companyRegNo = companyRegNo;
@@ -4431,7 +4441,7 @@ const updateBusiness = async (req, res) => {
         user.pincode = pinVal;
         user.postalCode = pinVal;
       }
-      if (phone !== undefined) user.mobileNumber = phone;
+      if (cleanPhone !== undefined) user.mobileNumber = cleanPhone;
       if (panNo !== undefined) user.panNo = panNo;
       if (aadhaarNo !== undefined) user.aadhaarNo = aadhaarNo;
       if (companyRegNo !== undefined) user.companyRegNo = companyRegNo;
@@ -4458,7 +4468,7 @@ const updateBusiness = async (req, res) => {
             primBiz.pincode = pinVal;
             primBiz.postalCode = pinVal;
           }
-          if (phone !== undefined) primBiz.phone = phone;
+          if (cleanPhone !== undefined) primBiz.phone = cleanPhone;
           if (panNo !== undefined) primBiz.panNo = panNo;
           if (aadhaarNo !== undefined) primBiz.aadhaarNo = aadhaarNo;
           if (companyRegNo !== undefined) primBiz.companyRegNo = companyRegNo;

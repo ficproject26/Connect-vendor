@@ -68,17 +68,18 @@ axios.interceptors.request.use(
       config.headers = {};
     }
 
-    // Attach token automatically if missing
+    // Attach token automatically if missing or invalid
     try {
       const state = store?.getState();
-      const token = state?.auth?.token || localStorage.getItem('vendor_token');
-      if (token && !config.headers.Authorization && !config.headers.authorization) {
+      const token = state?.auth?.token || localStorage.getItem('vendor_token') || localStorage.getItem('token');
+      const authHeader = config.headers.Authorization || config.headers.authorization;
+      if (token && (!authHeader || authHeader === 'Bearer undefined' || authHeader === 'Bearer null' || authHeader === 'Bearer ')) {
         config.headers.Authorization = `Bearer ${token}`;
       }
 
       // Attach activeBusinessId header automatically if missing
       const activeBusinessId = state?.auth?.activeBusinessId || localStorage.getItem('active_business_id');
-      if (activeBusinessId && !config.headers['x-business-id']) {
+      if (activeBusinessId && (!config.headers['x-business-id'] || config.headers['x-business-id'] === 'undefined' || config.headers['x-business-id'] === 'null')) {
         config.headers['x-business-id'] = activeBusinessId;
       }
     } catch (e) {
@@ -283,12 +284,6 @@ export const formatImageUrl = (url) => {
     backend = backend.substring(0, backend.length - 4);
   }
 
-  // If URL contains /uploads/, guarantee it resolves to backend server
-  if (clean.includes('/uploads/')) {
-    const uploadPath = clean.substring(clean.indexOf('/uploads/'));
-    return `${backend}${uploadPath}`;
-  }
-
   // If already an absolute HTTP/HTTPS URL
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
     if (
@@ -299,7 +294,17 @@ export const formatImageUrl = (url) => {
     ) {
       return clean.replace(/^https?:\/\/[^/]+/, backend);
     }
+    // If already pointing to vendor.ficapp.in or another secure remote host, enforce HTTPS and keep intact
+    if (clean.includes('vendor.ficapp.in')) {
+      return clean.replace(/^http:\/\//, 'https://');
+    }
     return clean;
+  }
+
+  // If URL contains /uploads/ and is a relative path
+  if (clean.includes('/uploads/')) {
+    const uploadPath = clean.substring(clean.indexOf('/uploads/'));
+    return `${backend}${uploadPath}`;
   }
 
   const cleanPath = clean.startsWith('/') ? clean : `/${clean}`;
