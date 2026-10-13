@@ -161,6 +161,16 @@ export const getRecordCategory = (record) => {
       ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawCategory)) {
     return CATEGORY_SERVICES;
   }
+  // Generic Bookings default classification
+  if (['booking', 'bookings'].includes(rawType) || ['booking', 'bookings'].includes(rawCategory)) {
+    if (Boolean(record.roomNumber || record.roomName || record.checkInDate || record.checkInTime || record.staySchedule)) {
+      return CATEGORY_STAY;
+    }
+    if (Boolean(record.vehicleNumber || record.vehicleType || record.boardingPoint || record.droppingPoint || record.travelDate)) {
+      return CATEGORY_TRAVEL;
+    }
+    return CATEGORY_SERVICES;
+  }
   // Stay / Hospitality
   if (['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawType) || 
       ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawCategory)) {

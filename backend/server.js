@@ -338,7 +338,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/realtime', realtimeRoutes);
 
 // Base API routes & Health Check
-app.get(['/', '/api', '/api/health'], (req, res) => {
+app.get(['/', '/health', '/api', '/api/health', '/api/public/health'], (req, res) => {
   res.json({
     status: 'ok',
     message: 'Welcome to the Vendor API',

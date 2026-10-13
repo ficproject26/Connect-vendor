@@ -17,7 +17,9 @@ const {
   updatePlatformConfig,
   getAdminBusinessRequests,
   reviewBusinessByPincodeAdmin,
-  reviewBusinessByKYC
+  reviewBusinessByKYC,
+  getAllTickets,
+  updateTicketStatus
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -50,6 +52,8 @@ router.put('/business-requests/:id/kyc-review', reviewBusinessByKYC);
 const { getAllSettlements, createSettlement, updateSettlementStatus } = require('../controllers/settlementController');
 router.get('/settlements', getAllSettlements);
 router.post('/settlements', createSettlement);
-router.put('/settlements/:id', updateSettlementStatus);
+// Support Tickets (Admin can view and update ticket status)
+router.get('/tickets', getAllTickets);
+router.put('/tickets/:id/status', updateTicketStatus);
 
 module.exports = router;

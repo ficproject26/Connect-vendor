@@ -1,4 +1,4 @@
-const { User, MembershipPlan, MembershipCard, Order, PlatformConfig, BusinessRequest } = require('../models/Schemas');
+const { User, MembershipPlan, MembershipCard, Order, PlatformConfig, BusinessRequest, SupportTicket } = require('../models/Schemas');
 const mongoose = require('mongoose');
 
 // @desc    Get dashboard stats
@@ -589,6 +589,67 @@ const reviewBusinessByKYC = async (req, res) => {
   }
 };
 
+// @desc    Get all support tickets
+// @route   GET /api/admin/tickets
+// @access  Private (Admin)
+const getAllTickets = async (req, res) => {
+  try {
+    const tickets = await SupportTicket.find({}).sort({ createdAt: -1 });
+    res.status(200).json({ success: true, data: tickets });
+  } catch (error) {
+    console.error('Get All Tickets Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving support tickets' });
+  }
+};
+
+// @desc    Update support ticket status
+// @route   PUT /api/admin/tickets/:id/status
+// @access  Private (Admin)
+const updateTicketStatus = async (req, res) => {
+  try {
+    const { status, note } = req.body;
+    const allowed = ['Open', 'In Progress', 'Resolved', 'Closed'];
+    if (!status || !allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Allowed statuses are: ${allowed.join(', ')}`
+      });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      $or: [{ id: req.params.id }, { _id: req.params.id }, { ticketId: req.params.id }]
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Support ticket not found' });
+    }
+
+    const previousStatus = ticket.status;
+    ticket.status = status;
+
+    if (note && note.trim()) {
+      ticket.replies.push({
+        sender: 'Platform Admin',
+        role: 'Admin',
+        text: note.trim(),
+        time: new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date()
+      });
+    }
+
+    await ticket.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Support ticket status updated from "${previousStatus}" to "${status}"`,
+      data: ticket
+    });
+  } catch (error) {
+    console.error('Update Ticket Status Error:', error);
+    res.status(500).json({ success: false, message: 'Server error updating ticket status' });
+  }
+};
+
 module.exports = {
   getAdminStats,
   getPendingVendors,
@@ -606,5 +667,7 @@ module.exports = {
   updatePlatformConfig,
   getAdminBusinessRequests,
   reviewBusinessByPincodeAdmin,
-  reviewBusinessByKYC
+  reviewBusinessByKYC,
+  getAllTickets,
+  updateTicketStatus
 };

@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
-const { Product, Order, Customer, DeliveryPartner, User, MembershipCard, PlatformConfig, Patient, Category, BusinessRequest } = require('../models/Schemas');
+const { Product, Order, Customer, DeliveryPartner, User, MembershipCard, PlatformConfig, Patient, Category, BusinessRequest, SupportTicket } = require('../models/Schemas');
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
 const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES, cacheManager } = require('../realtime/realtimeManager');
 const { findPincodeAdmin, CATEGORY_DOC_RULES } = require('../utils/territoryRouting');
@@ -103,7 +103,11 @@ const getProductMainCategory = (category) => {
 
 // Category constants for strict separation
 const ORDER_BASED_TYPES = ['Order', 'Daily Needs', 'Food', 'Products', 'order', 'Store', 'Grocery', 'Pharmacy', 'Restaurant', 'Electronics', 'Furniture'];
-const BOOKING_BASED_TYPES = ['Booking', 'Appointment', 'Stay', 'Travel', 'Services', 'booking', 'Hotel', 'Hospital', 'Travel Agency', 'Technician'];
+const BOOKING_BASED_TYPES = [
+  'Booking', 'booking', 'Appointment', 'appointment', 'Stay', 'stay', 'Travel', 'travel',
+  'Services', 'services', 'Service', 'service', 'Hotel', 'hotel', 'Hospital', 'hospital',
+  'Travel Agency', 'Technician', 'technician', 'Doctor', 'doctor'
+];
 const APPLICATION_BASED_TYPES = ['Job', 'Jobs', 'Job Application', 'application', 'Application'];
 
 // Centralized Category Normalization & Mapping Function
@@ -132,7 +136,7 @@ const mapCategoryToTypes = (cat) => {
     return ['Food', 'food', 'Restaurant', 'restaurant', 'Foods', 'foods'];
   }
   if (norm === 'Services') {
-    return ['Services', 'services', 'Service', 'service', 'Appointment', 'appointment', 'Hospital', 'hospital', 'Technician', 'technician', 'Clinic', 'clinic'];
+    return ['Services', 'services', 'Service', 'service', 'Appointment', 'appointment', 'Hospital', 'hospital', 'Technician', 'technician', 'Clinic', 'clinic', 'Booking', 'booking'];
   }
   if (norm === 'Stay') {
     return ['Stay', 'stay', 'Hotel', 'hotel', 'Hotels', 'hotels', 'Room', 'room', 'Rooms', 'rooms', 'Resort', 'resort', 'Resorts', 'resorts'];
@@ -558,6 +562,15 @@ const createProduct = async (req, res) => {
       if (Array.isArray(droppingPoints)) finalDroppingPoints = droppingPoints;
     }
 
+    let cleanImageUrl = imageUrl || (imageUrls && imageUrls.length > 0 ? imageUrls[0] : '');
+    if (cleanImageUrl && (cleanImageUrl.startsWith('data:') || cleanImageUrl.startsWith('blob:'))) {
+      cleanImageUrl = '';
+    }
+    let cleanImageUrls = (imageUrls || (imageUrl ? [imageUrl] : [])).filter(u => u && !u.startsWith('data:') && !u.startsWith('blob:'));
+    if (!cleanImageUrl && cleanImageUrls.length > 0) {
+      cleanImageUrl = cleanImageUrls[0];
+    }
+
     const product = await Product.create({
       vendorId,
       vendor_id: vendorId,
@@ -578,8 +591,10 @@ const createProduct = async (req, res) => {
       roomType,
       guests: guests !== undefined ? Number(guests) : undefined,
       amenities: amenities || [],
-      imageUrl: imageUrl || (imageUrls && imageUrls.length > 0 ? imageUrls[0] : ''),
-      imageUrls: imageUrls || (imageUrl ? [imageUrl] : []),
+      imageUrl: cleanImageUrl,
+      imageUrls: cleanImageUrls,
+      image: cleanImageUrl,
+      images: cleanImageUrls,
       foodType,
       bookingType: bookingType || 'Slot booking',
       status: 'Available',
@@ -897,6 +912,47 @@ const updateProduct = async (req, res) => {
       if (Array.isArray(droppingPoints)) updatedDroppingPoints = droppingPoints;
     }
 
+    // Stock and availability state management
+    const isServiceOrBookingOffering = ['Services', 'Stay', 'Travel', 'Jobs'].some(cat => 
+      (resolvedMainCat && resolvedMainCat.toLowerCase() === cat.toLowerCase()) ||
+      (product.mainCategory && product.mainCategory.toLowerCase() === cat.toLowerCase()) ||
+      (product.subNavbarCategory && product.subNavbarCategory.toLowerCase() === cat.toLowerCase()) ||
+      (finalCategory && finalCategory.toLowerCase() === cat.toLowerCase())
+    );
+
+    let finalStatus = status || product.status || 'Available';
+    if (!isServiceOrBookingOffering) {
+      const effectiveStock = stock !== undefined ? Number(stock) : product.stock;
+      if (effectiveStock !== undefined && effectiveStock !== null && !isNaN(effectiveStock)) {
+        if (effectiveStock <= 0) {
+          if (!status || status === 'Available') {
+            finalStatus = 'Out of Stock';
+          }
+        } else if (effectiveStock > 0) {
+          // Auto-restore to Available when restocking positive quantity
+          if (finalStatus === 'Out of Stock' || (!status && product.status === 'Out of Stock')) {
+            finalStatus = 'Available';
+          }
+        }
+      }
+    } else {
+      // Services, Stay, and Travel offerings do not track physical inventory stock
+      if (finalStatus === 'Out of Stock') {
+        finalStatus = 'Available';
+      }
+    }
+
+    let cleanImageUrl = imageUrl !== undefined ? imageUrl : (imageUrls && imageUrls.length > 0 ? imageUrls[0] : (product.imageUrl || product.image));
+    if (cleanImageUrl && (cleanImageUrl.startsWith('data:') || cleanImageUrl.startsWith('blob:'))) {
+      cleanImageUrl = product.imageUrl || product.image || '';
+    }
+    let cleanImageUrls = imageUrls !== undefined 
+      ? imageUrls.filter(u => u && !u.startsWith('data:') && !u.startsWith('blob:')) 
+      : (imageUrl !== undefined ? (cleanImageUrl ? [cleanImageUrl] : []) : (product.imageUrls || product.images || []));
+    if (!cleanImageUrl && cleanImageUrls.length > 0) {
+      cleanImageUrl = cleanImageUrls[0];
+    }
+
     const updated = await Product.findByIdAndUpdate(req.params.id, {
       $set: {
         vendorId: activeBusinessId, // Migrate legacy item to current active business ID
@@ -917,11 +973,13 @@ const updateProduct = async (req, res) => {
         roomType: roomType !== undefined ? roomType : product.roomType,
         guests: guests !== undefined ? Number(guests) : product.guests,
         amenities: amenities !== undefined ? amenities : product.amenities,
-        imageUrl: imageUrl !== undefined ? imageUrl : (imageUrls && imageUrls.length > 0 ? imageUrls[0] : product.imageUrl),
-        imageUrls: imageUrls !== undefined ? imageUrls : (imageUrl !== undefined ? (imageUrl ? [imageUrl] : []) : product.imageUrls),
+        imageUrl: cleanImageUrl,
+        imageUrls: cleanImageUrls,
+        image: cleanImageUrl,
+        images: cleanImageUrls,
         foodType: foodType !== undefined ? foodType : product.foodType,
         bookingType: bookingType !== undefined ? bookingType : product.bookingType,
-        status: status || product.status,
+        status: finalStatus,
         cardTypes: cardTypes !== undefined ? cardTypes : product.cardTypes,
         availableTimeSlots: availableTimeSlots !== undefined ? availableTimeSlots : product.availableTimeSlots,
         availableSizes: availableSizes !== undefined ? (Array.isArray(availableSizes) ? availableSizes : (typeof availableSizes === 'string' ? availableSizes.split(',').map(s=>s.trim()).filter(Boolean) : [])) : product.availableSizes,
@@ -1481,24 +1539,46 @@ const getBookings = async (req, res) => {
       });
     }
 
-    const businessIds = [parentUserId.toString()];
+    const businessIds = [
+      parentUserId.toString(),
+      ...(user._id ? [user._id.toString()] : []),
+      ...(user.vendorId ? [user.vendorId.toString()] : []),
+      ...(user.registrationId ? [user.registrationId.toString()] : [])
+    ];
     if (user.businesses && user.businesses.length > 0) {
       user.businesses.forEach(b => {
         if (b._id) businessIds.push(b._id.toString());
+        if (b.id) businessIds.push(b.id.toString());
+        if (b.vendorId) businessIds.push(b.vendorId.toString());
+        if (b.businessId) businessIds.push(b.businessId.toString());
       });
     }
+    const uniqueBusinessIds = [...new Set(businessIds.filter(Boolean))];
 
     // Query strictly for bookings and reservation types, excluding orders and jobs
     const baseQuery = {
       $and: [
         {
           $or: [
-            { vendorId: { $in: businessIds } },
-            { vendor_id: { $in: businessIds } }
+            { vendorId: { $in: uniqueBusinessIds } },
+            { vendor_id: { $in: uniqueBusinessIds } }
           ]
         },
         {
-          type: { $in: BOOKING_BASED_TYPES, $nin: [...ORDER_BASED_TYPES, ...APPLICATION_BASED_TYPES] }
+          $or: [
+            { type: { $in: BOOKING_BASED_TYPES } },
+            { category: { $in: BOOKING_BASED_TYPES } },
+            { 'items.category': { $in: BOOKING_BASED_TYPES } },
+            { 'items.mainCategory': { $in: ['Services', 'services', 'Stay', 'stay', 'Travel', 'travel'] } },
+            { doctorName: { $exists: true, $ne: null } },
+            { serviceName: { $exists: true, $ne: null } },
+            { checkInDate: { $exists: true, $ne: null } },
+            { roomNumber: { $exists: true, $ne: null } },
+            { vehicleType: { $exists: true, $ne: null } }
+          ]
+        },
+        {
+          type: { $nin: [...ORDER_BASED_TYPES.filter(t => !BOOKING_BASED_TYPES.includes(t)), ...APPLICATION_BASED_TYPES] }
         }
       ]
     };
@@ -1524,9 +1604,14 @@ const getBookings = async (req, res) => {
             { 'items.category': { $in: ['Stay', 'Hotels', 'Resorts', 'Hotel', 'Resort', 'Rooms'] } }
           ] : []),
           ...(isServicesFilter ? [
+            { type: { $in: ['Services', 'services', 'Service', 'service', 'Appointment', 'appointment', 'Booking', 'booking'] } },
+            { category: { $in: ['Services', 'services', 'Service', 'service'] } },
             { doctorName: { $exists: true, $ne: null } },
             { serviceName: { $exists: true, $ne: null } },
-            { 'items.category': { $in: ['Services', 'IT & Device Support', 'Ac Service', 'Hospital', 'Technician'] } }
+            { 'items.category': { $in: ['Services', 'IT & Device Support', 'Ac Service', 'Hospital', 'Technician', 'Service', 'services', 'service'] } },
+            { 'items.mainCategory': { $in: ['Services', 'services', 'Service', 'service'] } },
+            { 'items.name': new RegExp('service|consultation|repair|appointment|support', 'i') },
+            { product_details: new RegExp('service|consultation|repair|appointment|support', 'i') }
           ] : []),
           ...(isTravelFilter ? [
             { vehicleType: { $exists: true, $ne: null } },
@@ -1897,7 +1982,7 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
   if (isServices) {
     obj.appointmentDate = obj.appointmentDate || obj.date || obj.bookingDate || 'Not provided';
     obj.appointmentTimeSlot = obj.appointmentTimeSlot || obj.time || 'Standard Slot';
-    obj.serviceName = obj.serviceName || obj.product_details || firstItem.name || 'Service Consultation';
+    obj.serviceName = obj.serviceName || (obj.doctorName ? `Dr. ${obj.doctorName} Consultation` : null) || obj.product_details || firstItem.name || obj.name || obj.title || 'General Service';
   }
 
   // Guest details & list (already resolved above)
@@ -2127,23 +2212,36 @@ const getApplications = async (req, res) => {
       });
     }
 
-    const businessIds = [parentUserId.toString()];
+    // Isolate Job business IDs only (do not leak Travel, Food, Stay business IDs from same vendor)
+    const jobBusinessIds = [];
+    const isRootJob = vendorHasJobCategories({ vendorType: user.vendorType, category: user.category });
+    if (isRootJob) jobBusinessIds.push(parentUserId.toString());
     if (user.businesses && user.businesses.length > 0) {
       user.businesses.forEach(b => {
-        if (b._id) businessIds.push(b._id.toString());
+        const bCat = (b?.vendorType || b?.category || b?.subcategory || b?.name || '').toLowerCase();
+        if (bCat.startsWith('job')) {
+          if (b._id) jobBusinessIds.push(b._id.toString());
+        }
       });
     }
+    if (jobBusinessIds.length === 0) jobBusinessIds.push(parentUserId.toString());
 
     // Find all job postings created by this vendor to strictly guard candidate applications
     const vendorJobs = await Product.find({
-      $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
-      ],
-      $or: [
-        { type: { $regex: /^job/i } },
-        { mainCategory: { $regex: /^job/i } },
-        { category: { $regex: /^job/i } }
+      $and: [
+        {
+          $or: [
+            { vendorId: { $in: jobBusinessIds } },
+            { vendor_id: { $in: jobBusinessIds } }
+          ]
+        },
+        {
+          $or: [
+            { type: { $regex: /^job/i } },
+            { mainCategory: { $regex: /^job/i } },
+            { category: { $regex: /^job/i } }
+          ]
+        }
       ]
     }).select('_id id name title').lean();
 
@@ -2157,9 +2255,18 @@ const getApplications = async (req, res) => {
           type: { $in: APPLICATION_BASED_TYPES, $nin: [...ORDER_BASED_TYPES, ...BOOKING_BASED_TYPES] }
         },
         {
+          category: { $nin: ['Travel', 'travel', 'Food', 'food', 'Stay', 'stay', 'Products', 'products', 'Daily Needs', 'daily needs', 'Services', 'services'] }
+        },
+        {
           $or: [
-            { vendorId: { $in: businessIds } },
-            { vendor_id: { $in: businessIds } },
+            { order_number: { $not: /^BKG|^ORD/i } },
+            { type: { $in: ['Job', 'Jobs', 'Job Application', 'application', 'Application'] } }
+          ]
+        },
+        {
+          $or: [
+            { vendorId: { $in: jobBusinessIds } },
+            { vendor_id: { $in: jobBusinessIds } },
             ...(vendorJobIds.length > 0 ? [{ jobId: { $in: vendorJobIds } }, { productId: { $in: vendorJobIds } }] : [])
           ]
         }
@@ -3374,41 +3481,74 @@ const updateProfile = async (req, res) => {
       'bankStreet', 'bankCity', 'accountNo', 'ifscCode', 'swiftCode', 'logo'
     ];
 
-    keys.forEach(key => {
-      if (req.body[key] !== undefined) {
-        user[key] = req.body[key];
-      }
-    });
-
-    // Also update in the matching business in the businesses array
     const activeBusinessId = req.body.activeBusinessId || user.primaryBusinessId || (user.businesses && user.businesses[0]?._id);
+    const isRootOrPrimary = !activeBusinessId || 
+      activeBusinessId.toString() === user._id.toString() || 
+      (user.businesses && user.businesses.length > 0 && user.businesses[0]?._id && user.businesses[0]._id.toString() === activeBusinessId.toString());
+
+    // Only update root user profile fields if this is the root / primary business
+    if (isRootOrPrimary) {
+      keys.forEach(key => {
+        if (req.body[key] !== undefined) {
+          // Prevent accidental wiping of existing essential credentials with empty string
+          if (['name', 'email', 'businessName', 'mobileNumber'].includes(key) && String(req.body[key]).trim() === '' && user[key]) {
+            return;
+          }
+          user[key] = req.body[key];
+        }
+      });
+    } else {
+      // For secondary businesses, update shared vendor-level references if provided
+      if (req.body.alternateVendorName !== undefined) user.alternateVendorName = req.body.alternateVendorName;
+      if (req.body.coPartnerName !== undefined) user.coPartnerName = req.body.coPartnerName;
+    }
+
+    // Also update all fields in the matching business in the businesses array
     if (activeBusinessId && user.businesses) {
       const bizIndex = user.businesses.findIndex(b => b._id.toString() === activeBusinessId.toString());
       if (bizIndex !== -1) {
-        if (req.body.businessName !== undefined) user.businesses[bizIndex].businessName = req.body.businessName;
-        if (req.body.address !== undefined) user.businesses[bizIndex].address = req.body.address;
-        if (req.body.street !== undefined) user.businesses[bizIndex].street = req.body.street;
-        if (req.body.city !== undefined) user.businesses[bizIndex].city = req.body.city;
-        if (req.body.state !== undefined) user.businesses[bizIndex].state = req.body.state;
-        if (req.body.country !== undefined) user.businesses[bizIndex].country = req.body.country;
-        if (req.body.pincode !== undefined || req.body.postalCode !== undefined || req.body.pinCode !== undefined) {
-          user.businesses[bizIndex].pincode = req.body.pincode || req.body.postalCode || req.body.pinCode;
-          user.businesses[bizIndex].postalCode = req.body.pincode || req.body.postalCode || req.body.pinCode;
-        }
+        const b = user.businesses[bizIndex];
+        if (req.body.businessName !== undefined && String(req.body.businessName).trim() !== '') b.businessName = req.body.businessName;
+        if (req.body.name !== undefined) b.name = req.body.name;
+        if (req.body.contactPerson !== undefined || req.body.name !== undefined) b.contactPerson = req.body.contactPerson || req.body.name;
+        if (req.body.alternateVendorName !== undefined) b.alternateVendorName = req.body.alternateVendorName;
+        if (req.body.coPartnerName !== undefined) b.coPartnerName = req.body.coPartnerName;
+        if (req.body.agentName !== undefined) b.agentName = req.body.agentName;
+        if (req.body.email !== undefined && String(req.body.email).trim() !== '') b.email = req.body.email;
         if (req.body.phone !== undefined || req.body.mobileNumber !== undefined || req.body.telephone !== undefined) {
-          user.businesses[bizIndex].phone = req.body.phone || req.body.mobileNumber || req.body.telephone;
+          b.phone = req.body.phone || req.body.mobileNumber || req.body.telephone;
         }
-        if (req.body.panNo !== undefined) user.businesses[bizIndex].panNo = req.body.panNo;
-        if (req.body.aadhaarNo !== undefined) user.businesses[bizIndex].aadhaarNo = req.body.aadhaarNo;
-        if (req.body.companyRegNo !== undefined) user.businesses[bizIndex].companyRegNo = req.body.companyRegNo;
-        if (req.body.logo !== undefined) user.businesses[bizIndex].logo = req.body.logo;
-        if (req.body.businessLicense !== undefined) user.businesses[bizIndex].businessLicense = req.body.businessLicense;
-        if (req.body.businessImages !== undefined) user.businesses[bizIndex].businessImages = req.body.businessImages;
-        if (req.body.bankName !== undefined) user.businesses[bizIndex].bankName = req.body.bankName;
-        if (req.body.accountHolderName !== undefined) user.businesses[bizIndex].accountHolderName = req.body.accountHolderName;
-        if (req.body.accountNo !== undefined) user.businesses[bizIndex].accountNo = req.body.accountNo;
-        if (req.body.ifscCode !== undefined) user.businesses[bizIndex].ifscCode = req.body.ifscCode;
-        if (req.body.swiftCode !== undefined) user.businesses[bizIndex].swiftCode = req.body.swiftCode;
+        if (req.body.mobileNumber !== undefined) b.mobileNumber = req.body.mobileNumber;
+        if (req.body.telephone !== undefined) b.telephone = req.body.telephone;
+        if (req.body.fax !== undefined) b.fax = req.body.fax;
+        if (req.body.alternateNumber !== undefined) b.alternateNumber = req.body.alternateNumber;
+        if (req.body.address !== undefined) b.address = req.body.address;
+        if (req.body.street !== undefined) b.street = req.body.street;
+        if (req.body.city !== undefined) b.city = req.body.city;
+        if (req.body.state !== undefined) b.state = req.body.state;
+        if (req.body.country !== undefined) b.country = req.body.country;
+        if (req.body.pincode !== undefined || req.body.postalCode !== undefined || req.body.pinCode !== undefined) {
+          b.pincode = req.body.pincode || req.body.postalCode || req.body.pinCode;
+          b.postalCode = req.body.pincode || req.body.postalCode || req.body.pinCode;
+        }
+        if (req.body.gstStatus !== undefined) b.gstStatus = req.body.gstStatus;
+        if (req.body.gstNumber !== undefined) b.gstNumber = req.body.gstNumber;
+        if (req.body.msmeStatus !== undefined) b.msmeStatus = req.body.msmeStatus;
+        if (req.body.panNo !== undefined) b.panNo = req.body.panNo;
+        if (req.body.aadhaarNo !== undefined) b.aadhaarNo = req.body.aadhaarNo;
+        if (req.body.companyRegNo !== undefined) b.companyRegNo = req.body.companyRegNo;
+        if (req.body.logo !== undefined) b.logo = req.body.logo;
+        if (req.body.businessLicense !== undefined) b.businessLicense = req.body.businessLicense;
+        if (req.body.businessImages !== undefined) b.businessImages = req.body.businessImages;
+        if (req.body.bankName !== undefined) b.bankName = req.body.bankName;
+        if (req.body.bankBranch !== undefined) b.bankBranch = req.body.bankBranch;
+        if (req.body.bankStreet !== undefined) b.bankStreet = req.body.bankStreet;
+        if (req.body.bankCity !== undefined) b.bankCity = req.body.bankCity;
+        if (req.body.accountHolderName !== undefined) b.accountHolderName = req.body.accountHolderName;
+        if (req.body.accountNo !== undefined) b.accountNo = req.body.accountNo;
+        if (req.body.ifscCode !== undefined) b.ifscCode = req.body.ifscCode;
+        if (req.body.swiftCode !== undefined) b.swiftCode = req.body.swiftCode;
+        b.updatedAt = new Date();
       }
     }
 
@@ -3950,6 +4090,22 @@ const addBusiness = async (req, res) => {
       }
     }
 
+    // Validate that FSSAI and Insurance document numbers do not exceed 14 digits
+    if (catDocs.foodSafetyLicenseNo && String(catDocs.foodSafetyLicenseNo).replace(/\D/g, '').length > 14) {
+      return res.status(400).json({ success: false, message: 'Food Safety License (FSSAI) number cannot exceed 14 digits.' });
+    }
+    for (const [k, v] of Object.entries(catDocs)) {
+      if (/fssai|foodsafety|insurance/i.test(k)) {
+        const num = String(typeof v === 'object' ? (v.docNumber || v.number || '') : v).trim();
+        if (num && num.replace(/\D/g, '').length > 14) {
+          return res.status(400).json({
+            success: false,
+            message: `${/insurance/i.test(k) ? 'Insurance' : 'FSSAI'} number cannot exceed 14 digits.`
+          });
+        }
+      }
+    }
+
     // 6. Find Responsible Pincode Admin based on submitted Pincode
     const territoryInfo = { state: cleanState, district: cleanDistrict, taluk: cleanTaluk, pincode: pinVal };
     const pincodeAdmin = await findPincodeAdmin(pinVal, territoryInfo);
@@ -4426,7 +4582,7 @@ const getSalesPayments = async (req, res) => {
       endDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday + 6, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'This Month') {
       startDate = new Date(Date.UTC(istYear, istMonth, 1, 0, 0, 0, 0) - istOffsetMs);
-      endDate = new Date(Date.UTC(istYear, istMonth, 1 + 31, 23, 59, 59, 999) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth + 1, 0, 23, 59, 59, 999) - istOffsetMs);
     } else if (duration === 'This Year') {
       startDate = new Date(Date.UTC(istYear, 0, 1, 0, 0, 0, 0) - istOffsetMs);
       endDate = new Date(Date.UTC(istYear, 11, 31, 23, 59, 59, 999) - istOffsetMs);
@@ -4451,46 +4607,32 @@ const getSalesPayments = async (req, res) => {
       }
     }
 
-    if (startDate || endDate) {
-      query.$and = query.$and || [];
-      const dateCond = {};
-      const dateCondStr = {};
-      if (startDate) {
-        dateCond.$gte = startDate;
-        dateCondStr.$gte = startDate.toISOString();
-      }
-      if (endDate) {
-        dateCond.$lte = endDate;
-        dateCondStr.$lte = endDate.toISOString();
-      }
-      query.$and.push({
-        $or: [
-          { createdAt: dateCond },
-          { createdAt: dateCondStr },
-          { created_at: dateCond },
-          { created_at: dateCondStr },
-          { paidAt: dateCond },
-          { paidAt: dateCondStr },
-          { orderDate: dateCond },
-          { orderDate: dateCondStr },
-          { date: dateCond },
-          { date: dateCondStr }
-        ]
-      });
-    }
-
     // Fetch all matching orders sorted newest first
     const allOrders = await Order.find(query).sort({ created_at: -1, createdAt: -1, _id: -1 }).lean();
 
     // Deduplicate orders by _id to avoid any duplicate payment rows
     const seenOrderIds = new Set();
-    const uniqueOrders = [];
+    let uniqueOrders = [];
     for (const o of allOrders) {
       const oId = String(o._id);
       if (!seenOrderIds.has(oId)) {
         seenOrderIds.add(oId);
         uniqueOrders.push(o);
       }
+    }
+
+    // Apply date range / Duration filter accurately in memory to handle both Date objects and ISO strings
+    if (startDate || endDate) {
+      const startMs = startDate ? startDate.getTime() : -Infinity;
+      const endMs = endDate ? endDate.getTime() : Infinity;
+      uniqueOrders = uniqueOrders.filter(o => {
+        const rawDate = o.paidAt || o.paymentDate || o.createdAt || o.created_at || o.orderDate || o.date;
+        if (!rawDate) return false;
+        const d = new Date(rawDate);
+        const t = d.getTime();
+        if (isNaN(t)) return false;
+        return t >= startMs && t <= endMs;
+      });
     }
 
     const customerLookup = await buildCustomerLookupForOrders(uniqueOrders);
@@ -4795,11 +4937,8 @@ const getProductSalesInsights = async (req, res) => {
     if (!product) {
       product = await Product.findOne({ $or: [{ _id: targetProdId }, { id: targetProdId }] }).lean();
     }
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
-    }
 
-    // Ownership check
+    // Ownership check IDs
     const allowedBizIds = new Set([
       parentUserId,
       (user._id || '').toString(),
@@ -4807,6 +4946,46 @@ const getProductSalesInsights = async (req, res) => {
       (user.registrationId || '').toString(),
       ...(user.businesses || []).map(b => (b._id || b.id || '').toString()).filter(Boolean)
     ]);
+
+    if (!product) {
+      // Check if product exists in vendor's orders before falling back
+      const orderWithItem = await Order.findOne({
+        $or: [
+          { vendorId: { $in: Array.from(allowedBizIds) } },
+          { vendor_id: { $in: Array.from(allowedBizIds) } }
+        ],
+        $or: [
+          { 'items.productId': targetProdId },
+          { 'items.id': targetProdId },
+          { 'items._id': targetProdId },
+          { productId: targetProdId }
+        ]
+      }).lean();
+
+      if (orderWithItem) {
+        const itemObj = (orderWithItem.items || []).find(i => String(i.productId || i.id || i._id) === String(targetProdId)) || {};
+        product = {
+          _id: targetProdId,
+          name: itemObj.name || orderWithItem.product_details || 'Catalog Item',
+          price: itemObj.price || 0,
+          category: itemObj.category || orderWithItem.category || 'Products',
+          vendorId: orderWithItem.vendorId || parentUserId
+        };
+      } else {
+        // Return 200 with empty sales insights instead of 404
+        return res.status(200).json({
+          success: true,
+          data: {
+            productId: targetProdId,
+            productName: 'Catalog Item',
+            totalSold: 0,
+            totalRevenue: 0,
+            recentCustomers: []
+          }
+        });
+      }
+    }
+
     const prodVendorId = (product.vendorId || product.vendor_id || product.vendor || '').toString();
     if (prodVendorId && !allowedBizIds.has(prodVendorId)) {
       return res.status(403).json({ success: false, message: 'Unauthorized: Product belongs to another vendor' });
@@ -4953,6 +5132,164 @@ const getProductSalesInsights = async (req, res) => {
   }
 };
 
+// --- SUPPORT TICKETS ---
+// @desc    Get vendor's support tickets
+// @route   GET /api/vendor/tickets
+// @access  Private (Vendor)
+const getVendorTickets = async (req, res) => {
+  try {
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await getVendorUserCached(parentUserId);
+    const businessIds = [parentUserId.toString()];
+    if (user && user.businesses) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+      });
+    }
+
+    const tickets = await SupportTicket.find({
+      vendorId: { $in: businessIds }
+    }).sort({ createdAt: -1, date: -1 }).lean();
+
+    return res.status(200).json({
+      success: true,
+      data: tickets
+    });
+  } catch (error) {
+    console.error('Get Vendor Tickets Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error retrieving support tickets' });
+  }
+};
+
+// @desc    Submit a support ticket to platform admin
+// @route   POST /api/vendor/tickets
+// @access  Private (Vendor)
+const createVendorTicket = async (req, res) => {
+  try {
+    const { category, subject, message, priority } = req.body;
+    if (!subject || !message) {
+      return res.status(400).json({ success: false, message: 'Both subject and message are required' });
+    }
+
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await getVendorUserCached(parentUserId);
+    const activeBusiness = (user && user.businesses && req.body.activeBusinessId)
+      ? user.businesses.find(b => String(b._id) === String(req.body.activeBusinessId))
+      : null;
+
+    const vendorId = parentUserId.toString();
+    const vendorName = activeBusiness?.businessName || user?.businessName || user?.name || 'Vendor';
+    const vendorEmail = user?.email || 'vendor@connectapp.com';
+
+    const ticketId = `TKT-ADM-${Math.floor(100 + Math.random() * 900)}`;
+    const nowStr = new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+    const newTicket = await SupportTicket.create({
+      id: ticketId,
+      ticketId,
+      vendorId,
+      vendorName,
+      vendorEmail,
+      businessName: vendorName,
+      queryType: 'vendor_support',
+      customerName: 'Platform Support Team',
+      email: 'support@connectapp.com',
+      phone: '1800-123-4567',
+      category: category || 'General Inquiry',
+      subject: subject.trim(),
+      message: message.trim(),
+      date: nowStr,
+      status: 'Open', // Strictly Open - vendors CANNOT change this
+      priority: priority || 'Medium',
+      replies: [
+        {
+          sender: `${vendorName} (You)`,
+          role: 'Vendor',
+          text: message.trim(),
+          time: nowStr,
+          createdAt: new Date()
+        }
+      ]
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Support query ticket raised successfully! Admin will review your request.',
+      data: newTicket
+    });
+  } catch (error) {
+    console.error('Create Vendor Ticket Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error submitting support ticket' });
+  }
+};
+
+// @desc    Reply to an existing support ticket
+// @route   POST /api/vendor/tickets/:id/reply
+// @access  Private (Vendor)
+const replyVendorTicket = async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ success: false, message: 'Reply message cannot be empty' });
+    }
+
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await getVendorUserCached(parentUserId);
+    const businessIds = [parentUserId.toString()];
+    if (user && user.businesses) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+      });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      $or: [{ id: req.params.id }, { _id: req.params.id }, { ticketId: req.params.id }]
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Support ticket not found' });
+    }
+
+    // Ownership check: Prevent vendors from modifying tickets belonging to other vendors
+    if (!businessIds.includes(String(ticket.vendorId))) {
+      return res.status(403).json({ success: false, message: 'Unauthorized. You do not own this support ticket.' });
+    }
+
+    const senderName = user?.businessName || user?.name || 'Vendor';
+    const nowStr = new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+    ticket.replies.push({
+      sender: senderName,
+      role: 'Vendor',
+      text: text.trim(),
+      time: nowStr,
+      createdAt: new Date()
+    });
+
+    // NOTE: Vendors CANNOT change status to 'In Progress' or 'Resolved'. Status remains under Admin control.
+    await ticket.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Response sent successfully!',
+      data: ticket
+    });
+  } catch (error) {
+    console.error('Reply Vendor Ticket Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error replying to ticket' });
+  }
+};
+
+// @desc    Block vendor from modifying ticket status
+// @route   PUT /api/vendor/tickets/:id/status
+// @access  Private (Vendor) - FORBIDDEN
+const updateTicketStatusForbidden = async (req, res) => {
+  return res.status(403).json({
+    success: false,
+    message: 'Vendors are not permitted to change ticket status. Only platform administrators can manage ticket processing and resolution.'
+  });
+};
+
 module.exports = {
   getVendorAnalytics,
   createProduct,
@@ -4986,5 +5323,9 @@ module.exports = {
   updateBusiness,
   getSalesPayments,
   getBusinessRequests,
-  resubmitBusinessRequest
+  resubmitBusinessRequest,
+  getVendorTickets,
+  createVendorTicket,
+  replyVendorTicket,
+  updateTicketStatusForbidden
 };

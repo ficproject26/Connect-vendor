@@ -967,6 +967,8 @@ const VendorDashboard = () => {
     distance: '', busTiming: '', stoppings: [],
     specifications: {}
   });
+  const [primaryImgError, setPrimaryImgError] = useState(false);
+  const [thumbErrors, setThumbErrors] = useState({});
 
   // Dynamic Route Points Local State
   const [isAddingBp, setIsAddingBp] = useState(false);
@@ -1393,41 +1395,42 @@ const VendorDashboard = () => {
 
   useEffect(() => {
     if (user) {
+      const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
       setProfileForm({
-        name: user.name || '',
-        email: user.email || '',
-        businessName: user.businessName || '',
-        agentName: user.agentName || '',
-        alternateVendorName: user.alternateVendorName || '',
-        contactPerson: user.contactPerson || '',
-        mobileNumber: user.mobileNumber || '',
-        address: user.address || '',
-        street: user.street || '',
-        city: (user.city && user.city.toLowerCase() !== 'city') ? user.city : '',
-        state: (user.state && user.state.toLowerCase() !== 'state') ? user.state : '',
-        country: user.country || '',
-        postalCode: user.postalCode || '',
-        telephone: user.telephone || '',
-        fax: user.fax || '',
-        alternateNumber: user.alternateNumber || '',
-        coPartnerName: user.coPartnerName || '',
-        gstStatus: user.gstStatus || 'Non-GST Declared',
-        panNo: user.panNo || '',
-        companyRegNo: user.companyRegNo || '',
-        gstNumber: user.gstNumber || '',
-        msmeStatus: user.msmeStatus || 'Non-MSME',
-        businessLicense: user.businessLicense || '',
-        accountHolderName: user.accountHolderName || '',
-        bankName: user.bankName || '',
-        bankBranch: user.bankBranch || '',
-        bankStreet: user.bankStreet || '',
-        bankCity: user.bankCity || '',
-        accountNo: user.accountNo || '',
-        ifscCode: user.ifscCode || '',
-        swiftCode: user.swiftCode || ''
+        name: activeBiz?.contactPerson || activeBiz?.name || user.name || '',
+        email: activeBiz?.email || user.email || '',
+        businessName: activeBiz?.businessName || user.businessName || '',
+        agentName: activeBiz?.agentName || user.agentName || '',
+        alternateVendorName: activeBiz?.alternateVendorName || user.alternateVendorName || '',
+        contactPerson: activeBiz?.contactPerson || user.contactPerson || activeBiz?.name || user.name || '',
+        mobileNumber: activeBiz?.phone || activeBiz?.mobileNumber || user.mobileNumber || '',
+        address: activeBiz?.address || user.address || '',
+        street: activeBiz?.street || user.street || '',
+        city: (activeBiz?.city || user.city) && (activeBiz?.city || user.city).toLowerCase() !== 'city' ? (activeBiz?.city || user.city) : '',
+        state: (activeBiz?.state || user.state) && (activeBiz?.state || user.state).toLowerCase() !== 'state' ? (activeBiz?.state || user.state) : '',
+        country: activeBiz?.country || user.country || '',
+        postalCode: activeBiz?.pincode || activeBiz?.postalCode || user.postalCode || '',
+        telephone: activeBiz?.telephone || user.telephone || '',
+        fax: activeBiz?.fax || user.fax || '',
+        alternateNumber: activeBiz?.alternateNumber || user.alternateNumber || '',
+        coPartnerName: activeBiz?.coPartnerName || user.coPartnerName || '',
+        gstStatus: activeBiz?.gstStatus || user.gstStatus || 'Non-GST Declared',
+        panNo: activeBiz?.panNo || user.panNo || '',
+        companyRegNo: activeBiz?.companyRegNo || user.companyRegNo || '',
+        gstNumber: activeBiz?.gstNumber || user.gstNumber || '',
+        msmeStatus: activeBiz?.msmeStatus || user.msmeStatus || 'Non-MSME',
+        businessLicense: activeBiz?.businessLicense || user.businessLicense || '',
+        accountHolderName: activeBiz?.accountHolderName || user.accountHolderName || '',
+        bankName: activeBiz?.bankName || user.bankName || '',
+        bankBranch: activeBiz?.bankBranch || user.bankBranch || '',
+        bankStreet: activeBiz?.bankStreet || user.bankStreet || '',
+        bankCity: activeBiz?.bankCity || user.bankCity || '',
+        accountNo: activeBiz?.accountNo || user.accountNo || '',
+        ifscCode: activeBiz?.ifscCode || user.ifscCode || '',
+        swiftCode: activeBiz?.swiftCode || user.swiftCode || ''
       });
     }
-  }, [user]);
+  }, [user, activeBusinessId]);
 
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [showForgotFlow, setShowForgotFlow] = useState(false);
@@ -2043,6 +2046,23 @@ const VendorDashboard = () => {
       } catch (e) {}
     }
   }, [vendorQueriesList, user?._id]);
+
+  useEffect(() => {
+    if (user?._id) {
+      axios.get(`${getVendorBackendUrl()}/api/vendor/tickets`, getAxiosConfig())
+        .then(res => {
+          if (res.data.success && Array.isArray(res.data.data)) {
+            setVendorQueriesList(prev => {
+              const apiTickets = res.data.data;
+              const apiIds = new Set(apiTickets.map(t => t.id || t._id));
+              const remaining = (prev || []).filter(p => !apiIds.has(p.id) && !apiIds.has(p._id));
+              return [...apiTickets, ...remaining];
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user?._id, activeTab]);
   
   // Member Search and Storefront States
   const [memberCategorySearch, setMemberCategorySearch] = useState('');
@@ -2204,11 +2224,39 @@ const VendorDashboard = () => {
       if (res.data?.success && res.data?.data) {
         setSalesInsightsData(res.data.data);
       } else {
-        setSalesInsightsError(res.data?.message || 'Failed to load sales insights');
+        // Fallback gracefully to locally calculated sales data
+        const localData = getItemSalesData(item._id, item);
+        setSalesInsightsData({
+          productId: item._id,
+          productName: item.name,
+          totalSold: localData.count,
+          totalRevenue: localData.revenue,
+          recentCustomers: localData.orders.map(o => ({
+            customerName: o.memberName || 'Customer',
+            customerId: o.orderId || 'N/A',
+            quantity: o.quantity || 1,
+            amount: o.amount || 0,
+            date: o.date
+          }))
+        });
       }
     } catch (err) {
-      console.error('Error fetching sales insights:', err);
-      setSalesInsightsError(err.response?.data?.message || 'Failed to load sales insights');
+      console.warn('Backend sales insights unavailable, using local calculation:', err);
+      // Fallback gracefully to locally calculated sales data to avoid broken modal
+      const localData = getItemSalesData(item._id, item);
+      setSalesInsightsData({
+        productId: item._id,
+        productName: item.name,
+        totalSold: localData.count,
+        totalRevenue: localData.revenue,
+        recentCustomers: localData.orders.map(o => ({
+          customerName: o.memberName || 'Customer',
+          customerId: o.orderId || 'N/A',
+          quantity: o.quantity || 1,
+          amount: o.amount || 0,
+          date: o.date
+        }))
+      });
     } finally {
       setSalesInsightsLoading(false);
     }
@@ -3239,6 +3287,8 @@ const VendorDashboard = () => {
       specifications: {}
     });
     setRoutePointError('');
+    setPrimaryImgError(false);
+    setThumbErrors({});
     setIsEditItem(false);
     setIsItemModalOpen(true);
   };
@@ -3291,8 +3341,12 @@ const VendorDashboard = () => {
       amenities: item.amenities || [],
       availableSizes: item.availableSizes || item.sizes || [],
       availableColors: item.availableColors || item.colors || [],
-      imageUrl: item.imageUrl || '',
-      imageUrls: item.imageUrls || (item.imageUrl ? [item.imageUrl] : []),
+      imageUrl: item.imageUrl || item.image || item.img || '',
+      imageUrls: (Array.isArray(item.imageUrls) && item.imageUrls.length > 0)
+        ? item.imageUrls
+        : (Array.isArray(item.images) && item.images.length > 0)
+          ? item.images
+          : (item.imageUrl || item.image || item.img ? [item.imageUrl || item.image || item.img] : []),
       foodType: item.foodType || 'Veg',
       status: item.status || terms.catalogStatuses[0],
       cardTypes: item.cardTypes || ['Silver', 'Gold', 'Diamond'],
@@ -3335,6 +3389,8 @@ const VendorDashboard = () => {
       specifications: item.specifications || item.customFields || {}
     });
     setRoutePointError('');
+    setPrimaryImgError(false);
+    setThumbErrors({});
     setSelectedItemId(item._id);
     setIsEditItem(true);
     setIsItemModalOpen(true);
@@ -3387,13 +3443,13 @@ const VendorDashboard = () => {
       setImageUploading(true);
       const res = await axios.post(`${getBackendUrl()}/api/vendor/upload`, formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}`
         }
       });
 
       if (res.data.success && res.data.imageUrl) {
         const finalUrl = formatImageUrl(res.data.imageUrl);
+        setPrimaryImgError(false);
         setItemForm(prev => {
           const currentUrls = (prev.imageUrls || []).filter(u => u !== tempPreviewUrl);
           const newUrls = [finalUrl, ...currentUrls.filter(u => u !== finalUrl)];
@@ -3451,7 +3507,6 @@ const VendorDashboard = () => {
     try {
       const res = await axios.post(`${getBackendUrl()}/api/vendor/upload`, formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}`
         }
       });
@@ -5071,8 +5126,10 @@ const VendorDashboard = () => {
                           <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontWeight={500} />
                           <YAxis stroke="#64748b" fontSize={11} fontWeight={500} />
                           <Tooltip 
-                            contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#f8fafc', borderRadius: '16px', backdropFilter: 'blur(10px)' }} 
-                            formatter={(value) => [`₹${value}`, 'Revenue']}
+                            contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255, 255, 255, 0.15)', color: '#ffffff', borderRadius: '16px', backdropFilter: 'blur(10px)', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }} 
+                            labelStyle={{ color: '#ffffff', fontWeight: 700, marginBottom: '4px' }}
+                            itemStyle={{ color: '#ffffff', fontWeight: 600 }}
+                            formatter={(value) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Revenue']}
                           />
                           <Bar dataKey="revenue" radius={[10, 10, 0, 0]}>
                             {revenueByCardTierData.map((entry, index) => {
@@ -5695,8 +5752,10 @@ const VendorDashboard = () => {
                                       const salesInfo = getItemSalesData(item._id, item);
                                       const salesCount = salesInfo.count;
                                       const customersCount = salesInfo.customersCount;
-                                      const isItemOutOfStock = Number(item.stock) <= 0 || item.status === 'Unavailable' || item.status === 'Out of Stock';
-                                      const currentStatus = isItemOutOfStock ? 'Out of Stock' : (item.status || 'Available');
+                                      const isItemOutOfStock = shouldShowStock
+                                        ? (Number(item.stock) <= 0 || item.status === 'Unavailable' || item.status === 'Out of Stock')
+                                        : (item.status === 'Unavailable' || item.status === 'Out of Stock');
+                                      const currentStatus = isItemOutOfStock ? (shouldShowStock ? 'Out of Stock' : (item.status || 'Unavailable')) : (item.status || 'Available');
 
                                       return (
                                         <div className={`mt-2 grid gap-1 text-[9px] sm:text-[10px] bg-slate-50 dark:bg-slate-900/60 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
@@ -6172,11 +6231,31 @@ const VendorDashboard = () => {
                                         <span>{icon}</span>
                                         <span>{label}</span>
                                       </span>
-                                      {txnId && (
-                                        <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 truncate max-w-[150px]" title={txnId}>
-                                          ID: {txnId}
-                                        </div>
-                                      )}
+                                      {(() => {
+                                        const isPaid = order.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(order.status);
+                                        if (isCod && !isPaid) {
+                                          return (
+                                            <div className="text-[10px] text-amber-600 dark:text-amber-400 font-sans italic">
+                                              Pending collection
+                                            </div>
+                                          );
+                                        }
+                                        if (txnId && (!isCod || (!String(txnId).startsWith('TXN_') && isPaid))) {
+                                          return (
+                                            <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 truncate max-w-[150px]" title={txnId}>
+                                              ID: {txnId}
+                                            </div>
+                                          );
+                                        }
+                                        if (isCod) {
+                                          return (
+                                            <div className="text-[10px] text-slate-400 italic">
+                                              {isPaid ? 'Cash collected' : 'Pending collection'}
+                                            </div>
+                                          );
+                                        }
+                                        return null;
+                                      })()}
                                     </div>
                                   );
                                 })()}
@@ -6515,7 +6594,7 @@ const VendorDashboard = () => {
                                         if (isServices) {
                                           badgeLabel = 'SERVICES';
                                           badgeColor = 'bg-teal-100 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300';
-                                          detailTitle = b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` : (b.serviceName || (b.items && b.items[0]?.name) || b.product_details || 'Service Appointment');
+                                          detailTitle = b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` : (b.serviceName || (b.items && b.items[0]?.name) || b.product_details || b.name || b.title || 'General Service');
                                           if (b.doctorSpecialization) {
                                             subInfo = b.doctorSpecialization;
                                           } else if (b.subcategory || (b.items && b.items[0]?.subcategory)) {
@@ -7221,6 +7300,17 @@ const VendorDashboard = () => {
                 const query = (applicationSearchQuery || '').trim().toLowerCase();
 
                 const filteredApps = applications.filter(app => {
+                  // Strictly ensure record is a genuine Job Application, never a Travel booking or product order
+                  const appType = (app.type || '').trim().toLowerCase();
+                  const appCat = (app.category || '').trim().toLowerCase();
+                  if (['travel', 'stay', 'food', 'products', 'daily needs', 'services'].includes(appType) || ['travel', 'stay', 'food', 'products', 'daily needs', 'services'].includes(appCat)) {
+                    return false;
+                  }
+                  const idStr = String(app.order_number || app.id || app.applicationId || '');
+                  if ((idStr.startsWith('BKG') || idStr.startsWith('ORD')) && !['job', 'jobs', 'application', 'job application'].includes(appType)) {
+                    return false;
+                  }
+
                   // Status filter: handle case-insensitivity and standard status aliases
                   if (normStatusFilter !== 'all') {
                     const st = (app.status || '').trim().toLowerCase();
@@ -8206,7 +8296,7 @@ const VendorDashboard = () => {
                 <p className="text-slate-800 dark:text-slate-200 text-xs mt-1">Update all your business profile and bank account information</p>
               </div>
 
-              <form onSubmit={handleSaveProfile} className="space-y-6">
+              <form onSubmit={handleSaveProfile} noValidate className="space-y-6">
                 {/* General Info Section */}
                 <div>
                   <h4 className="text-sm font-bold text-primary-500 dark:text-primary-400 border-b border-slate-200 dark:border-slate-800/80 pb-1.5 mb-4 uppercase tracking-wider">General Information</h4>
@@ -8218,7 +8308,6 @@ const VendorDashboard = () => {
                       </label>
                       <input
                         type="text"
-                        required
                         value={profileForm.businessName}
                         onChange={e => setProfileForm({ ...profileForm, businessName: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8231,7 +8320,6 @@ const VendorDashboard = () => {
                       </label>
                       <input
                         type="text"
-                        required
                         value={profileForm.name}
                         onChange={e => setProfileForm({ ...profileForm, name: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8268,7 +8356,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">E-mail Address</label>
                       <input
                         type="email"
-                        required
                         value={profileForm.email}
                         onChange={e => setProfileForm({ ...profileForm, email: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8278,7 +8365,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Mobile Contact</label>
                       <input
                         type="text"
-                        required
                         maxLength={10}
                         value={profileForm.mobileNumber}
                         onChange={e => setProfileForm({ ...profileForm, mobileNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
@@ -8331,7 +8417,6 @@ const VendorDashboard = () => {
                       </label>
                       <input
                         type="text"
-                        required
                         value={profileForm.address}
                         onChange={e => setProfileForm({ ...profileForm, address: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8341,7 +8426,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Street</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.street}
                         onChange={e => setProfileForm({ ...profileForm, street: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8351,7 +8435,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">City</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.city}
                         onChange={e => setProfileForm({ ...profileForm, city: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8361,7 +8444,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">State</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.state}
                         onChange={e => setProfileForm({ ...profileForm, state: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8371,7 +8453,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Country</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.country}
                         onChange={e => setProfileForm({ ...profileForm, country: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8381,7 +8462,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Postal Code</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.postalCode}
                         onChange={e => setProfileForm({ ...profileForm, postalCode: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8391,7 +8471,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">PAN Number</label>
                       <input
                         type="text"
-                        required
                         maxLength={10}
                         placeholder="e.g. ABCDE1234F"
                         value={profileForm.panNo || ''}
@@ -8403,7 +8482,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Aadhaar Number</label>
                       <input
                         type="text"
-                        required
                         maxLength={12}
                         placeholder="12-digit Aadhaar Number"
                         value={profileForm.aadhaarNo || ''}
@@ -8415,7 +8493,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Company Registration No</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.companyRegNo}
                         onChange={e => setProfileForm({ ...profileForm, companyRegNo: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8441,7 +8518,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Account Holder Name</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.accountHolderName}
                         onChange={e => setProfileForm({ ...profileForm, accountHolderName: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8451,7 +8527,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Bank Name</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.bankName}
                         onChange={e => setProfileForm({ ...profileForm, bankName: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8461,7 +8536,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Branch Name</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.bankBranch}
                         onChange={e => setProfileForm({ ...profileForm, bankBranch: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8471,7 +8545,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Bank Branch Street</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.bankStreet}
                         onChange={e => setProfileForm({ ...profileForm, bankStreet: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8481,7 +8554,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Bank Branch City</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.bankCity}
                         onChange={e => setProfileForm({ ...profileForm, bankCity: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8491,7 +8563,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Account Number</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.accountNo}
                         onChange={e => setProfileForm({ ...profileForm, accountNo: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -8501,7 +8572,6 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">IFSC Code</label>
                       <input
                         type="text"
-                        required
                         value={profileForm.ifscCode}
                         onChange={e => setProfileForm({ ...profileForm, ifscCode: e.target.value })}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
@@ -10819,19 +10889,17 @@ required
                         <img
                           src={previewSrc}
                           alt="Product preview"
-                          onError={(e) => {
-                            e.currentTarget.onerror = null;
-                            e.currentTarget.style.display = 'none';
-                            const el = document.getElementById('primary-img-error-badge');
-                            if (el) el.style.display = 'flex';
-                          }}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-102"
+                          onLoad={() => setPrimaryImgError(false)}
+                          onError={() => setPrimaryImgError(true)}
+                          className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-102 ${primaryImgError ? 'hidden' : 'block'}`}
                         />
-                        <div id="primary-img-error-badge" style={{ display: 'none' }} className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400 p-4 text-center">
-                          <ImageIcon size={32} className="mb-2 text-slate-400" />
-                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Photo could not be loaded</span>
-                          <span className="text-[10px] text-slate-400 mt-1">Click below to upload a replacement photo</span>
-                        </div>
+                        {primaryImgError && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400 p-4 text-center">
+                            <ImageIcon size={32} className="mb-2 text-slate-400" />
+                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Photo could not be loaded</span>
+                            <span className="text-[10px] text-slate-400 mt-1">Click below to upload a replacement photo</span>
+                          </div>
+                        )}
                         <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider shadow-sm bg-emerald-500/90 text-white pointer-events-none">
                           ✓ Custom Photo
                         </div>
@@ -10887,6 +10955,7 @@ required
                             key={idx}
                             onClick={() => {
                               if (idx !== 0) {
+                                setPrimaryImgError(false);
                                 setItemForm(prev => {
                                   const currentUrls = (prev.imageUrls && prev.imageUrls.length > 0
                                     ? prev.imageUrls
@@ -10910,22 +10979,18 @@ required
                             <img
                               src={formattedUrl}
                               alt={`Photo thumbnail ${idx + 1}`}
-                              onError={(e) => {
-                                e.currentTarget.onerror = null;
-                                e.currentTarget.style.display = 'none';
-                                const fb = document.getElementById(`thumb-err-${idx}`);
-                                if (fb) fb.style.display = 'flex';
-                              }}
-                              className="w-full h-full object-cover"
+                              onLoad={() => setThumbErrors(prev => ({ ...prev, [idx]: false }))}
+                              onError={() => setThumbErrors(prev => ({ ...prev, [idx]: true }))}
+                              className={`w-full h-full object-cover ${thumbErrors[idx] ? 'hidden' : 'block'}`}
                             />
-                            <div
-                              id={`thumb-err-${idx}`}
-                              style={{ display: 'none' }}
-                              className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400 p-1 text-center"
-                            >
-                              <ImageIcon size={18} className="text-slate-400" />
-                              <span className="text-[8px] font-bold text-slate-500 mt-0.5">Error</span>
-                            </div>
+                            {thumbErrors[idx] && (
+                              <div
+                                className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400 p-1 text-center"
+                              >
+                                <ImageIcon size={18} className="text-slate-400" />
+                                <span className="text-[8px] font-bold text-slate-500 mt-0.5">Error</span>
+                              </div>
+                            )}
                             {idx === 0 && (
                               <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-primary-600/90 text-white text-[8px] font-bold rounded pointer-events-none">
                                 Main
@@ -10935,6 +11000,7 @@ required
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
+                                setPrimaryImgError(false);
                                 setItemForm(prev => {
                                   const currentUrls = (prev.imageUrls && prev.imageUrls.length > 0
                                     ? prev.imageUrls
@@ -13734,11 +13800,19 @@ required
                   <span className="font-bold text-slate-800 dark:text-slate-200 break-all select-all text-[11px] mt-0.5">
                     {(() => {
                       const isCod = String(selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || '').toLowerCase().includes('cash') || String(selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || '').toLowerCase().includes('cod');
+                      const isPaid = selectedBillOrder.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(selectedBillOrder.status);
                       const resolvedTxnId = selectedBillOrder.transactionId || selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId;
-                      if (!resolvedTxnId) {
+                      if (isCod && !isPaid) {
+                        return (
+                          <span className="text-amber-600 dark:text-amber-400 italic font-sans font-normal">
+                            Pending collection
+                          </span>
+                        );
+                      }
+                      if (!resolvedTxnId || (isCod && String(resolvedTxnId).startsWith('TXN_'))) {
                         return (
                           <span className="text-slate-400 italic font-sans font-normal">
-                            {isCod ? 'Pending collection' : 'Not generated'}
+                            {isCod ? (isPaid ? 'Cash collected' : 'Pending collection') : 'Not generated'}
                           </span>
                         );
                       }
@@ -13756,16 +13830,21 @@ required
 
               {/* Items Listing */}
               {(() => {
-                const isStayOrBooking = ['STAY', 'HOTEL', 'TRAVEL'].includes(String(selectedBillOrder.type || selectedBillOrder.category || '').toUpperCase()) || Boolean(selectedBillOrder.appointmentDate);
+                const isStayOrBooking = ['STAY', 'HOTEL', 'TRAVEL'].includes(String(selectedBillOrder.type || selectedBillOrder.category || '').toUpperCase());
 
                 const getCustomerAddedCount = (order, item) => {
-                  const raw = item?.guests || item?.numberOfGuests || item?.guestCount || item?.noOfGuests || item?.no_of_guests || item?.adults ||
-                              order?.guests || order?.numberOfGuests || order?.guestCount || order?.guestsCount || order?.noOfGuests || order?.no_of_guests || order?.customerCount || order?.adults ||
-                              item?.quantity || order?.quantity;
-                  return Number(raw) || 1;
+                  if (isStayOrBooking) {
+                    const raw = item?.guests || item?.numberOfGuests || item?.guestCount || item?.noOfGuests || item?.no_of_guests || item?.adults ||
+                                order?.guests || order?.numberOfGuests || order?.guestCount || order?.guestsCount || order?.noOfGuests || order?.no_of_guests || order?.customerCount || order?.adults ||
+                                item?.quantity || order?.quantity;
+                    return Number(raw) || 1;
+                  }
+                  return Number(item?.quantity || order?.quantity) || 1;
                 };
 
-                const customerGuestsLabel = selectedBillOrder.guests || selectedBillOrder.numberOfGuests || selectedBillOrder.guestCount || selectedBillOrder.guestsCount || selectedBillOrder.noOfGuests || selectedBillOrder.no_of_guests;
+                const customerGuestsLabel = isStayOrBooking
+                  ? (selectedBillOrder.guests || selectedBillOrder.numberOfGuests || selectedBillOrder.guestCount || selectedBillOrder.guestsCount || selectedBillOrder.noOfGuests || selectedBillOrder.no_of_guests)
+                  : null;
 
                 return (
                   <div>
@@ -13785,12 +13864,12 @@ required
                         <tbody>
                           {selectedBillOrder.items && selectedBillOrder.items.length > 0 ? selectedBillOrder.items.map((item, idx) => {
                             const count = getCustomerAddedCount(selectedBillOrder, item);
-                            const guestVal = item.guests || item.numberOfGuests || item.guestCount || customerGuestsLabel;
+                            const guestVal = isStayOrBooking ? (item.guests || item.numberOfGuests || item.guestCount || customerGuestsLabel) : null;
                             return (
                               <tr key={idx} className="border-b border-slate-100 dark:border-slate-900/60 hover:bg-slate-50/20 dark:hover:bg-slate-900/10 text-slate-800 dark:text-slate-200">
                                 <td className="py-3 px-4 font-semibold">
                                   <div>{item.name}</div>
-                                  {guestVal && (
+                                  {isStayOrBooking && guestVal && (
                                     <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
                                       👥 Customer Added Guests: {guestVal}
                                     </div>
@@ -13805,7 +13884,7 @@ required
                             <tr className="border-b border-slate-100 dark:border-slate-900/60 text-slate-800 dark:text-slate-200">
                               <td className="py-3 px-4 font-semibold">
                                 <div>{selectedBillOrder.product_details || 'Generic Booking / Service Item'}</div>
-                                {customerGuestsLabel && (
+                                {isStayOrBooking && customerGuestsLabel && (
                                   <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
                                     👥 Customer Added Guests: {customerGuestsLabel}
                                   </div>
@@ -14769,45 +14848,43 @@ required
 
               <div className="flex flex-wrap justify-between items-center gap-3 pt-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500 font-medium">Update Status:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVendorQueriesList(prev => prev.map(q => q.id === selectedQueryDetail.id ? { ...q, status: 'In Progress' } : q));
-                      setSelectedQueryDetail(prev => ({ ...prev, status: 'In Progress' }));
-                      setMessage('Query status updated to In Progress');
-                    }}
-                    className="px-3 py-1 bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold hover:bg-indigo-200 transition-colors"
-                  >
-                    In Progress
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVendorQueriesList(prev => prev.map(q => q.id === selectedQueryDetail.id ? { ...q, status: 'Resolved' } : q));
-                      setSelectedQueryDetail(prev => ({ ...prev, status: 'Resolved' }));
-                      setMessage('Query status updated to Resolved');
-                    }}
-                    className="px-3 py-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors"
-                  >
-                    Mark Resolved
-                  </button>
+                  <span className="text-xs text-slate-500 font-medium">Status:</span>
+                  <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
+                    selectedQueryDetail.status === 'Open' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
+                    selectedQueryDetail.status === 'In Progress' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300' :
+                    'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                  }`}>
+                    {selectedQueryDetail.status}
+                  </span>
+                  <span className="text-[10px] text-slate-400 italic">(Admin Managed)</span>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     if (!replyText.trim()) return;
+                    const textToSend = replyText.trim();
+                    const nowStr = new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
                     const newReply = {
                       sender: user?.businessName || user?.name || 'Vendor Support',
                       role: 'Vendor',
-                      text: replyText.trim(),
-                      time: new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                      text: textToSend,
+                      time: nowStr
                     };
                     const updatedReplies = [...(selectedQueryDetail.replies || []), newReply];
-                    setVendorQueriesList(prev => prev.map(q => q.id === selectedQueryDetail.id ? { ...q, replies: updatedReplies, status: q.status === 'Open' ? 'In Progress' : q.status } : q));
-                    setSelectedQueryDetail(prev => ({ ...prev, replies: updatedReplies, status: prev.status === 'Open' ? 'In Progress' : prev.status }));
                     setReplyText('');
+
+                    try {
+                      await axios.post(`${getVendorBackendUrl()}/api/vendor/tickets/${selectedQueryDetail.id || selectedQueryDetail._id}/reply`, {
+                        text: textToSend
+                      }, getAxiosConfig());
+                    } catch (err) {
+                      console.warn('Backend ticket reply fallback:', err);
+                    }
+
+                    // Vendors CANNOT change ticket status to In Progress or Resolved
+                    setVendorQueriesList(prev => prev.map(q => q.id === selectedQueryDetail.id ? { ...q, replies: updatedReplies } : q));
+                    setSelectedQueryDetail(prev => ({ ...prev, replies: updatedReplies }));
                     setMessage('Response sent successfully!');
                   }}
                   className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all shadow-md active:scale-[0.98]"
@@ -14828,43 +14905,39 @@ required
           title="Raise Support Ticket / Query to Platform Admin"
         >
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
               if (!newQueryForm.subject || !newQueryForm.message) {
                 setError('Please provide both subject and message details.');
                 return;
               }
-              const newTicket = {
-                id: `TKT-ADM-${Math.floor(500 + Math.random() * 500)}`,
-                queryType: 'vendor_support',
-                customerName: 'Platform Support Team',
-                email: 'support@connectapp.com',
-                phone: '1800-123-4567',
-                category: newQueryForm.category,
-                subject: newQueryForm.subject,
-                message: newQueryForm.message,
-                date: new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-                status: 'Open',
-                priority: newQueryForm.priority,
-                replies: [
-                  {
-                    sender: 'Vendor (You)',
-                    role: 'Vendor',
-                    text: newQueryForm.message,
-                    time: new Date().toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-                  }
-                ]
-              };
-              const updatedQueries = [newTicket, ...vendorQueriesList];
-              setVendorQueriesList(updatedQueries);
               try {
-                const ticketKey = user?._id ? `vendor_support_tickets_${user._id}` : 'vendor_support_tickets';
-                localStorage.setItem(ticketKey, JSON.stringify(updatedQueries));
-              } catch (e) {}
-              setActiveQueryTab('my_tickets');
-              setMessage('Support query ticket raised successfully! Admin will review your request.');
-              setIsNewQueryModalOpen(false);
-              setNewQueryForm({ subject: '', category: 'General Inquiry', message: '', priority: 'Medium' });
+                const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/tickets`, {
+                  category: newQueryForm.category,
+                  subject: newQueryForm.subject,
+                  message: newQueryForm.message,
+                  priority: newQueryForm.priority,
+                  activeBusinessId
+                }, getAxiosConfig());
+
+                if (res.data.success && res.data.data) {
+                  const created = res.data.data;
+                  const updatedQueries = [created, ...vendorQueriesList.filter(q => q.id !== created.id)];
+                  setVendorQueriesList(updatedQueries);
+                  try {
+                    const ticketKey = user?._id ? `vendor_support_tickets_${user._id}` : 'vendor_support_tickets';
+                    localStorage.setItem(ticketKey, JSON.stringify(updatedQueries));
+                  } catch (e) {}
+                  setActiveQueryTab('my_tickets');
+                  setMessage('Support query ticket raised successfully! Admin will review your request.');
+                  setIsNewQueryModalOpen(false);
+                  setNewQueryForm({ subject: '', category: 'General Inquiry', message: '', priority: 'Medium' });
+                } else {
+                  throw new Error(res.data.message || 'Failed to submit ticket');
+                }
+              } catch (err) {
+                setError(err.response?.data?.message || err.message || 'Failed to raise ticket');
+              }
             }}
             className="space-y-4 text-slate-800 dark:text-slate-100"
           >

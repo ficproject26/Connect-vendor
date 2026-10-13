@@ -225,12 +225,12 @@ axios.interceptors.response.use(
 );
 
 // --- WAKE-UP PING ---
-// Send a lightweight ping to the API health endpoint
+// Send a lightweight ping to guaranteed public endpoint
 const wakeUpBackend = async () => {
   try {
     const backendUrl = getBackendUrl();
     if (!backendUrl) return;
-    await fetch(`${backendUrl}/api/health`, { method: 'GET', mode: 'no-cors' }).catch(() => {});
+    await fetch(`${backendUrl}/api/public/categories`, { method: 'GET', mode: 'no-cors' }).catch(() => {});
   } catch (err) {
     // Ignore initial wake-up ping errors
   }
@@ -269,6 +269,9 @@ export const formatImageUrl = (url) => {
   }
 
   if (clean.includes('res.cloudinary.com')) {
+    if (clean.startsWith('http://res.cloudinary.com')) {
+      return clean.replace(/^http:\/\//, 'https://');
+    }
     return clean;
   }
 

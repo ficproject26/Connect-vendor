@@ -36,7 +36,11 @@ const {
   getBusinessRequests,
   resubmitBusinessRequest,
   getProductSalesInsights,
-  getCustomerPurchases
+  getCustomerPurchases,
+  getVendorTickets,
+  createVendorTicket,
+  replyVendorTicket,
+  updateTicketStatusForbidden
 } = require('../controllers/vendorController');
 
 const { uploadToCloudinary } = require('../config/cloudinary');
@@ -159,5 +163,11 @@ const { createAppointment, createBooking, createManualOrder } = require('../cont
 router.post('/appointments', createAppointment);
 router.post('/bookings', createBooking);
 router.post('/orders', createManualOrder);
+
+// Support Tickets Routes (Vendors can create and reply, but CANNOT change status)
+router.get('/tickets', getVendorTickets);
+router.post('/tickets', createVendorTicket);
+router.post('/tickets/:id/reply', replyVendorTicket);
+router.put('/tickets/:id/status', updateTicketStatusForbidden);
 
 module.exports = router;

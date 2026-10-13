@@ -56,9 +56,7 @@ const uploadToCloudinary = async (fileBuffer, folder = 'connect_uploads', filena
     return `/uploads/${filename}`;
   } catch (localErr) {
     console.error('❌ Local file save failed:', localErr);
-    // 3. Ultimate fallback: Data URI
-    const mime = (filenameHint && filenameHint.endsWith('.png')) ? 'image/png' : 'image/jpeg';
-    return `data:${mime};base64,${fileBuffer.toString('base64')}`;
+    throw new Error('Failed to save uploaded file to storage');
   }
 };
 

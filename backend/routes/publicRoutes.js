@@ -7,6 +7,15 @@ const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES } = require('../realtime
 
 const router = express.Router();
 
+// Health check endpoint
+router.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    message: 'Public API operational',
+    timestamp: new Date().toISOString()
+  });
+});
+
 const getItemMainCategory = (itemCategory) => {
   if (!itemCategory) return '';
   
@@ -273,11 +282,27 @@ router.get('/products', async (req, res) => {
           rawImg = rawImg.replace(/^https?:\/\/[^/]+/, baseUrl);
         }
       }
+      if (rawImg && rawImg.startsWith('http://res.cloudinary.com')) {
+        rawImg = rawImg.replace(/^http:\/\//, 'https://');
+      }
       const finalImg = rawImg 
         ? (rawImg.startsWith('/uploads') ? `${baseUrl}${rawImg}` : rawImg)
         : ((p.subNavbarCategory || req.query.subNavbarCategory) === 'Services' 
             ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=500&auto=format&fit=crop&q=60' 
             : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60');
+
+      const mappedImages = p.imageUrls && p.imageUrls.length > 0
+        ? p.imageUrls.map(img => {
+            let cleanImg = img;
+            if (cleanImg.includes('vercel.app') || cleanImg.includes('trycloudflare.com') || cleanImg.includes(':8000') || cleanImg.includes(':8001') || cleanImg.includes('43.204.141.105')) {
+              cleanImg = cleanImg.replace(/^https?:\/\/[^/]+/, baseUrl);
+            }
+            if (cleanImg.startsWith('http://res.cloudinary.com')) {
+              cleanImg = cleanImg.replace(/^http:\/\//, 'https://');
+            }
+            return cleanImg.startsWith('/uploads') ? `${baseUrl}${cleanImg}` : cleanImg;
+          })
+        : [finalImg];
 
       return {
         id: p._id,
@@ -327,15 +352,9 @@ router.get('/products', async (req, res) => {
         specifications: p.specifications || p.customFields || {},
         customFields: p.customFields || p.specifications || {},
         image: finalImg,
-        images: p.imageUrls && p.imageUrls.length > 0
-          ? p.imageUrls.map(img => {
-              let cleanImg = img;
-              if (cleanImg.includes('vercel.app') || cleanImg.includes('trycloudflare.com') || cleanImg.includes(':8000') || cleanImg.includes(':8001') || cleanImg.includes('43.204.141.105')) {
-                cleanImg = cleanImg.replace(/^https?:\/\/[^/]+/, baseUrl);
-              }
-              return cleanImg.startsWith('/uploads') ? `${baseUrl}${cleanImg}` : cleanImg;
-            })
-          : [finalImg],
+        imageUrl: finalImg,
+        images: mappedImages,
+        imageUrls: mappedImages,
         rating: p.rating || 4.5,
         reviews: p.reviews !== undefined ? p.reviews : 12,
         vendorName: p.vendorName || vendor.name,

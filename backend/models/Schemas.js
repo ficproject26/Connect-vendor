@@ -738,6 +738,36 @@ BusinessRequestSchema.index({ vendorId: 1, businessId: 1 });
 BusinessRequestSchema.index({ pincode: 1, status: 1 });
 BusinessRequestSchema.index({ assignedAdminId: 1, status: 1 });
 
+// --- SUPPORT TICKET SCHEMA ---
+const SupportTicketSchema = new mongoose.Schema({
+  _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+  id: { type: String, required: true, unique: true }, // e.g. TKT-ADM-123
+  ticketId: { type: String },
+  vendorId: { type: String, required: true, index: true },
+  vendorName: { type: String },
+  vendorEmail: { type: String },
+  businessName: { type: String },
+  queryType: { type: String, default: 'vendor_support' },
+  customerName: { type: String, default: 'Platform Support Team' },
+  email: { type: String, default: 'support@connectapp.com' },
+  phone: { type: String, default: '1800-123-4567' },
+  category: { type: String, default: 'General Inquiry' },
+  subject: { type: String, required: true },
+  message: { type: String, required: true },
+  date: { type: String },
+  status: { type: String, enum: ['Open', 'In Progress', 'Resolved', 'Closed'], default: 'Open', index: true },
+  priority: { type: String, enum: ['Low', 'Medium', 'High', 'Urgent'], default: 'Medium' },
+  replies: [{
+    sender: { type: String, required: true },
+    role: { type: String, enum: ['Vendor', 'Admin', 'Support'], default: 'Vendor' },
+    text: { type: String, required: true },
+    time: { type: String },
+    createdAt: { type: Date, default: Date.now }
+  }]
+}, { timestamps: true });
+
+SupportTicketSchema.index({ vendorId: 1, status: 1 });
+
 // Compile and export models using the getModel wrapper
 module.exports = {
   User: getModel('User', UserSchema),
@@ -755,7 +785,8 @@ module.exports = {
   Subscription: getModel('Subscription', SubscriptionSchema),
   SubscriptionPayment: getModel('SubscriptionPayment', SubscriptionPaymentSchema),
   SubscriptionConfig: getModel('SubscriptionConfig', SubscriptionConfigSchema),
-  BusinessRequest: getModel('BusinessRequest', BusinessRequestSchema)
+  BusinessRequest: getModel('BusinessRequest', BusinessRequestSchema),
+  SupportTicket: getModel('SupportTicket', SupportTicketSchema)
 };
 
 

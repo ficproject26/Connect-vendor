@@ -691,8 +691,10 @@ const Overview = () => {
                           <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontWeight={500} />
                           <YAxis stroke="#64748b" fontSize={11} fontWeight={500} />
                           <Tooltip 
-                            contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#f8fafc', borderRadius: '16px', backdropFilter: 'blur(10px)' }} 
-                            formatter={(value) => [`₹${value}`, 'Revenue']}
+                            contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255, 255, 255, 0.15)', color: '#ffffff', borderRadius: '16px', backdropFilter: 'blur(10px)', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }} 
+                            labelStyle={{ color: '#ffffff', fontWeight: 700, marginBottom: '4px' }}
+                            itemStyle={{ color: '#ffffff', fontWeight: 600 }}
+                            formatter={(value) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Revenue']}
                           />
                           <Bar dataKey="revenue" radius={[10, 10, 0, 0]}>
                             {revenueByCardTierData.map((entry, index) => {

@@ -350,8 +350,16 @@ export default function AddBusinessModal({
       const activeCat = selectedCategory || formData.vendorType || selectedCategoryRef.current;
       const docRules = getCategoryDocRules(activeCat);
       for (const rule of docRules) {
+        const docItem = formData.categoryDocs[rule.key];
+        const is14DigitDoc = /fssai|insurance/i.test(rule.key || rule.label || '');
+        if (docItem?.docNumber) {
+          const numDigits = docItem.docNumber.replace(/\D/g, '').length;
+          if (is14DigitDoc && numDigits > 14) {
+            setFormError(`${rule.label} cannot exceed 14 digits.`);
+            return false;
+          }
+        }
         if (rule.required) {
-          const docItem = formData.categoryDocs[rule.key];
           if (!docItem?.docNumber || !docItem.docNumber.trim()) {
             setFormError(`${rule.label} Number is required.`);
             return false;
@@ -1011,27 +1019,36 @@ export default function AddBusinessModal({
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <input
-                            type="text"
-                            placeholder={rule.numberPlaceholder || 'Certificate / License Number'}
-                            value={docState.docNumber || ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setFormData(prev => ({
-                                ...prev,
-                                categoryDocs: {
-                                  ...prev.categoryDocs,
-                                  [rule.key]: {
-                                    ...(prev.categoryDocs[rule.key] || {}),
-                                    docNumber: val,
-                                    label: rule.label,
-                                    required: rule.required
+                          {(() => {
+                            const is14DigitDoc = /fssai|insurance/i.test(rule.key || rule.label || '');
+                            return (
+                              <input
+                                type="text"
+                                placeholder={is14DigitDoc ? '14-digit number (e.g. 10012345678901)' : (rule.numberPlaceholder || 'Certificate / License Number')}
+                                value={docState.docNumber || ''}
+                                maxLength={is14DigitDoc ? 14 : undefined}
+                                onChange={(e) => {
+                                  let val = e.target.value;
+                                  if (is14DigitDoc) {
+                                    val = val.replace(/\D/g, '').slice(0, 14);
                                   }
-                                }
-                              }));
-                            }}
-                            className="w-full px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
-                          />
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    categoryDocs: {
+                                      ...prev.categoryDocs,
+                                      [rule.key]: {
+                                        ...(prev.categoryDocs[rule.key] || {}),
+                                        docNumber: val,
+                                        label: rule.label,
+                                        required: rule.required
+                                      }
+                                    }
+                                  }));
+                                }}
+                                className="w-full px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                              />
+                            );
+                          })()}
 
                           <div>
                             <label className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-amber-400 cursor-pointer">
