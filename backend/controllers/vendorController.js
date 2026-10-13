@@ -132,13 +132,13 @@ const mapCategoryToTypes = (cat) => {
     return ['Food', 'food', 'Restaurant', 'restaurant', 'Foods', 'foods'];
   }
   if (norm === 'Services') {
-    return ['Services', 'services', 'Service', 'service', 'Hospital', 'hospital', 'Technician'];
+    return ['Services', 'services', 'Service', 'service', 'Appointment', 'appointment', 'Hospital', 'hospital', 'Technician', 'technician', 'Clinic', 'clinic'];
   }
   if (norm === 'Stay') {
-    return ['Stay', 'stay', 'Hotel', 'hotel', 'Room', 'room'];
+    return ['Stay', 'stay', 'Hotel', 'hotel', 'Hotels', 'hotels', 'Room', 'room', 'Rooms', 'rooms', 'Resort', 'resort', 'Resorts', 'resorts'];
   }
   if (norm === 'Travel') {
-    return ['Travel', 'travel', 'Travels', 'travels', 'Travel Agency', 'package', 'Package'];
+    return ['Travel', 'travel', 'Travels', 'travels', 'Travel Agency', 'package', 'Package', 'Transport', 'transport', 'Bus', 'bus', 'Car', 'car', 'Bike', 'bike', 'Cab', 'cab'];
   }
   return [cat];
 };
@@ -1508,16 +1508,29 @@ const getBookings = async (req, res) => {
       const allowedTypes = mapCategoryToTypes(req.query.category);
       const catRegex = new RegExp(allowedTypes.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
       const isStayFilter = ['stay', 'hotel', 'hotels', 'room', 'rooms'].includes(String(req.query.category).trim().toLowerCase());
+      const isServicesFilter = ['services', 'service', 'appointment', 'hospital', 'technician'].includes(String(req.query.category).trim().toLowerCase());
+      const isTravelFilter = ['travel', 'travels', 'package', 'transport'].includes(String(req.query.category).trim().toLowerCase());
+
       baseQuery.$and.push({
         $or: [
           { type: { $in: allowedTypes } },
           { category: { $in: allowedTypes } },
           { type: catRegex },
           { category: catRegex },
+          { 'items.mainCategory': catRegex },
           ...(isStayFilter ? [
             { checkInDate: { $exists: true, $ne: null } },
             { roomNumber: { $exists: true, $ne: null } },
             { 'items.category': { $in: ['Stay', 'Hotels', 'Resorts', 'Hotel', 'Resort', 'Rooms'] } }
+          ] : []),
+          ...(isServicesFilter ? [
+            { doctorName: { $exists: true, $ne: null } },
+            { serviceName: { $exists: true, $ne: null } },
+            { 'items.category': { $in: ['Services', 'IT & Device Support', 'Ac Service', 'Hospital', 'Technician'] } }
+          ] : []),
+          ...(isTravelFilter ? [
+            { vehicleType: { $exists: true, $ne: null } },
+            { 'items.category': { $in: ['Travel', 'Travels', 'Bus', 'Car', 'Bike'] } }
           ] : [])
         ]
       });
@@ -1667,71 +1680,89 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
   // Determine true business category for the booking
   const rawType = String(obj.type || '').trim().toLowerCase();
   const rawCat = String(obj.category || '').trim().toLowerCase();
-  const rawSubCat = String(obj.subcategory || obj.subCategory || matchedProd?.subcategory || '').trim().toLowerCase();
-  const prodCat = String(matchedProd?.category || '').trim().toLowerCase();
-  const prodName = String(matchedProd?.name || '').trim().toLowerCase();
-  const detailStr = String(obj.product_details || (obj.items && obj.items[0]?.name) || '').toLowerCase();
+  const prodMainCat = String(matchedProd?.mainCategory || firstItem?.mainCategory || '').trim().toLowerCase();
+  const prodSubNavCat = String(matchedProd?.subNavbarCategory || firstItem?.subNavbarCategory || '').trim().toLowerCase();
+  const prodCat = String(matchedProd?.category || firstItem?.category || '').trim().toLowerCase();
+  const prodName = String(matchedProd?.name || firstItem?.name || '').trim().toLowerCase();
+  const rawSubCat = String(obj.subcategory || obj.subCategory || matchedProd?.subcategory || firstItem?.subcategory || '').trim().toLowerCase();
+  const detailStr = String(obj.product_details || firstItem?.name || '').toLowerCase();
 
   const isTravelTerm = (str) => {
     if (!str) return false;
     const s = String(str).trim().toLowerCase();
-    return (
-      ['travel', 'travels', 'package', 'packages', 'bus', 'vehicle', 'cab', 'car', 'bike', 'transport'].includes(s) ||
-      /^(ac\s*car|non\s*ac\s*car|car|ac\s*bus|non\s*ac\s*bus|bus|bike|superbike|mini\s*superbike|tempo|van|taxi|cab|flight|train)/i.test(s) ||
-      /(car|bus|bike|vehicle|travel|cab|transport)/i.test(s)
-    );
+    if (['travel', 'travels', 'package', 'packages', 'bus', 'vehicle', 'cab', 'car', 'bike', 'transport', 'flight', 'train', 'taxi'].includes(s)) {
+      return true;
+    }
+    return /\b(ac\s*car|non\s*ac\s*car|car|ac\s*bus|non\s*ac\s*bus|bus|bike|superbike|mini\s*superbike|tempo|van|taxi|cab|flight|train|transport|travel|travels)\b/i.test(s);
   };
 
-  const isTravel = rawType === 'travel' ||
-                   rawCat === 'travel' ||
-                   isTravelTerm(rawType) ||
-                   isTravelTerm(rawCat) ||
-                   isTravelTerm(rawSubCat) ||
-                   isTravelTerm(prodCat) ||
-                   isTravelTerm(prodName) ||
-                   Boolean(obj.travelDate || obj.journeyDate || obj.vehicleType || obj.busName || obj.carName || obj.bikeName || obj.boardingPoint || obj.droppingPoint) ||
-                   isTravelTerm(detailStr);
+  // 1. Explicit Services Check
+  const isServices = ['services', 'service'].includes(prodMainCat) ||
+                     ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawType) ||
+                     ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawCat) ||
+                     ['it & device support', 'ac service', 'laptop repairs', 'cctv installation', 'pc repairs', 'full clean', 'cleaning', 'electrician', 'plumber', 'hospital', 'technician', 'healthcare'].includes(prodCat) ||
+                     ['it & device support', 'ac service', 'laptop repairs', 'cctv installation', 'pc repairs', 'full clean', 'cleaning', 'electrician', 'plumber', 'hospital', 'technician', 'healthcare'].includes(rawSubCat) ||
+                     Boolean(obj.doctorName || obj.patientName || obj.serviceName) ||
+                     /\b(service|services|repair|repairs|cctv|support|consultation|doctor|technician|clinic|hospital)\b/i.test(detailStr) ||
+                     /\b(service|services|repair|repairs|cctv|support|consultation|doctor|technician)\b/i.test(prodName);
 
-  const isStay = !isTravel && (
+  // 2. Explicit Stay Check
+  const isStay = !isServices && (
+    ['stay', 'hotel', 'hotels', 'resort', 'resorts'].includes(prodMainCat) ||
     ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawType) ||
     ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawCat) ||
-    Boolean(obj.roomNumber || obj.roomName || (obj.items && obj.items[0]?.category === 'Stay')) ||
-    /room|suite|villa|resort|hotel|cottage/i.test(detailStr) ||
-    /room|suite|villa|resort|hotel|cottage/i.test(prodCat) ||
-    /room|suite|villa|resort|hotel|cottage/i.test(prodName)
+    ['hotels', 'resorts', 'rooms', 'luxury', 'hill station', 'cottages', 'villas', 'resort', 'hotel', 'homestay', 'pg', 'stay'].includes(prodCat) ||
+    ['hotels', 'resorts', 'rooms', 'luxury', 'hill station', 'cottages', 'villas', 'resort', 'hotel', 'homestay', 'pg', 'stay'].includes(rawSubCat) ||
+    Boolean(obj.roomNumber || obj.roomName || obj.staySchedule || (obj.checkInDate && !obj.boardingPoint && !obj.vehicleType)) ||
+    /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(detailStr) ||
+    /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(prodName)
   );
 
-  const isServices = !isTravel && !isStay && (
-    ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawType) ||
-    ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawCat) ||
-    Boolean(obj.doctorName || obj.appointmentDate)
+  // 3. Genuine Travel Check
+  const isTravel = !isServices && !isStay && (
+    ['travel', 'travels'].includes(prodMainCat) ||
+    ['travel', 'travels', 'package', 'packages', 'transport'].includes(rawType) ||
+    ['travel', 'travels', 'package', 'packages', 'transport'].includes(rawCat) ||
+    ['car', 'bus', 'bike', 'mini superbikes', 'ac car', 'non ac car', 'ac bus', 'non ac bus', 'superbikes', 'travel', 'travels', 'package'].includes(prodCat) ||
+    ['car', 'bus', 'bike', 'mini superbikes', 'ac car', 'non ac car', 'ac bus', 'non ac bus', 'superbikes', 'travel', 'travels', 'package'].includes(rawSubCat) ||
+    Boolean(obj.vehicleNumber || obj.vehicleType || (obj.boardingPoint && obj.droppingPoint) || obj.busName || obj.carName || obj.bikeName) ||
+    isTravelTerm(detailStr) ||
+    isTravelTerm(prodName)
   );
 
-  const isJob = (!isTravel && !isStay && !['food', 'foods', 'restaurant', 'restaurants', 'dining', 'products', 'product', 'daily needs', 'daily_needs', 'services', 'service'].includes(rawType)) && (
+  // 4. Job Applications Check
+  const isJob = !isServices && !isStay && !isTravel && (
     ['job', 'jobs', 'application', 'job_application'].includes(rawType) || 
     ['job', 'jobs', 'application', 'job_application'].includes(rawCat) ||
     Boolean(obj.candidateResume || (obj.applicationId && String(obj.applicationId).startsWith('APP')))
   );
 
-  const isFood = ['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(rawType) ||
-                 ['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(rawCat) ||
-                 /food|restaurant|biryani|chicken|pizza|burger|meal|dish/i.test(detailStr);
+  // 5. Food Orders Check
+  const isFood = !isServices && !isStay && !isTravel && !isJob && (
+    ['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(rawType) ||
+    ['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(rawCat) ||
+    ['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(prodMainCat) ||
+    /food|restaurant|biryani|chicken|pizza|burger|meal|dish/i.test(detailStr)
+  );
 
-  if (isTravel) {
-    obj.category = 'Travel';
-    obj.type = 'Travel';
+  if (isServices) {
+    obj.category = 'Services';
+    obj.type = 'Services';
   } else if (isStay) {
     obj.category = 'Stay';
     obj.type = 'Stay';
-  } else if (isServices) {
-    obj.category = 'Services';
-    obj.type = 'Services';
+  } else if (isTravel) {
+    obj.category = 'Travel';
+    obj.type = 'Travel';
   } else if (isJob) {
     obj.category = 'Jobs';
     obj.type = 'Job';
   } else if (isFood) {
     obj.category = 'Food';
     obj.type = 'Food';
+  } else {
+    obj.category = obj.category || obj.type || 'Unknown';
+    obj.type = obj.type || obj.category || 'Unknown';
   }
 
   // Ensure non-job records never keep stray job application fields
@@ -1819,15 +1850,15 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     obj.checkOutDate = obj.staySchedule.checkOutDate;
     obj.checkOutTime = obj.staySchedule.checkOutTime;
   } else {
-    // Explicitly ensure non-stay bookings do NOT have misleading staySchedule or fake check-in
+    // Explicitly ensure non-stay bookings do NOT have misleading staySchedule or room details
     delete obj.staySchedule;
     delete obj.roomDetails;
   }
 
   // Travel specific schedule and vehicle details
   if (isTravel) {
-    const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || obj.appointmentDate || obj.checkInDate || 'Not provided';
-    const departureTimeVal = obj.departureTime || obj.time || obj.appointmentTimeSlot || obj.bookingTime || obj.schedule || 'Not provided';
+    const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || 'Not provided';
+    const departureTimeVal = obj.departureTime || obj.time || obj.bookingTime || obj.schedule || 'Not provided';
     obj.travelDate = travelDateVal;
     obj.departureTime = departureTimeVal;
 
@@ -1850,12 +1881,22 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
       boardingPoint: obj.boardingPoint || obj.from || obj.source || obj.vehicleDetails?.boardingPoint || null,
       droppingPoint: obj.droppingPoint || obj.to || obj.destination || obj.vehicleDetails?.droppingPoint || null
     };
+  } else {
+    // Explicitly clean up travel-specific attributes from non-travel bookings
+    delete obj.travelDate;
+    delete obj.departureTime;
+    delete obj.vehicleType;
+    delete obj.vehicleDetails;
+    delete obj.busName;
+    delete obj.carName;
+    delete obj.bikeName;
+    delete obj.travelType;
   }
 
   // Services specific details
   if (isServices) {
-    obj.appointmentDate = obj.appointmentDate || 'Not provided';
-    obj.appointmentTimeSlot = obj.appointmentTimeSlot || 'Not provided';
+    obj.appointmentDate = obj.appointmentDate || obj.date || obj.bookingDate || 'Not provided';
+    obj.appointmentTimeSlot = obj.appointmentTimeSlot || obj.time || 'Standard Slot';
     obj.serviceName = obj.serviceName || obj.product_details || firstItem.name || 'Service Consultation';
   }
 

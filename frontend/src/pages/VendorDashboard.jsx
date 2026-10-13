@@ -36,6 +36,7 @@ import {
   CATEGORY_STAY,
   CATEGORY_TRAVEL,
   CATEGORY_ALL,
+  CATEGORY_UNKNOWN,
   ORDER_CATEGORIES,
   BOOKING_CATEGORIES,
   normalizeCategory,
@@ -1941,31 +1942,17 @@ const VendorDashboard = () => {
 
   const isTravelBooking = (b) => {
     if (!b) return false;
-    const cat = getRecordCategory(b);
-    if (cat === CATEGORY_TRAVEL) return true;
-    const rawType = (b.type || b.category || b.subNavbarCategory || b.subcategory || '').toLowerCase();
-    const isTravelTerm = (s) => ['travel', 'package', 'bus', 'vehicle', 'cab', 'car', 'bike', 'transport'].some(k => s === k || s.includes(k));
-    if (isTravelTerm(rawType)) return true;
-    if (b.vehicleType || b.travelDate || b.departureTime || b.boardingPoint || b.droppingPoint || b.busName || b.carName || b.bikeName || b.vehicleDetails) return true;
-    const detailStr = String(b.product_details || (b.items && b.items[0]?.name) || '').toLowerCase();
-    if (isTravelTerm(detailStr)) return true;
-    return false;
+    return getRecordCategory(b) === CATEGORY_TRAVEL;
   };
 
   const isStayBooking = (b) => {
     if (!b) return false;
-    if (isTravelBooking(b)) return false;
-    const cat = getRecordCategory(b);
-    if (cat === CATEGORY_STAY) return true;
-    if (cat === CATEGORY_TRAVEL || cat === CATEGORY_FOOD || cat === 'Jobs' || cat === CATEGORY_SERVICES || cat === CATEGORY_PRODUCTS || cat === CATEGORY_DAILY_NEEDS) return false;
-    const rawType = (b.type || b.category || b.subNavbarCategory || '').toLowerCase();
-    if (rawType === 'stay' || rawType === 'hotel') return true;
-    if (b.roomNumber || (b.roomDetails && b.roomDetails.name)) return true;
-    if (b.staySchedule && !b.vehicleType && !b.travelDate && !b.departureTime) return true;
-    if (b.checkInDate && !b.vehicleType && !b.travelDate && !b.departureTime && !b.boardingPoint) return true;
-    if (b.product_details && /room|suite|villa|resort|hotel/i.test(b.product_details)) return true;
-    if (b.items && Array.isArray(b.items) && b.items.some(it => /room|suite|villa|resort|hotel/i.test(it?.name || ''))) return true;
-    return false;
+    return getRecordCategory(b) === CATEGORY_STAY;
+  };
+
+  const isServicesBooking = (b) => {
+    if (!b) return false;
+    return getRecordCategory(b) === CATEGORY_SERVICES;
   };
 
   const resolveStaySchedule = (b) => {
@@ -6515,29 +6502,41 @@ const VendorDashboard = () => {
                                     {/* Booking Type / Detail */}
                                     <td className="px-6 py-4 text-xs">
                                       {(() => {
-                                        const isStay = isStayBooking(b);
-                                        const isTravel = isTravelBooking(b);
                                         const cat = getRecordCategory(b);
+                                        const isStay = cat === CATEGORY_STAY;
+                                        const isTravel = cat === CATEGORY_TRAVEL;
+                                        const isServices = cat === CATEGORY_SERVICES;
 
                                         let detailTitle = 'Booking / Reservation';
                                         let subInfo = null;
                                         let badgeLabel = 'BOOKING';
                                         let badgeColor = 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300';
 
-                                        if (isTravel || cat === CATEGORY_TRAVEL) {
-                                          badgeLabel = 'TRAVEL';
-                                          badgeColor = 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300';
-                                          const vehicle = b.vehicleDetails?.vehicleName || b.vehicleType || b.product_details || (b.items && b.items[0]?.name) || 'Travel Route';
-                                          detailTitle = `🚌 ${vehicle}`;
-                                          if (b.boardingPoint || b.droppingPoint || b.route) {
-                                            subInfo = `${b.boardingPoint || 'Origin'} ➔ ${b.droppingPoint || 'Destination'}`;
+                                        if (isServices) {
+                                          badgeLabel = 'SERVICES';
+                                          badgeColor = 'bg-teal-100 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300';
+                                          detailTitle = b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` : (b.serviceName || (b.items && b.items[0]?.name) || b.product_details || 'Service Appointment');
+                                          if (b.doctorSpecialization) {
+                                            subInfo = b.doctorSpecialization;
+                                          } else if (b.subcategory || (b.items && b.items[0]?.subcategory)) {
+                                            subInfo = b.subcategory || b.items[0]?.subcategory;
                                           }
-                                        } else if (isStay || cat === CATEGORY_STAY) {
+                                        } else if (isStay) {
                                           badgeLabel = 'STAY';
                                           badgeColor = 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300';
                                           detailTitle = b.roomName || (b.roomDetails && b.roomDetails.name) || (b.roomNumber ? `Room #${b.roomNumber}` : null) || (b.items && b.items[0]?.name) || b.product_details || 'Deluxe Room';
                                           if (b.roomNumber && !detailTitle.includes(`Room #${b.roomNumber}`)) {
                                             subInfo = `Room: ${b.roomNumber}`;
+                                          }
+                                        } else if (isTravel) {
+                                          badgeLabel = 'TRAVEL';
+                                          badgeColor = 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300';
+                                          const vehicle = b.vehicleDetails?.vehicleName || b.vehicleType || (b.items && b.items[0]?.name) || b.product_details || 'Travel Route';
+                                          detailTitle = `🚌 ${vehicle}`;
+                                          const bp = typeof b.boardingPoint === 'object' ? (b.boardingPoint?.name || b.boardingPoint?.landmark) : b.boardingPoint;
+                                          const dp = typeof b.droppingPoint === 'object' ? (b.droppingPoint?.name || b.droppingPoint?.landmark) : b.droppingPoint;
+                                          if (bp || dp || b.route) {
+                                            subInfo = `${bp || 'Origin'} ➔ ${dp || 'Destination'}`;
                                           }
                                         } else if (cat === 'Jobs' || b.jobTitle || b.candidateResume) {
                                           badgeLabel = 'JOBS';
@@ -6551,13 +6550,10 @@ const VendorDashboard = () => {
                                           badgeColor = 'bg-orange-100 text-orange-700 dark:bg-orange-950/70 dark:text-orange-300';
                                           detailTitle = `🍽️ ${(b.items && b.items.map(it => it.name).join(', ')) || b.product_details || 'Dining Reservation'}`;
                                           if (b.tableNumber) subInfo = `Table #${b.tableNumber}`;
-                                        } else if (cat === CATEGORY_SERVICES || b.doctorName || b.serviceName) {
-                                          badgeLabel = 'SERVICES';
-                                          badgeColor = 'bg-teal-100 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300';
-                                          detailTitle = b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` : (b.serviceName || (b.items && b.items[0]?.name) || b.product_details || 'Service Appointment');
-                                          if (b.doctorSpecialization) subInfo = b.doctorSpecialization;
                                         } else {
-                                          detailTitle = (b.items && b.items[0]?.name) || b.product_details || b.type || 'Reservation';
+                                          badgeLabel = (cat && cat !== CATEGORY_UNKNOWN) ? cat.toUpperCase() : 'UNKNOWN';
+                                          badgeColor = 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
+                                          detailTitle = (b.items && b.items[0]?.name) || b.product_details || b.type || 'Booking Record';
                                         }
 
                                         return (
@@ -6611,7 +6607,7 @@ const VendorDashboard = () => {
                                           </div>
                                         );
                                       })() : isTravelBooking(b) ? (() => {
-                                        const rawJourneyDate = b.travelDate || b.journeyDate || b.appointmentDate || b.bookingDate || b.date;
+                                        const rawJourneyDate = b.travelDate || b.journeyDate || b.date;
                                         let formattedJourneyDate = 'Not provided';
                                         if (rawJourneyDate) {
                                           const d = new Date(rawJourneyDate);
@@ -6619,7 +6615,7 @@ const VendorDashboard = () => {
                                             ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
                                             : String(rawJourneyDate);
                                         }
-                                        const depTime = b.departureTime || b.appointmentTimeSlot || b.time || b.boardingTime || 'Not provided';
+                                        const depTime = b.departureTime || b.time || b.boardingTime || 'Not provided';
                                         return (
                                           <div className="space-y-1 py-0.5">
                                             <div className="leading-tight">
@@ -6636,6 +6632,36 @@ const VendorDashboard = () => {
                                               </div>
                                               <div className="text-[10px] font-bold text-indigo-650 dark:text-indigo-400 mt-0.5">
                                                 {depTime}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })() : isServicesBooking(b) ? (() => {
+                                        const rawServiceDate = b.appointmentDate || b.bookingDate || b.date || (b.createdAt ? b.createdAt.substring(0, 10) : 'Not provided');
+                                        let formattedServiceDate = 'Not provided';
+                                        if (rawServiceDate) {
+                                          const d = new Date(rawServiceDate);
+                                          formattedServiceDate = !isNaN(d.getTime())
+                                            ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                                            : String(rawServiceDate);
+                                        }
+                                        const slotTime = b.appointmentTimeSlot || b.time || 'Standard Slot';
+                                        return (
+                                          <div className="space-y-1 py-0.5">
+                                            <div className="leading-tight">
+                                              <div className="text-[9px] font-extrabold uppercase tracking-wider text-teal-600 dark:text-teal-400 flex items-center gap-1">
+                                                <span>📅</span> {b.doctorName ? 'Appointment Date' : 'Service Date'}
+                                              </div>
+                                              <div className="font-bold text-slate-850 dark:text-slate-200 text-xs mt-0.5">
+                                                {formattedServiceDate}
+                                              </div>
+                                            </div>
+                                            <div className="leading-tight pt-1 border-t border-slate-150/70 dark:border-slate-800">
+                                              <div className="text-[9px] font-extrabold uppercase tracking-wider text-indigo-500 dark:text-indigo-400 flex items-center gap-1">
+                                                <span>⌚</span> Time Slot
+                                              </div>
+                                              <div className="text-[10px] font-bold text-indigo-650 dark:text-indigo-400 mt-0.5">
+                                                {slotTime}
                                               </div>
                                             </div>
                                           </div>
@@ -6864,7 +6890,7 @@ const VendorDashboard = () => {
                                   <span className="text-sm font-bold block">{day}</span>
                                   {dayAppts.length > 0 && (
                                     <span className="bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 font-extrabold text-[9px] px-1.5 py-0.5 rounded-md border border-indigo-500/10">
-                                      {dayAppts.length} {vendorType.startsWith('Hotel') ? (dayAppts.length === 1 ? 'Booking' : 'Bookings') : (dayAppts.length === 1 ? 'Appt' : 'Appts')}
+                                      {dayAppts.length} {dayAppts.length === 1 ? 'Booking' : 'Bookings'}
                                     </span>
                                   )}
                                 </button>
@@ -6879,7 +6905,7 @@ const VendorDashboard = () => {
                       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
                         <div>
                           <h4 className="text-base font-extrabold text-slate-900 dark:text-white">Day Queue Details</h4>
-                          <p className="text-slate-500 text-xs font-semibold mt-1">{vendorType.startsWith('Hotel') ? 'Reservations' : 'Appointments'} booked for {calendarSelectedDate}</p>
+                          <p className="text-slate-500 text-xs font-semibold mt-1">Bookings & Reservations scheduled for {calendarSelectedDate}</p>
                         </div>
 
                         <div className="space-y-3.5 max-h-[420px] overflow-y-auto pr-1">
@@ -6889,7 +6915,7 @@ const VendorDashboard = () => {
                             if (dayAppts.length === 0) {
                               return (
                                 <div className="text-center py-10 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                                  <p className="text-xs text-slate-500 font-medium">No {vendorType.startsWith('Hotel') ? 'bookings' : 'appointments'} scheduled for this date.</p>
+                                  <p className="text-xs text-slate-500 font-medium">No bookings or reservations scheduled for this date.</p>
                                 </div>
                               );
                             }
@@ -6900,19 +6926,19 @@ const VendorDashboard = () => {
                                   <div>
                                     <h5 className="font-bold text-sm text-slate-900 dark:text-white">{b.bookingHolder?.name || b.memberName || b.customer_name || 'N/A'}</h5>
                                     <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">
-                                      {isStayBooking(b)
-                                        ? (() => {
-                                            const sched = resolveStaySchedule(b);
-                                            return `🏨 Check-in: ${sched.checkInTime} • Check-out: ${sched.checkOutTime}${b.roomNumber ? ` (Room: ${b.roomNumber})` : ''}`;
-                                          })()
-                                        : (vendorType.startsWith('Hotel') 
-                                          ? `🏨 ${b.appointmentTimeSlot || '1'} Night${Number(b.appointmentTimeSlot) !== 1 ? 's' : ''}` 
-                                          : `⌚ ${b.appointmentTimeSlot || 'Standard Slot'}`)}
-                                      {!isStayBooking(b) && vendorType.startsWith('Hotel') && b.roomNumber && ` (Room: ${b.roomNumber})`}
+                                      {isStayBooking(b) ? (() => {
+                                        const sched = resolveStaySchedule(b);
+                                        return `🏨 Check-in: ${sched.checkInTime} • Check-out: ${sched.checkOutTime}${b.roomNumber ? ` (Room: ${b.roomNumber})` : ''}`;
+                                      })() : isTravelBooking(b) ? (() => {
+                                        return `🚌 Departure: ${b.departureTime || b.journeyTime || b.appointmentTimeSlot || 'Standard Slot'}${b.vehicleNumber || b.busNumber || b.seatNumber ? ` (${[b.vehicleNumber, b.seatNumber ? `Seat ${b.seatNumber}` : ''].filter(Boolean).join(' • ')})` : ''}`;
+                                      })() : (
+                                        `⌚ Slot: ${b.appointmentTimeSlot || 'Standard Slot'}`
+                                      )}
                                     </p>
                                   </div>
                                   <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full ${
-                                    b.status === 'Completed' || b.status === 'Delivered' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-455' :
+                                    b.status === 'Completed' || b.status === 'Delivered' || b.status === 'Checked Out' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-455' :
+                                    b.status === 'Checked In' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-455' :
                                     b.status === 'Pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-455' :
                                     b.status === 'Cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-455' :
                                     'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-455'
@@ -6923,16 +6949,30 @@ const VendorDashboard = () => {
                                 
                                 <div className="flex justify-between items-center text-xs pt-2.5 border-t border-slate-200/50 dark:border-slate-900/60">
                                   <div className="text-slate-500 font-medium">
-                                    {vendorType.startsWith('Hospital') ? 'Doctor:' : vendorType.startsWith('Hotel') ? 'Room Type:' : 'Service:'} <span className="font-semibold text-slate-800 dark:text-slate-200">{b.doctorName || (b.items && b.items[0]?.name) || b.product_details || 'N/A'}</span>
+                                    {isStayBooking(b) ? (
+                                      <>Room / Stay: <span className="font-semibold text-slate-800 dark:text-slate-200">{b.roomName || (b.roomDetails && b.roomDetails.name) || (b.items && b.items[0]?.name) || b.product_details || 'N/A'}</span></>
+                                    ) : isTravelBooking(b) ? (
+                                      <>Travel Route: <span className="font-semibold text-slate-800 dark:text-slate-200">{[b.source || b.from, b.destination || b.to].filter(Boolean).join(' ➔ ') || (b.items && b.items[0]?.name) || b.product_details || 'Travel Booking'}</span></>
+                                    ) : (
+                                      <>{b.doctorName ? 'Doctor:' : 'Service:'} <span className="font-semibold text-slate-800 dark:text-slate-200">{b.doctorName || (b.items && b.items[0]?.name) || b.product_details || 'N/A'}</span></>
+                                    )}
                                   </div>
                                   <select
-                                    value={b.status}
+                                    value={isStayBooking(b) && (b.status === 'Order Received' || b.status === 'Accepted') ? (b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending') : b.status}
                                     onChange={(e) => handleUpdateOrderStatus(b._id || b.id, e.target.value)}
                                     className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:border-primary-500 font-bold"
                                   >
-                                    {['Pending', 'Confirmed', 'Checked In', 'Completed', 'Cancelled'].map(status => (
-                                      <option key={status} value={status}>{status}</option>
-                                    ))}
+                                    {isStayBooking(b)
+                                      ? ['Pending', 'Confirmed', 'Checked In', 'Checked Out', 'Completed', 'Cancelled'].map(status => (
+                                          <option key={status} value={status}>{status}</option>
+                                        ))
+                                      : isTravelBooking(b)
+                                      ? ['Pending', 'Confirmed', 'Boarded', 'Completed', 'Cancelled'].map(status => (
+                                          <option key={status} value={status}>{status}</option>
+                                        ))
+                                      : ['Pending', 'Confirmed', 'Accepted', 'Completed', 'Cancelled'].map(status => (
+                                          <option key={status} value={status}>{status}</option>
+                                        ))}
                                   </select>
                                 </div>
                               </div>
@@ -12811,7 +12851,7 @@ required
           if (isTravelBooking(selectedBillOrder)) return "Travel Booking Details";
           if (isStayBooking(selectedBillOrder)) return "Stay Booking Details";
           if (selectedBillOrder.doctorName || selectedBillOrder.patientName || selectedBillOrder.specialty) return "Appointment Details";
-          if (rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL') return "Service Booking Details";
+          if (isServicesBooking(selectedBillOrder) || rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL') return "Service Booking Details";
           if (classification === 'BOOKING') return "Booking Details";
           return "Order Details";
         })()}
@@ -12823,7 +12863,7 @@ required
           const isJobOrder = !isFoodOrder && classification === 'JOB_APPLICATION';
           const isTravelOrder = !isFoodOrder && !isJobOrder && isTravelBooking(selectedBillOrder);
           const isStayOrder = !isFoodOrder && !isJobOrder && !isTravelOrder && (isStayBooking(selectedBillOrder) || rawCat === 'STAY' || rawCat === 'HOTEL');
-          const isServiceOrder = !isFoodOrder && !isJobOrder && !isTravelOrder && !isStayOrder && (rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL' || Boolean(selectedBillOrder.doctorName));
+          const isServiceOrder = !isFoodOrder && !isJobOrder && !isTravelOrder && !isStayOrder && (isServicesBooking(selectedBillOrder) || rawCat === 'SERVICES' || rawCat === 'SERVICE' || rawCat === 'HOSPITAL' || Boolean(selectedBillOrder.doctorName));
           
           if (isJobOrder) {
             const jobStatusDisplay = (() => {
@@ -15019,13 +15059,14 @@ required
                     <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
                       {displayTransactions.map((tx, idx) => {
                         const isTravel = isTravelBooking(tx);
-                        const isStay = !isTravel && (isStayBooking(tx) || String(tx.category || tx.type || '').toUpperCase() === 'STAY' || String(tx.category || tx.type || '').toUpperCase() === 'HOTEL');
-                        const isBooking = isTravel || isStay || ['Services', 'Service', 'service', 'services', 'Appointment', 'appointment', 'Booking', 'booking'].includes(tx.type) || ['Services', 'Service', 'service', 'services'].includes(tx.category) || Boolean(tx.appointmentDate);
+                        const isStay = !isTravel && isStayBooking(tx);
+                        const isServices = !isTravel && !isStay && isServicesBooking(tx);
+                        const isBooking = isTravel || isStay || isServices || BOOKING_CATEGORIES.includes(getRecordCategory(tx));
                         const rawCat = (tx.category || tx.type || '').toUpperCase();
                         const firstItem = tx.items && tx.items[0];
                         const categoryLabel = isTravel 
                           ? 'Travel Booking' 
-                          : (isStay ? 'Stay Booking' : (isBooking ? (rawCat === 'SERVICES' || rawCat === 'SERVICE' ? 'Service Booking' : 'Booking') : (firstItem?.category || tx.category || tx.type || 'Product Order')));
+                          : (isStay ? 'Stay Booking' : (isServices ? 'Service Booking' : (isBooking ? (rawCat === 'SERVICES' || rawCat === 'SERVICE' ? 'Service Booking' : 'Booking') : (firstItem?.category || tx.category || tx.type || 'Product Order'))));
                         const itemName = tx.itemName || tx.product_details || tx.serviceName || tx.roomName || firstItem?.name || (isBooking ? 'Booking Service' : 'Catalog Product');
                         const txId = tx.order_number || tx.orderNumber || tx.applicationId || tx._id || 'N/A';
                         const txAmount = tx.finalAmount || tx.amount || tx.totalAmount || 0;
