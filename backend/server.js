@@ -235,21 +235,21 @@ const staticCacheOptions = {
   immutable: true
 };
 
-// Serve uploaded files statically with cross-origin headers
-app.use('/uploads/resumes', (req, res, next) => {
+// Serve uploaded files statically with cross-origin headers (support both /uploads and /api/uploads)
+app.use(['/uploads/resumes', '/api/uploads/resumes'], (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 }, express.static(resumesDir, staticCacheOptions));
 
-app.use('/uploads', (req, res, next) => {
+app.use(['/uploads', '/api/uploads'], (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 }, express.static(uploadsDir, staticCacheOptions));
 
 // Smart fallback handler for candidate resumes if static file is missing from ephemeral disk
-app.get('/uploads/resumes/:filename', async (req, res, next) => {
+app.get(['/uploads/resumes/:filename', '/api/uploads/resumes/:filename'], async (req, res, next) => {
   try {
     const rawFilename = req.params.filename;
     let decodedFilename = rawFilename;

@@ -294,9 +294,13 @@ export const formatImageUrl = (url) => {
     ) {
       return clean.replace(/^https?:\/\/[^/]+/, backend);
     }
-    // If already pointing to vendor.ficapp.in or another secure remote host, enforce HTTPS and keep intact
+    // If already pointing to vendor.ficapp.in or another secure remote host, enforce HTTPS and ensure /api/uploads/
     if (clean.includes('vendor.ficapp.in')) {
-      return clean.replace(/^http:\/\//, 'https://');
+      let httpsUrl = clean.replace(/^http:\/\//, 'https://');
+      if (httpsUrl.includes('vendor.ficapp.in/uploads/') && !httpsUrl.includes('vendor.ficapp.in/api/uploads/')) {
+        httpsUrl = httpsUrl.replace('vendor.ficapp.in/uploads/', 'vendor.ficapp.in/api/uploads/');
+      }
+      return httpsUrl;
     }
     return clean;
   }
@@ -304,7 +308,8 @@ export const formatImageUrl = (url) => {
   // If URL contains /uploads/ and is a relative path
   if (clean.includes('/uploads/')) {
     const uploadPath = clean.substring(clean.indexOf('/uploads/'));
-    return `${backend}${uploadPath}`;
+    const apiUploadPath = uploadPath.startsWith('/api/') ? uploadPath : `/api${uploadPath}`;
+    return `${backend}${apiUploadPath}`;
   }
 
   const cleanPath = clean.startsWith('/') ? clean : `/${clean}`;

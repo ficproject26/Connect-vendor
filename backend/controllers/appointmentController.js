@@ -329,14 +329,8 @@ const createManualOrder = async (req, res) => {
       data: order
     }).catch(err => console.warn('[Realtime] Manual order create publish warning:', err.message));
 
-    // Reduce product stock count
-    if (typeof product.stock === 'number' && product.stock > 0) {
-      product.stock = Math.max(0, product.stock - qty);
-      if (product.stock === 0) {
-        product.status = 'Out of Stock';
-      }
-      await product.save();
-    }
+    // Keep product inventory and service booking availability as separate concepts.
+    // Services and appointment bookings do not decrement physical inventory stock.
 
     let customer = await Customer.findOne({ vendorId, name: memberName });
     if (customer) {

@@ -312,7 +312,17 @@ router.get('/products', async (req, res) => {
         price: p.price,
         unit: p.unit || 'count',
         stock: p.stock,
-        status: p.status || 'Available',
+        status: (() => {
+          const isService = ['Services', 'Stay', 'Travel'].some(cat => 
+            (p.mainCategory && p.mainCategory.toLowerCase() === cat.toLowerCase()) ||
+            (p.subNavbarCategory && p.subNavbarCategory.toLowerCase() === cat.toLowerCase()) ||
+            (p.category && p.category.toLowerCase() === cat.toLowerCase())
+          );
+          if (isService && p.status === 'Out of Stock') {
+            return 'Available';
+          }
+          return p.status || 'Available';
+        })(),
         originalPrice: p.originalPrice ? p.originalPrice : (p.mrp || p.price),
         guests: p.guests || 2,
         amenities: p.amenities || [],
@@ -369,9 +379,19 @@ router.get('/products', async (req, res) => {
           if (pin.startsWith('40')) return 'Mumbai';
           if (pin.startsWith('11')) return 'Delhi';
           if (pin.startsWith('64')) return 'Coimbatore';
-          return p.city || vendor.city || 'Pan India';
+          return 'Bangalore';
         })(),
-        tag: p.status === 'Unavailable' ? 'Unavailable' : (p.status === 'Low Stock' ? 'Low Stock' : 'Verified Partner'),
+        tag: (() => {
+          const isService = ['Services', 'Stay', 'Travel'].some(cat => 
+            (p.mainCategory && p.mainCategory.toLowerCase() === cat.toLowerCase()) ||
+            (p.subNavbarCategory && p.subNavbarCategory.toLowerCase() === cat.toLowerCase()) ||
+            (p.category && p.category.toLowerCase() === cat.toLowerCase())
+          );
+          if (isService && (p.status === 'Out of Stock' || p.status === 'Low Stock')) {
+            return 'Verified Partner';
+          }
+          return p.status === 'Unavailable' ? 'Unavailable' : (p.status === 'Low Stock' ? 'Low Stock' : 'Verified Partner');
+        })(),
         discount: p.discount || (p.originalPrice && p.originalPrice > p.price ? `${Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}% off` : ''),
         delivery: 'Free Delivery'
       };
@@ -530,6 +550,96 @@ router.post('/orders', async (req, res) => {
       ? (req.body.status && req.body.status !== 'Pending' && req.body.status !== 'Order Received' ? req.body.status : 'APPLICATION RECEIVED')
       : (isBooking ? (req.body.status || 'Booking Received') : (req.body.status || 'Order Received'));
 
+    // Helper to mask sensitive Aadhaar digits
+    const maskAadhaarDigits = (val) => {
+      if (!val) return null;
+      const clean = String(val).replace(/\D/g, '');
+      if (clean.length < 4) return null;
+      return `XXXX XXXX ${clean.slice(-4)}`;
+    };
+
+    // For Stay bookings, validate customer Aadhaar consistency with authenticated customer profile
+    const isStayBookingOrder = orderType === 'Stay' || req.body.category === 'Stay' || req.body.type === 'Stay';
+    let customerDoc = null;
+    if (resolvedCustId || memberId || req.body.customer_email || req.body.customer_phone || req.body.phone) {
+      const custFindQueries = [];
+      if (resolvedCustId) {
+        custFindQueries.push({ customerId: resolvedCustId }, { registrationId: resolvedCustId });
+        if (mongoose.Types.ObjectId.isValid(resolvedCustId)) custFindQueries.push({ _id: resolvedCustId });
+      }
+      if (memberId) {
+        custFindQueries.push({ customerId: memberId }, { registrationId: memberId }, { memberId });
+        if (mongoose.Types.ObjectId.isValid(memberId)) custFindQueries.push({ _id: memberId });
+      }
+      const cleanPhone = (req.body.customer_phone || req.body.candidatePhone || req.body.phone || '').toString().replace(/[^0-9]/g, '');
+      if (cleanPhone && cleanPhone.length >= 10) {
+        custFindQueries.push({ phone: new RegExp(cleanPhone.slice(-10) + '$') });
+      }
+      const cleanEmail = (candidateEmail || req.body.customer_email || req.body.email || '').trim().toLowerCase();
+      if (cleanEmail && cleanEmail.includes('@')) {
+        custFindQueries.push({ email: cleanEmail });
+      }
+      if (custFindQueries.length > 0) {
+        customerDoc = await Customer.findOne({ $or: custFindQueries }).lean() || await User.findOne({ $or: custFindQueries }).lean();
+      }
+    }
+
+    let existingVerifiedAadhaar = '';
+    if (customerDoc && (customerDoc.aadhaar || customerDoc.aadhaarNo)) {
+      existingVerifiedAadhaar = String(customerDoc.aadhaar || customerDoc.aadhaarNo).replace(/\D/g, '');
+    }
+
+    // Check primary guest's provided Aadhaar (index 0 / booking holder)
+    const rawGuestListInput = Array.isArray(req.body.guestList) ? req.body.guestList : (Array.isArray(req.body.guestDetails) ? req.body.guestDetails : []);
+    const primaryGuest = rawGuestListInput[0] || {};
+    const primaryProvidedAadhaarRaw = req.body.aadhaar || req.body.aadhaarNo || req.body.aadhaarNumber || primaryGuest.aadhaar || primaryGuest.aadhaarNumber || (String(primaryGuest.idType || '').toLowerCase().includes('aadhaar') ? primaryGuest.idNumber : null);
+    const primaryProvidedAadhaar = primaryProvidedAadhaarRaw ? String(primaryProvidedAadhaarRaw).replace(/\D/g, '') : '';
+
+    if (isStayBookingOrder && existingVerifiedAadhaar) {
+      if (primaryProvidedAadhaar && primaryProvidedAadhaar !== existingVerifiedAadhaar) {
+        return res.status(400).json({
+          success: false,
+          message: 'Aadhaar number does not match your verified profile Aadhaar details.'
+        });
+      }
+    }
+
+    const effectivePrimaryAadhaar = primaryProvidedAadhaar || existingVerifiedAadhaar || null;
+    const maskedPrimaryAadhaar = effectivePrimaryAadhaar ? maskAadhaarDigits(effectivePrimaryAadhaar) : null;
+
+    // Process guests: primary guest uses verified Aadhaar; additional guests maintain their own independent records
+    const processedGuestList = rawGuestListInput.map((g, idx) => {
+      if (idx === 0) {
+        const gAadhaar = effectivePrimaryAadhaar || g.aadhaarNumber || g.aadhaar;
+        return {
+          ...g,
+          name: g.name || g.fullName || memberName || req.body.candidateName || req.body.customer_name || 'Primary Guest',
+          role: 'Primary / Booking Holder',
+          aadhaarNumber: gAadhaar ? maskAadhaarDigits(gAadhaar) : null,
+          aadhaar: gAadhaar ? maskAadhaarDigits(gAadhaar) : null,
+          idType: g.idType || (gAadhaar ? 'Aadhaar' : (g.panNumber || g.pan ? 'PAN' : null)),
+          idNumber: g.idNumber ? (String(g.idType || '').toLowerCase().includes('aadhaar') ? maskAadhaarDigits(g.idNumber) : g.idNumber) : (gAadhaar ? maskAadhaarDigits(gAadhaar) : (g.panNumber || g.pan || null)),
+          idVerificationStatus: existingVerifiedAadhaar ? 'Verified' : (g.idVerificationStatus || 'Verified')
+        };
+      }
+      const addlAadhaar = g.aadhaarNumber || g.aadhaar;
+      return {
+        ...g,
+        name: g.name || g.fullName || `Guest ${idx + 1}`,
+        role: 'Additional Guest',
+        aadhaarNumber: addlAadhaar ? maskAadhaarDigits(addlAadhaar) : null,
+        aadhaar: addlAadhaar ? maskAadhaarDigits(addlAadhaar) : null,
+        idType: g.idType || (addlAadhaar ? 'Aadhaar' : (g.panNumber || g.pan ? 'PAN' : null)),
+        idNumber: g.idNumber ? (String(g.idType || '').toLowerCase().includes('aadhaar') ? maskAadhaarDigits(g.idNumber) : g.idNumber) : (addlAadhaar ? maskAadhaarDigits(addlAadhaar) : (g.panNumber || g.pan || null)),
+        idVerificationStatus: g.idVerificationStatus || 'Not provided'
+      };
+    });
+
+    const resolvedCheckInDate = req.body.checkInDate || req.body.check_in_date || req.body.checkinDate || appointmentDate;
+    const resolvedCheckInTime = req.body.checkInTime || req.body.check_in_time || req.body.checkinTime;
+    const resolvedCheckOutDate = req.body.checkOutDate || req.body.check_out_date || req.body.checkoutDate || req.body.checkOut || req.body.checkout || req.body.departureDate || req.body.departure_date || req.body.toDate || req.body.endDate || (items && items[0] && (items[0].checkOutDate || items[0].check_out_date || items[0].checkoutDate || items[0].departureDate || items[0].toDate || items[0].endDate)) || (req.body.staySchedule && req.body.staySchedule.checkOutDate);
+    const resolvedCheckOutTime = req.body.checkOutTime || req.body.check_out_time || req.body.checkoutTime || req.body.departureTime || (items && items[0] && (items[0].checkOutTime || items[0].check_out_time || items[0].checkoutTime)) || (req.body.staySchedule && req.body.staySchedule.checkOutTime);
+
     const orderData = {
       id: appId,
       order_number: appId,
@@ -573,12 +683,13 @@ router.post('/orders', async (req, res) => {
       gender: req.body.gender || req.body.customer_gender || (Array.isArray(req.body.guestList) && req.body.guestList[0]?.gender) || null,
       age: req.body.age || req.body.customer_age || (Array.isArray(req.body.guestList) && req.body.guestList[0]?.age) || null,
       // Stay specific fields
-      checkInDate: req.body.checkInDate || req.body.check_in_date || appointmentDate,
-      checkInTime: req.body.checkInTime || req.body.check_in_time,
-      checkOutDate: req.body.checkOutDate || req.body.check_out_date,
-      checkOutTime: req.body.checkOutTime || req.body.check_out_time,
-      guestList: Array.isArray(req.body.guestList) ? req.body.guestList : (Array.isArray(req.body.guestDetails) ? req.body.guestDetails : []),
-      guestDetails: Array.isArray(req.body.guestDetails) ? req.body.guestDetails : (Array.isArray(req.body.guestList) ? req.body.guestList : []),
+      checkInDate: resolvedCheckInDate,
+      checkInTime: resolvedCheckInTime,
+      checkOutDate: resolvedCheckOutDate,
+      checkOutTime: resolvedCheckOutTime,
+      guestList: processedGuestList.length > 0 ? processedGuestList : (Array.isArray(req.body.guestList) ? req.body.guestList : []),
+      guestDetails: processedGuestList.length > 0 ? processedGuestList : (Array.isArray(req.body.guestDetails) ? req.body.guestDetails : []),
+      aadhaar: maskedPrimaryAadhaar || (req.body.aadhaar ? maskAadhaarDigits(req.body.aadhaar) : undefined),
       adults: req.body.adults || req.body.adultsCount,
       children: req.body.children || req.body.childrenCount,
       infants: req.body.infants || req.body.infantsCount,
@@ -644,13 +755,26 @@ router.post('/orders', async (req, res) => {
             prod = await Product.findOne({ name: item.name, $or: [{ vendorId: targetVendorId }, { vendor_id: targetVendorId }] });
           }
 
-          if (prod && typeof prod.stock === 'number') {
-            const newStock = Math.max(0, prod.stock - qty);
-            const updateFields = { stock: newStock };
-            if (newStock === 0) {
-              updateFields.status = 'Out of Stock';
+          if (prod) {
+            // Keep product inventory and service booking availability as separate concepts.
+            // Services, Stay, Travel, and Jobs do not decrement physical inventory stock.
+            const isServiceOffering = ['Services', 'Stay', 'Travel', 'Jobs'].some(cat => 
+              (prod.mainCategory && prod.mainCategory.toLowerCase() === cat.toLowerCase()) ||
+              (prod.subNavbarCategory && prod.subNavbarCategory.toLowerCase() === cat.toLowerCase()) ||
+              (prod.category && prod.category.toLowerCase() === cat.toLowerCase())
+            );
+            if (isServiceOffering) {
+              continue;
             }
-            await Product.updateOne({ _id: prod._id }, { $set: updateFields });
+
+            if (typeof prod.stock === 'number') {
+              const newStock = Math.max(0, prod.stock - qty);
+              const updateFields = { stock: newStock };
+              if (newStock === 0) {
+                updateFields.status = 'Out of Stock';
+              }
+              await Product.updateOne({ _id: prod._id }, { $set: updateFields });
+            }
           }
         }
         await Order.updateOne({ _id: orderDoc._id }, { $set: { stockReduced: true } });
@@ -677,12 +801,13 @@ router.post('/orders', async (req, res) => {
         tableNumber: tableNumber || existing.tableNumber,
         roomNumber: roomNumber || existing.roomNumber,
         prescriptionUrl: prescriptionUrl || existing.prescriptionUrl,
-        checkInDate: req.body.checkInDate || req.body.check_in_date || appointmentDate || existing.checkInDate,
-        checkInTime: req.body.checkInTime || req.body.check_in_time || existing.checkInTime,
-        checkOutDate: req.body.checkOutDate || req.body.check_out_date || existing.checkOutDate,
-        checkOutTime: req.body.checkOutTime || req.body.check_out_time || existing.checkOutTime,
-        guestList: Array.isArray(req.body.guestList) ? req.body.guestList : (existing.guestList || existing.guestDetails || []),
-        guestDetails: Array.isArray(req.body.guestDetails) ? req.body.guestDetails : (existing.guestDetails || existing.guestList || []),
+        checkInDate: resolvedCheckInDate || existing.checkInDate,
+        checkInTime: resolvedCheckInTime || existing.checkInTime,
+        checkOutDate: resolvedCheckOutDate || existing.checkOutDate,
+        checkOutTime: resolvedCheckOutTime || existing.checkOutTime,
+        guestList: processedGuestList.length > 0 ? processedGuestList : (existing.guestList || existing.guestDetails || []),
+        guestDetails: processedGuestList.length > 0 ? processedGuestList : (existing.guestDetails || existing.guestList || []),
+        aadhaar: maskedPrimaryAadhaar || existing.aadhaar,
         guests: req.body.guests || req.body.numberOfGuests || req.body.guestCount || req.body.adults || existing.guests,
         adults: req.body.adults || existing.adults,
         children: req.body.children || existing.children,

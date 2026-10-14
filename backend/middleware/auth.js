@@ -34,20 +34,31 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
       }
 
-      // Deny access if vendor account status is not active (Suspended, Inactive, Rejected, Pending, isLocked, isActive=false)
+      // Vendor onboarding and approval enforcement
       const statusLower = (user.status || '').toLowerCase().trim();
       const userRoleLower = (user.role || user.userType || '').toLowerCase().trim();
       const isVendorRole = userRoleLower.includes('vendor') || userRoleLower.includes('merchant');
       const isApprovedStatus = ['approved', 'active', 'assigned'].includes(statusLower);
-      const isNotActive = !isApprovedStatus || ['pending', 'suspended', 'inactive', 'rejected'].includes(statusLower) || user.isActive === false || user.isApproved === false || user.isLocked === true;
+      const onboardingStatuses = [
+        'pending', 'submitted', 'pending_pincode_approval', 'pincode_approved',
+        'kyc_pending', 'kyc_in_progress', 'payment_pending', 'pincode_rejected',
+        'kyc_rejected', 'additional_information_required'
+      ];
+      const isOnboardingPending = isVendorRole && (!isApprovedStatus && (onboardingStatuses.includes(statusLower) || user.isApproved === false));
 
-      if (isVendorRole && isNotActive) {
-        if (statusLower === 'pending') {
+      if (isOnboardingPending) {
+        // Allow ONLY onboarding status checks, profile inspection, or logout
+        const allowedPaths = ['/onboarding-status', '/onboarding/status', '/profile', '/me', '/logout'];
+        const isAllowed = allowedPaths.some(p => req.path.endsWith(p) || req.originalUrl.includes(p));
+        if (!isAllowed) {
           return res.status(403).json({
             success: false,
-            message: 'Your account is pending approval by the Admin. Please try again later.'
+            isPendingApproval: true,
+            status: user.status || 'PENDING_PINCODE_APPROVAL',
+            message: 'Access restricted: Vendor account is currently undergoing role-based approval. Please check onboarding status.'
           });
         }
+      } else if (isVendorRole && !isApprovedStatus && (statusLower === 'suspended' || statusLower === 'inactive' || user.isLocked === true)) {
         return res.status(403).json({ 
           success: false, 
           isTerminated: true,

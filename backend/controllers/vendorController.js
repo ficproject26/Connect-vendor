@@ -821,6 +821,16 @@ const getProducts = async (req, res) => {
         p.salesCount = count;
         p.customersCount = uniqueCustCount;
         p.uniqueCustomers = uniqueCustCount;
+
+        // Keep product inventory and service booking availability as separate concepts
+        const isServiceOffering = ['Services', 'Stay', 'Travel'].some(cat => 
+          (p.mainCategory && p.mainCategory.toLowerCase() === cat.toLowerCase()) ||
+          (p.subNavbarCategory && p.subNavbarCategory.toLowerCase() === cat.toLowerCase()) ||
+          (p.category && p.category.toLowerCase() === cat.toLowerCase())
+        );
+        if (isServiceOffering && p.status === 'Out of Stock') {
+          p.status = 'Available';
+        }
       });
     }
 
@@ -1888,11 +1898,11 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     };
 
     // Schedule & Timing (Check-in & Check-out)
-    const rawCheckInDate = obj.checkInDate || obj.appointmentDate;
+    const rawCheckInDate = obj.checkInDate || obj.check_in_date || obj.checkinDate || (obj.staySchedule && obj.staySchedule.checkInDate) || firstItem.checkInDate || firstItem.check_in_date || obj.appointmentDate;
     let checkInDate = rawCheckInDate || 'Not provided';
-    let checkInTime = obj.checkInTime || '';
-    let checkOutDate = obj.checkOutDate || obj.departureDate || '';
-    let checkOutTime = obj.checkOutTime || '';
+    let checkInTime = obj.checkInTime || obj.check_in_time || obj.checkinTime || (obj.staySchedule && obj.staySchedule.checkInTime) || firstItem.checkInTime || '';
+    let checkOutDate = obj.checkOutDate || obj.check_out_date || obj.checkoutDate || obj.departureDate || obj.departure_date || obj.toDate || obj.endDate || (obj.staySchedule && obj.staySchedule.checkOutDate) || firstItem.checkOutDate || firstItem.check_out_date || firstItem.checkoutDate || firstItem.departureDate || firstItem.toDate || firstItem.endDate || '';
+    let checkOutTime = obj.checkOutTime || obj.check_out_time || obj.checkoutTime || obj.departureTime || (obj.staySchedule && obj.staySchedule.checkOutTime) || firstItem.checkOutTime || '';
 
     // Parse time range if appointmentTimeSlot has "02:00 PM - 06:00 PM"
     if ((!checkInTime || !checkOutTime) && obj.appointmentTimeSlot && obj.appointmentTimeSlot.includes('-')) {
@@ -1901,12 +1911,18 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
       if (!checkOutTime && parts[1]) checkOutTime = parts[1];
     }
 
-    // Derive check-out date if missing from check-in + nights
+    // Only derive check-out date if completely missing from booking data
     if (!checkOutDate && checkInDate && checkInDate !== 'Not provided') {
-      const nights = Number(obj.roomDetails.nightsCount || 1);
-      const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '');
-      const parsedDate = new Date(cleanDateStr);
-      if (!isNaN(parsedDate.getTime())) {
+      const nights = Number(obj.roomDetails.nightsCount || obj.nightsCount || obj.nights || obj.numberOfNights || 1);
+      const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '').trim();
+      let parsedDate = null;
+      if (/^\d{4}-\d{2}-\d{2}/.test(cleanDateStr)) {
+        const [y, m, d] = cleanDateStr.substring(0, 10).split('-').map(Number);
+        parsedDate = new Date(y, m - 1, d);
+      } else {
+        parsedDate = new Date(cleanDateStr);
+      }
+      if (parsedDate && !isNaN(parsedDate.getTime())) {
         const outD = new Date(parsedDate);
         outD.setDate(outD.getDate() + nights);
         checkOutDate = outD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -3143,28 +3159,55 @@ const getCustomerPurchases = async (req, res) => {
     if (user.businesses && Array.isArray(user.businesses)) {
       user.businesses.forEach(b => {
         if (b && (b._id || b.id)) businessIds.push(String(b._id || b.id));
+        if (b && b.vendorId) businessIds.push(String(b.vendorId));
       });
     }
+    const uniqueBusinessIds = [...new Set(businessIds.filter(Boolean))];
+    const objectIds = uniqueBusinessIds
+      .filter(id => mongoose.Types.ObjectId.isValid(id))
+      .map(id => new mongoose.Types.ObjectId(id));
+    const allMatchIds = [...uniqueBusinessIds, ...objectIds];
 
     const customerIdentifier = String(req.params.customerId || '').trim();
     if (!customerIdentifier) {
       return res.status(400).json({ success: false, message: 'Customer identifier is required' });
     }
 
-    // Resolve customer identity from User and Customer collections
+    const ids = [customerIdentifier];
+    const names = [];
+    const emails = [];
+    const phones = [];
+
+    let cleanKey = '';
+    if (customerIdentifier.startsWith('cust_')) {
+      cleanKey = customerIdentifier.replace(/^cust_/, '').trim();
+      if (cleanKey) {
+        ids.push(cleanKey);
+        names.push(cleanKey.toLowerCase());
+        emails.push(`${cleanKey.toLowerCase()}@gmail.com`);
+      }
+    } else {
+      names.push(customerIdentifier.toLowerCase());
+    }
+
+    // Resolve customer identity from User and Customer collections safely
     let lookupQueries = [
       { customerId: customerIdentifier },
       { registrationId: customerIdentifier },
-      { memberId: customerIdentifier },
-      { _id: customerIdentifier }
+      { memberId: customerIdentifier }
     ];
-    if (customerIdentifier.startsWith('cust_')) {
-      const cleanKey = customerIdentifier.replace(/^cust_/, '');
+    if (mongoose.Types.ObjectId.isValid(customerIdentifier)) {
+      lookupQueries.push({ _id: customerIdentifier });
+    }
+    if (cleanKey) {
       lookupQueries.push({ name: new RegExp(`^${cleanKey}$`, 'i') });
       lookupQueries.push({ email: new RegExp(`^${cleanKey}`, 'i') });
+      lookupQueries.push({ customerId: new RegExp(`^${cleanKey}`, 'i') });
+      lookupQueries.push({ memberId: new RegExp(`^${cleanKey}`, 'i') });
     }
     if (customerIdentifier.includes('@')) {
       lookupQueries.push({ email: customerIdentifier.toLowerCase() });
+      emails.push(customerIdentifier.toLowerCase());
     }
 
     const [targetUser, targetCustomer] = await Promise.all([
@@ -3173,11 +3216,6 @@ const getCustomerPurchases = async (req, res) => {
     ]);
 
     const targetDoc = targetUser || targetCustomer;
-    const names = [customerIdentifier.toLowerCase()];
-    const emails = [];
-    const phones = [];
-    const ids = [customerIdentifier];
-
     if (targetDoc) {
       if (targetDoc.name) names.push(targetDoc.name.trim().toLowerCase());
       if (targetDoc.email) emails.push(targetDoc.email.trim().toLowerCase());
@@ -3191,30 +3229,55 @@ const getCustomerPurchases = async (req, res) => {
       if (targetDoc._id) ids.push(String(targetDoc._id));
     }
 
-    // Clean names
-    const nameRegexes = names
-      .filter(n => n && n !== 'customer' && n.length > 1)
-      .map(n => new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'));
+    // Clean and deduplicate name regexes
+    const uniqueNames = [...new Set(names.filter(n => n && n !== 'customer' && n !== 'connect member' && n.length > 1))];
+    const nameRegexes = uniqueNames.map(n => new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'));
+
+    const customerMatchOr = [
+      { customerId: { $in: ids } },
+      { registrationId: { $in: ids } },
+      { memberId: { $in: ids } },
+      { customerDisplayId: { $in: ids } },
+      { 'bookingHolder.customerId': { $in: ids } }
+    ];
+    if (emails.length > 0) {
+      customerMatchOr.push(
+        { customer_email: { $in: emails } },
+        { candidateEmail: { $in: emails } },
+        { memberId: { $in: emails } },
+        { 'bookingHolder.email': { $in: emails } }
+      );
+    }
+    if (phones.length > 0) {
+      customerMatchOr.push(
+        { customer_phone: { $in: phones } },
+        { phone: { $in: phones } },
+        { mobileNumber: { $in: phones } },
+        { 'bookingHolder.phone': { $in: phones } }
+      );
+    }
+    if (nameRegexes.length > 0) {
+      customerMatchOr.push(
+        { memberName: { $in: nameRegexes } },
+        { customer_name: { $in: nameRegexes } },
+        { 'bookingHolder.name': { $in: nameRegexes } }
+      );
+    }
 
     const orderQueryConditions = [
       {
         $or: [
-          { vendorId: { $in: businessIds } },
-          { vendor_id: { $in: businessIds } }
+          { vendorId: { $in: allMatchIds } },
+          { vendor_id: { $in: allMatchIds } },
+          { 'items.vendorId': { $in: allMatchIds } },
+          { 'items.vendor_id': { $in: allMatchIds } }
         ]
       },
       {
         type: { $nin: ['Job', 'Jobs', 'job', 'jobs', 'Application', 'application'] }
       },
       {
-        $or: [
-          { customerId: { $in: ids } },
-          { registrationId: { $in: ids } },
-          { memberId: { $in: ids } },
-          ...(emails.length > 0 ? [{ customer_email: { $in: emails } }, { candidateEmail: { $in: emails } }] : []),
-          ...(phones.length > 0 ? [{ customer_phone: { $in: phones } }, { phone: { $in: phones } }] : []),
-          ...(nameRegexes.length > 0 ? [{ memberName: { $in: nameRegexes } }, { customer_name: { $in: nameRegexes } }] : [])
-        ]
+        $or: customerMatchOr
       }
     ];
 
@@ -5300,7 +5363,134 @@ const updateTicketStatusForbidden = async (req, res) => {
   });
 };
 
+
+// @desc    Get real-time vendor onboarding & approval status with agent and admin contacts
+// @route   GET /api/vendor/onboarding-status
+// @access  Protected (Vendor)
+const getOnboardingStatus = async (req, res) => {
+  try {
+    const userId = req.user ? (req.user._id || req.user.id) : null;
+    const userEmail = req.user ? req.user.email : null;
+    const userPhone = req.user ? (req.user.mobileNumber || req.user.phone) : null;
+
+    // Look up User record
+    const userDoc = await User.findOne({ 
+      $or: [
+        { _id: userId },
+        ...(userEmail ? [{ email: String(userEmail).toLowerCase().trim() }] : []),
+        ...(userPhone ? [{ mobileNumber: userPhone }, { phone: userPhone }] : [])
+      ]
+    });
+
+    // Look up in vendors collection if available
+    let vendorDoc = null;
+    try {
+      const db = mongoose.connection.db;
+      if (db) {
+        vendorDoc = await db.collection('vendors').findOne({
+          $or: [
+            { id: String(userId) },
+            { vendorId: userDoc ? userDoc.vendorId : '' },
+            ...(userEmail ? [{ email: String(userEmail).toLowerCase().trim() }] : []),
+            ...(userPhone ? [{ phone: userPhone }, { mobileNumber: userPhone }] : [])
+          ]
+        });
+      }
+    } catch (e) {
+      console.warn('Direct vendors collection lookup warning:', e.message);
+    }
+
+    const currentStatus = (vendorDoc?.status || userDoc?.status || req.user?.status || 'PENDING_PINCODE_APPROVAL').toUpperCase().trim();
+    const kycStatus = vendorDoc?.kycStatus || userDoc?.kycStatus || 'Pending Pincode Admin Approval';
+
+    // Onboarding agent resolution
+    const onboardingAgent = vendorDoc?.onboardingAgent || {
+      id: vendorDoc?.agentRegistrationId || vendorDoc?.agentId || userDoc?.agentId || 'AGT-DIRECT',
+      name: vendorDoc?.agentName || userDoc?.agentName || 'Assigned Onboarding Agent',
+      phone: vendorDoc?.agentPhone || userDoc?.agentPhone || '9876543210',
+      role: 'Pincode Agent',
+      tier: 'Pincode Agent',
+      submittedAt: vendorDoc?.onboardingAgent?.submittedAt || vendorDoc?.createdAt || userDoc?.createdAt || new Date().toISOString()
+    };
+
+    // Responsible admin resolution
+    const responsibleAdmin = vendorDoc?.responsibleAdmin || {
+      id: 'ADM-PIN-557374',
+      name: 'Ragul',
+      role: 'Pincode Admin',
+      phone: '6789876543',
+      state: vendorDoc?.state || userDoc?.state || 'Tamil Nadu',
+      district: vendorDoc?.district || userDoc?.district || 'Krishnagiri',
+      division: vendorDoc?.division || 'Hosur',
+      pincode: vendorDoc?.pincode || userDoc?.postalCode || '635126',
+      assignedLevel: 'Pincode'
+    };
+
+    const assignmentInfo = vendorDoc?.responsibleAdminAssignment || {
+      status: 'ASSIGNED',
+      assignedLevel: 'Pincode',
+      matchedPincode: responsibleAdmin.pincode
+    };
+
+    // Dynamic suggested messages per requirement
+    let message = 'Your vendor onboarding request has been submitted successfully. Please contact your onboarding agent or the responsible admin for updates.';
+    let nextStep = 'Awaiting verification by the admin responsible for your PIN code.';
+    let isApproved = false;
+
+    if (currentStatus === 'SUBMITTED') {
+      message = 'Your vendor onboarding request has been submitted successfully. Please contact your onboarding agent or the responsible admin for updates.';
+      nextStep = 'Pending review by Pincode Admin (' + responsibleAdmin.name + ')';
+    } else if (currentStatus === 'PENDING_PINCODE_APPROVAL' || currentStatus === 'PENDING') {
+      message = 'Your request is awaiting approval from the admin responsible for your PIN code.';
+      nextStep = 'Field inspection & verification by Pincode Admin (' + responsibleAdmin.name + ')';
+    } else if (currentStatus === 'PINCODE_APPROVED' || currentStatus === 'KYC_PENDING') {
+      message = 'Your request has been approved by the PIN code admin and is awaiting KYC verification.';
+      nextStep = 'KYC Team document verification';
+    } else if (currentStatus === 'KYC_IN_PROGRESS') {
+      message = 'Your documents are being verified by our KYC team.';
+      nextStep = 'Compliance review in progress';
+    } else if (currentStatus === 'PAYMENT_PENDING') {
+      message = 'Your KYC verification is complete. Please complete the required payment to activate your vendor account.';
+      nextStep = 'Complete onboarding subscription payment';
+    } else if (currentStatus === 'PINCODE_REJECTED' || currentStatus === 'KYC_REJECTED') {
+      message = 'Your onboarding request has been rejected. Please contact the responsible admin for further details.';
+      nextStep = 'Review rejection reason and contact onboarding agent';
+    } else if (currentStatus === 'ACTIVE' || currentStatus === 'APPROVED') {
+      message = 'Your vendor account is active and verified. Welcome to Connect App!';
+      nextStep = 'Dashboard fully unlocked';
+      isApproved = true;
+    }
+
+    const rejectionReason = vendorDoc?.pincodeAdminApproval?.rejectionReason || 
+                            vendorDoc?.kycTeamApproval?.rejectionReason || 
+                            vendorDoc?.rejectionReason || null;
+
+    return res.status(200).json({
+      success: true,
+      onboarding: {
+        status: currentStatus,
+        kycStatus,
+        isApproved,
+        message,
+        nextStep,
+        submissionDate: onboardingAgent.submittedAt || vendorDoc?.createdAt || userDoc?.createdAt,
+        rejectionReason,
+        onboardingAgent,
+        responsibleAdmin,
+        responsibleAdminAssignment: assignmentInfo,
+        businessName: vendorDoc?.name || userDoc?.businessName || userDoc?.name || 'Vendor Partner',
+        pincode: vendorDoc?.pincode || userDoc?.postalCode || responsibleAdmin.pincode,
+        vendorId: vendorDoc?.id || userDoc?.vendorId || req.user?.vendorId
+      }
+    });
+  } catch (error) {
+    console.error('getOnboardingStatus error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve onboarding status', error: error.message });
+  }
+};
+
 module.exports = {
+  getOnboardingStatus,
   getVendorAnalytics,
   createProduct,
   getProducts,

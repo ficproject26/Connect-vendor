@@ -1924,23 +1924,32 @@ const VendorDashboard = () => {
 
   const matchesBookingCalendarDate = (b, targetDateStr) => {
     if (!b || !targetDateStr) return false;
-    const checkInYMD = parseDateToYMD(b.checkInDate);
-    const checkOutYMD = parseDateToYMD(b.checkOutDate);
-    const apptYMD = parseDateToYMD(b.appointmentDate);
-    const travelYMD = parseDateToYMD(b.travelDate);
 
-    if (apptYMD && apptYMD === targetDateStr) return true;
-    if (checkInYMD) {
-      if (checkInYMD === targetDateStr) return true;
-      if (checkOutYMD && targetDateStr >= checkInYMD && targetDateStr <= checkOutYMD) return true;
+    // 1. Stay booking: use ONLY stay check-in to check-out schedule
+    if (isStayBooking(b)) {
+      const sched = resolveStaySchedule(b);
+      const inYMD = parseDateToYMD(b.checkInDate) || parseDateToYMD(sched.checkInDate) || parseDateToYMD(sched.scheduledCheckInDate);
+      const outYMD = parseDateToYMD(b.checkOutDate) || parseDateToYMD(sched.checkOutDate) || parseDateToYMD(sched.scheduledCheckOutDate);
+      if (inYMD && outYMD) {
+        return targetDateStr >= inYMD && targetDateStr <= outYMD;
+      }
+      if (inYMD) return targetDateStr === inYMD;
+      return false;
     }
-    if (travelYMD && travelYMD === targetDateStr) return true;
 
-    if (!checkInYMD && !apptYMD && !travelYMD) {
-      const fallbackYMD = parseDateToYMD(b.bookingDate || b.date || b.orderDate);
-      if (fallbackYMD && fallbackYMD === targetDateStr) return true;
+    // 2. Travel booking: use ONLY journey/departure/travel date
+    if (isTravelBooking(b)) {
+      const travelYMD = parseDateToYMD(b.travelDate) || parseDateToYMD(b.journeyDate) || parseDateToYMD(b.departureDate);
+      return travelYMD === targetDateStr;
     }
-    return false;
+
+    // 3. Service / appointment / generic bookings: use scheduled appointment date
+    const apptYMD = parseDateToYMD(b.appointmentDate) || parseDateToYMD(b.serviceDate) || parseDateToYMD(b.scheduledDate);
+    if (apptYMD) return apptYMD === targetDateStr;
+
+    // Fallback for bookings without explicit appointment date
+    const fallbackYMD = parseDateToYMD(b.bookingDate || b.date || b.orderDate);
+    return fallbackYMD === targetDateStr;
   };
 
   const isTravelBooking = (b) => {
@@ -1961,29 +1970,15 @@ const VendorDashboard = () => {
   const resolveStaySchedule = (b) => {
     if (!b) return { checkInDate: 'Not provided', checkInTime: 'Not provided', checkOutDate: 'Not provided', checkOutTime: 'Not provided' };
     
-    if (b.staySchedule) {
-      return {
-        checkInDate: b.staySchedule.checkInDate || 'Not provided',
-        checkInTime: b.staySchedule.checkInTime || 'Not provided',
-        checkOutDate: b.staySchedule.checkOutDate || 'Not provided',
-        checkOutTime: b.staySchedule.checkOutTime || 'Not provided',
-        scheduledCheckInDate: b.staySchedule.scheduledCheckInDate || b.staySchedule.checkInDate || 'Not provided',
-        scheduledCheckInTime: b.staySchedule.scheduledCheckInTime || b.staySchedule.checkInTime || 'Not provided',
-        scheduledCheckOutDate: b.staySchedule.scheduledCheckOutDate || b.staySchedule.checkOutDate || 'Not provided',
-        scheduledCheckOutTime: b.staySchedule.scheduledCheckOutTime || b.staySchedule.checkOutTime || 'Not provided',
-        actualCheckIn: b.staySchedule.actualCheckIn || null,
-        actualCheckInDate: b.staySchedule.actualCheckInDate || null,
-        actualCheckInTime: b.staySchedule.actualCheckInTime || null,
-        actualCheckOut: b.staySchedule.actualCheckOut || null,
-        actualCheckOutDate: b.staySchedule.actualCheckOutDate || null,
-        actualCheckOutTime: b.staySchedule.actualCheckOutTime || null
-      };
-    }
+    const firstItem = (b.items && b.items[0]) || {};
+    const ss = b.staySchedule || {};
 
-    let checkInDate = b.checkInDate || b.appointmentDate || 'Not provided';
-    let checkInTime = b.checkInTime || '';
-    let checkOutDate = b.checkOutDate || b.departureDate || '';
-    let checkOutTime = b.checkOutTime || '';
+    const rawCheckInDate = b.checkInDate || b.check_in_date || b.checkinDate || ss.checkInDate || ss.scheduledCheckInDate || firstItem.checkInDate || firstItem.check_in_date || b.appointmentDate;
+    let checkInDate = rawCheckInDate || 'Not provided';
+    let checkInTime = b.checkInTime || b.check_in_time || b.checkinTime || ss.checkInTime || ss.scheduledCheckInTime || firstItem.checkInTime || '';
+
+    let checkOutDate = b.checkOutDate || b.check_out_date || b.checkoutDate || b.departureDate || b.departure_date || b.toDate || b.endDate || ss.checkOutDate || ss.scheduledCheckOutDate || firstItem.checkOutDate || firstItem.check_out_date || firstItem.checkoutDate || firstItem.departureDate || firstItem.toDate || firstItem.endDate || '';
+    let checkOutTime = b.checkOutTime || b.check_out_time || b.checkoutTime || b.departureTime || ss.checkOutTime || ss.scheduledCheckOutTime || firstItem.checkOutTime || '';
 
     if ((!checkInTime || !checkOutTime) && b.appointmentTimeSlot && b.appointmentTimeSlot.includes('-')) {
       const parts = b.appointmentTimeSlot.split('-').map(s => s.trim());
@@ -1991,11 +1986,18 @@ const VendorDashboard = () => {
       if (!checkOutTime && parts[1]) checkOutTime = parts[1];
     }
 
+    // Only derive check-out date if completely missing from booking data
     if (!checkOutDate && checkInDate && checkInDate !== 'Not provided') {
-      const nights = Number(b.nightsCount || b.nights || b.numberOfNights || 1);
-      const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '');
-      const parsedDate = new Date(cleanDateStr);
-      if (!isNaN(parsedDate.getTime())) {
+      const nights = Number(b.nightsCount || b.nights || b.numberOfNights || firstItem.nightsCount || 1);
+      const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '').trim();
+      let parsedDate = null;
+      if (/^\d{4}-\d{2}-\d{2}/.test(cleanDateStr)) {
+        const [y, m, d] = cleanDateStr.substring(0, 10).split('-').map(Number);
+        parsedDate = new Date(y, m - 1, d);
+      } else {
+        parsedDate = new Date(cleanDateStr);
+      }
+      if (parsedDate && !isNaN(parsedDate.getTime())) {
         const outD = new Date(parsedDate);
         outD.setDate(outD.getDate() + nights);
         checkOutDate = outD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -2007,16 +2009,16 @@ const VendorDashboard = () => {
       checkInTime: checkInTime || 'Not provided',
       checkOutDate: checkOutDate || 'Not provided',
       checkOutTime: checkOutTime || 'Not provided',
-      scheduledCheckInDate: checkInDate || 'Not provided',
-      scheduledCheckInTime: checkInTime || 'Not provided',
-      scheduledCheckOutDate: checkOutDate || 'Not provided',
-      scheduledCheckOutTime: checkOutTime || 'Not provided',
-      actualCheckIn: b.actualCheckIn || null,
-      actualCheckInDate: b.actualCheckInDate || null,
-      actualCheckInTime: b.actualCheckInTime || null,
-      actualCheckOut: b.actualCheckOut || null,
-      actualCheckOutDate: b.actualCheckOutDate || null,
-      actualCheckOutTime: b.actualCheckOutTime || null
+      scheduledCheckInDate: ss.scheduledCheckInDate || checkInDate || 'Not provided',
+      scheduledCheckInTime: ss.scheduledCheckInTime || checkInTime || 'Not provided',
+      scheduledCheckOutDate: ss.scheduledCheckOutDate || checkOutDate || 'Not provided',
+      scheduledCheckOutTime: ss.scheduledCheckOutTime || checkOutTime || 'Not provided',
+      actualCheckIn: ss.actualCheckIn || b.actualCheckIn || null,
+      actualCheckInDate: ss.actualCheckInDate || b.actualCheckInDate || null,
+      actualCheckInTime: ss.actualCheckInTime || b.actualCheckInTime || null,
+      actualCheckOut: ss.actualCheckOut || b.actualCheckOut || null,
+      actualCheckOutDate: ss.actualCheckOutDate || b.actualCheckOutDate || null,
+      actualCheckOutTime: ss.actualCheckOutTime || b.actualCheckOutTime || null
     };
   };
 
@@ -3462,6 +3464,27 @@ const VendorDashboard = () => {
 
       if (res.data.success && res.data.imageUrl) {
         const finalUrl = formatImageUrl(res.data.imageUrl);
+
+        // Pre-validate that the uploaded image URL is accessible and decodable by the browser
+        const isAccessible = await new Promise((resolve) => {
+          const img = new Image();
+          let done = false;
+          img.onload = () => {
+            if (!done) { done = true; resolve(true); }
+          };
+          img.onerror = () => {
+            if (!done) { done = true; resolve(false); }
+          };
+          img.src = finalUrl;
+          setTimeout(() => {
+            if (!done) { done = true; resolve(false); }
+          }, 4000);
+        });
+
+        if (!isAccessible) {
+          throw new Error('Image was uploaded but could not be loaded from server storage. Please check server uploads configuration.');
+        }
+
         setPrimaryImgError(false);
         setThumbErrors(prev => ({ ...prev, 0: false }));
         setItemForm(prev => {
@@ -4950,7 +4973,11 @@ const VendorDashboard = () => {
                 </div>
 
                 {/* 3. Total Diners Card */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4">
+                <div 
+                  onClick={() => setActiveTab('customers')}
+                  className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/50 rounded-2xl md:rounded-3xl p-3.5 md:p-6 transition-all duration-300 hover:translate-y-[-4px] hover:shadow-lg flex items-center gap-3 md:gap-4 cursor-pointer"
+                  title="Click to view all customers"
+                >
                   <div className="p-2.5 md:p-3.5 bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400 rounded-xl md:rounded-2xl shadow-inner shrink-0"><Users size={20} className="md:w-6 md:h-6" /></div>
                   <div className="min-w-0">
                     <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Total {terms.customersName}</p>
@@ -5245,14 +5272,22 @@ const VendorDashboard = () => {
                       {customers.slice(0, 3).map((customer, idx) => {
                         const metrics = getCustomerMetrics(customer, orders);
                         return (
-                          <div key={customer._id || idx} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                          <div 
+                            key={customer._id || idx} 
+                            onClick={() => {
+                              setSelectedCustomerForDetails(customer);
+                              setIsCustomerDetailsModalOpen(true);
+                            }}
+                            className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                            title={`View details for ${customer.name || 'Customer'}`}
+                          >
                             <img 
                               src={getCustomerAvatarUrl(customer)} 
                               alt={customer.name} 
-                              className="w-10 h-10 rounded-full object-cover border border-slate-100 dark:border-slate-800" 
+                              className="w-10 h-10 rounded-full object-cover border border-slate-100 dark:border-slate-800 group-hover:scale-105 transition-transform" 
                             />
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{customer.name}</p>
+                              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{customer.name}</p>
                               <p className="text-[10px] text-slate-400 truncate">{customer.phone || customer.email || 'No Contact'}</p>
                             </div>
                             <div className="text-right">
@@ -5651,11 +5686,15 @@ const VendorDashboard = () => {
                         return (
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-4">
                             {sortedCatalog.map(item => {
-                              const isOutOfStock = (item.status && (
-                                item.status.toLowerCase().includes('out') ||
-                                item.status.toLowerCase().includes('un') ||
-                                item.status.toLowerCase().includes('closed')
-                              )) || (item.stock !== undefined && Number(item.stock) <= 0);
+                              const mainCat = getProductMainCategory(item.category, vendorType);
+                              const isServiceOffering = ['Services', 'Stay', 'Travel'].includes(mainCat) || ['Services', 'Stay', 'Travel', 'Service', 'Appointment', 'Stay Booking'].includes(item.category);
+                              const isOutOfStock = isServiceOffering
+                                ? (item.status === 'Unavailable' || item.status === 'Closed' || (item.bookingLimit !== undefined && Number(item.bookingLimit) > 0 && Number(item.bookingsCount || 0) >= Number(item.bookingLimit)))
+                                : ((item.status && (
+                                    item.status.toLowerCase().includes('out') ||
+                                    item.status.toLowerCase().includes('un') ||
+                                    item.status.toLowerCase().includes('closed')
+                                  )) || (item.stock !== undefined && Number(item.stock) <= 0));
 
                               return (
                                 <div 
@@ -5763,9 +5802,12 @@ const VendorDashboard = () => {
                                       const salesInfo = getItemSalesData(item._id, item);
                                       const salesCount = salesInfo.count;
                                       const customersCount = salesInfo.customersCount;
-                                      const isItemOutOfStock = shouldShowStock
-                                        ? (Number(item.stock) <= 0 || item.status === 'Unavailable' || item.status === 'Out of Stock')
-                                        : (item.status === 'Unavailable' || item.status === 'Out of Stock');
+                                      const isServiceOffering = ['Services', 'Stay', 'Travel'].includes(mainCat) || ['Services', 'Stay', 'Travel', 'Service', 'Appointment', 'Stay Booking'].includes(item.category);
+                                      const isItemOutOfStock = isServiceOffering
+                                        ? (item.status === 'Unavailable' || item.status === 'Closed' || (item.bookingLimit !== undefined && Number(item.bookingLimit) > 0 && Number(item.bookingsCount || 0) >= Number(item.bookingLimit)))
+                                        : (shouldShowStock
+                                            ? (Number(item.stock) <= 0 || item.status === 'Unavailable' || item.status === 'Out of Stock')
+                                            : (item.status === 'Unavailable' || item.status === 'Out of Stock'));
                                       const currentStatus = isItemOutOfStock ? (shouldShowStock ? 'Out of Stock' : (item.status || 'Unavailable')) : (item.status || 'Available');
 
                                       return (
@@ -7000,7 +7042,24 @@ const VendorDashboard = () => {
 
                         <div className="space-y-3.5 max-h-[420px] overflow-y-auto pr-1">
                           {(() => {
-                            const dayAppts = bookings.filter(b => matchesBookingCalendarDate(b, calendarSelectedDate));
+                            const uniqueMap = new Map();
+                            bookings.forEach(b => {
+                              if (b && matchesBookingCalendarDate(b, calendarSelectedDate)) {
+                                const key = String(b._id || b.id || b.order_number || '');
+                                if (key && !uniqueMap.has(key)) {
+                                  uniqueMap.set(key, b);
+                                } else if (!key) {
+                                  uniqueMap.set(Math.random().toString(), b);
+                                }
+                              }
+                            });
+                            let dayAppts = Array.from(uniqueMap.values());
+                            if (bookingStatusFilter && bookingStatusFilter !== 'All') {
+                              dayAppts = dayAppts.filter(b => {
+                                const currentStatus = String(b.status || '').toLowerCase();
+                                return currentStatus === bookingStatusFilter.toLowerCase();
+                              });
+                            }
                             
                             if (dayAppts.length === 0) {
                               return (
@@ -7011,7 +7070,11 @@ const VendorDashboard = () => {
                             }
 
                             return dayAppts.map(b => (
-                              <div key={b._id || b.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-900 space-y-3.5 shadow-inner">
+                              <div 
+                                key={b._id || b.id || b.order_number} 
+                                onClick={() => setSelectedBookingForDetails(b)}
+                                className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-900 space-y-3.5 shadow-inner cursor-pointer hover:border-slate-300 dark:hover:border-slate-800 transition-all"
+                              >
                                 <div className="flex justify-between items-start">
                                   <div>
                                     <h5 className="font-bold text-sm text-slate-900 dark:text-white">{b.bookingHolder?.name || b.memberName || b.customer_name || 'N/A'}</h5>
@@ -7048,8 +7111,12 @@ const VendorDashboard = () => {
                                     )}
                                   </div>
                                   <select
+                                    onClick={(e) => e.stopPropagation()}
                                     value={isStayBooking(b) && (b.status === 'Order Received' || b.status === 'Accepted') ? (b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending') : b.status}
-                                    onChange={(e) => handleUpdateOrderStatus(b._id || b.id, e.target.value)}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleUpdateOrderStatus(b._id || b.id, e.target.value);
+                                    }}
                                     className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:border-primary-500 font-bold"
                                   >
                                     {isStayBooking(b)
@@ -12417,7 +12484,13 @@ required
                                 )
                               )}
                               
-                              {product.status === 'Unavailable' || product.status === 'Out of Stock' ? (
+                              {(() => {
+                                const isService = ['Services', 'Stay', 'Travel', 'Service', 'Appointment', 'Stay Booking'].includes(product.category) || ['Services', 'Stay', 'Travel'].includes(selectedStorefrontVendor.vendorType);
+                                const isSoldOut = isService
+                                  ? (product.status === 'Unavailable' || product.status === 'Closed' || (product.bookingLimit !== undefined && Number(product.bookingLimit) > 0 && Number(product.bookingsCount || 0) >= Number(product.bookingLimit)))
+                                  : (product.status === 'Unavailable' || product.status === 'Out of Stock' || (product.stock !== undefined && Number(product.stock) <= 0));
+                                return isSoldOut;
+                              })() ? (
                                 <button
                                   type="button"
                                   disabled
@@ -13402,46 +13475,46 @@ required
                       Primary Contact
                     </span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 text-xs">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+                    <div className="min-w-0">
                       <span className="text-[10px] text-slate-400 font-semibold block">Customer Name</span>
-                      <span className="font-extrabold text-sm text-slate-900 dark:text-white">
+                      <span className="font-extrabold text-sm text-slate-900 dark:text-white break-words [overflow-wrap:anywhere] block">
                         {holder.name || 'Not provided'}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-[10px] text-slate-400 font-semibold block">Customer ID</span>
-                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 break-words [overflow-wrap:anywhere] block">
                         {holder.customerId || 'Not provided'}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-[10px] text-slate-400 font-semibold block">Mobile Number</span>
-                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">
                         {holder.phone || 'Not provided'}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-[10px] text-slate-400 font-semibold block">Email Address</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">
                         {holder.email || 'Not provided'}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-[10px] text-slate-400 font-semibold block">Aadhaar (Masked)</span>
-                      <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                      <span className="font-mono font-semibold text-slate-700 dark:text-slate-300 break-words [overflow-wrap:anywhere] block">
                         {maskAadhaar(holder.aadhaar)}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-[10px] text-slate-400 font-semibold block">PAN (Masked)</span>
-                      <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                      <span className="font-mono font-semibold text-slate-700 dark:text-slate-300 break-words [overflow-wrap:anywhere] block">
                         {maskPan(holder.pan)}
                       </span>
                     </div>
-                    <div className="sm:col-span-2 md:col-span-3">
+                    <div className="sm:col-span-2 lg:col-span-3 min-w-0">
                       <span className="text-[10px] text-slate-400 font-semibold block">Customer Address</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                      <span className="font-medium text-slate-700 dark:text-slate-300 break-words [overflow-wrap:anywhere] block">
                         {holder.address || 'Not provided'}
                       </span>
                     </div>
@@ -13481,40 +13554,40 @@ required
                               {g.role || (idx === 0 ? 'Primary / Booking Holder' : 'Additional Guest')}
                             </span>
                           </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                            <div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                            <div className="min-w-0">
                               <span className="text-[10px] text-slate-400 block font-semibold">Age / Gender</span>
-                              <span className="font-medium text-slate-800 dark:text-slate-200">
+                              <span className="font-medium text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">
                                 {g.age ? `${g.age} Yrs` : (idx === 0 && (holder.age || selectedBillOrder.age) ? `${holder.age || selectedBillOrder.age} Yrs` : 'Not provided')} • {g.gender || (idx === 0 && (holder.gender || selectedBillOrder.gender)) || 'Not provided'}
                               </span>
                             </div>
-                            <div>
+                            <div className="min-w-0">
                               <span className="text-[10px] text-slate-400 block font-semibold">Mobile</span>
-                              <span className="font-mono text-slate-800 dark:text-slate-200">
+                              <span className="font-mono text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">
                                 {g.phone || g.mobile || (idx === 0 ? holder.phone : 'Not provided')}
                               </span>
                             </div>
-                            <div>
+                            <div className="min-w-0">
                               <span className="text-[10px] text-slate-400 block font-semibold">ID Type & Number</span>
-                              <span className="font-medium text-slate-800 dark:text-slate-200">
+                              <span className="font-medium text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">
                                 {g.idType || (g.aadhaar ? 'Aadhaar' : (g.pan ? 'PAN' : 'Not provided'))}: {
                                   g.idNumber ? (String(g.idType || '').toLowerCase().includes('aadhaar') ? maskAadhaar(g.idNumber) : g.idNumber) :
                                   (g.aadhaar ? maskAadhaar(g.aadhaar) : (g.pan ? maskPan(g.pan) : 'Not provided'))
                                 }
                               </span>
                             </div>
-                            <div>
+                            <div className="min-w-0">
                               <span className="text-[10px] text-slate-400 block font-semibold">Verification</span>
-                              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                              <span className="font-semibold text-emerald-600 dark:text-emerald-400 break-words [overflow-wrap:anywhere] block">
                                 {g.idVerificationStatus || g.verificationStatus || (idx === 0 ? 'Verified' : 'Not provided')}
                               </span>
                             </div>
                           </div>
                           {(g.aadhaar || g.pan || g.address) && (
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-850 text-xs text-slate-500">
-                              {g.aadhaar && <div><span className="text-[10px] text-slate-400">Aadhaar:</span> {maskAadhaar(g.aadhaar)}</div>}
-                              {g.pan && <div><span className="text-[10px] text-slate-400">PAN:</span> {maskPan(g.pan)}</div>}
-                              {g.address && <div className="sm:col-span-2"><span className="text-[10px] text-slate-400">Address:</span> {g.address}</div>}
+                              {g.aadhaar && <div className="min-w-0"><span className="text-[10px] text-slate-400">Aadhaar:</span> <span className="break-words [overflow-wrap:anywhere]">{maskAadhaar(g.aadhaar)}</span></div>}
+                              {g.pan && <div className="min-w-0"><span className="text-[10px] text-slate-400">PAN:</span> <span className="break-words [overflow-wrap:anywhere]">{maskPan(g.pan)}</span></div>}
+                              {g.address && <div className="sm:col-span-2 min-w-0"><span className="text-[10px] text-slate-400">Address:</span> <span className="break-words [overflow-wrap:anywhere]">{g.address}</span></div>}
                             </div>
                           )}
                         </div>
@@ -13533,28 +13606,28 @@ required
                           Booking Holder / Guest
                         </span>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                        <div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+                        <div className="min-w-0">
                           <span className="text-[10px] text-slate-400 block font-semibold">Age / Gender</span>
-                          <span className="font-medium text-slate-800 dark:text-slate-200">
+                          <span className="font-medium text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">
                             {holder.age || selectedBillOrder.age ? `${holder.age || selectedBillOrder.age} Yrs` : 'Not provided'} • {holder.gender || selectedBillOrder.gender || 'Not provided'}
                           </span>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <span className="text-[10px] text-slate-400 block font-semibold">Mobile</span>
-                          <span className="font-mono text-slate-800 dark:text-slate-200">{holder.phone || 'Not provided'}</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">{holder.phone || 'Not provided'}</span>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <span className="text-[10px] text-slate-400 block font-semibold">ID / Aadhaar</span>
-                          <span className="font-mono text-slate-800 dark:text-slate-200">{maskAadhaar(holder.aadhaar)}</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">{maskAadhaar(holder.aadhaar)}</span>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <span className="text-[10px] text-slate-400 block font-semibold">PAN</span>
-                          <span className="font-mono text-slate-800 dark:text-slate-200">{maskPan(holder.pan)}</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">{maskPan(holder.pan)}</span>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <span className="text-[10px] text-slate-400 block font-semibold">Verification</span>
-                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">Verified</span>
+                          <span className="font-semibold text-emerald-600 dark:text-emerald-400 break-words [overflow-wrap:anywhere] block">Verified</span>
                         </div>
                       </div>
                       <p className="text-[10px] text-slate-400 italic pt-1">
@@ -15098,7 +15171,8 @@ required
             const cNameLower = (selectedCustomerForDetails.name || '').trim().toLowerCase();
             const cEmailLower = (selectedCustomerForDetails.email || '').trim().toLowerCase();
             const cPhoneDigits = String(selectedCustomerForDetails.phone || '').trim().replace(/\D/g, '');
-            const cMemberIdStr = String(selectedCustomerForDetails.memberId || selectedCustomerForDetails.id || selectedCustomerForDetails._id || '').trim();
+            const cMemberIdStr = String(selectedCustomerForDetails.memberId || selectedCustomerForDetails.id || selectedCustomerForDetails._id || selectedCustomerForDetails.customerId || '').trim();
+            const cleanCustKey = cMemberIdStr.startsWith('cust_') ? cMemberIdStr.replace(/^cust_/, '').toLowerCase() : '';
 
             const custTransactions = allTransactions.filter(t => {
               if (!t) return false;
@@ -15114,15 +15188,16 @@ required
               if (!matchesVendor) return false;
 
               // Match customer identity
-              const tName = (t.memberName || t.customer_name || '').trim().toLowerCase();
-              const tEmail = (t.customer_email || t.email || (t.memberId && t.memberId.includes('@') ? t.memberId : '') || '').trim().toLowerCase();
-              const tPhoneDigits = String(t.customer_phone || t.phone || '').trim().replace(/\D/g, '');
-              const tMemberId = String(t.memberId || t.customerId || '').trim();
+              const tName = (t.memberName || t.customer_name || t.bookingHolder?.name || '').trim().toLowerCase();
+              const tEmail = (t.customer_email || t.email || t.candidateEmail || t.bookingHolder?.email || (t.memberId && t.memberId.includes('@') ? t.memberId : '') || '').trim().toLowerCase();
+              const tPhoneDigits = String(t.customer_phone || t.phone || t.mobileNumber || t.bookingHolder?.phone || '').trim().replace(/\D/g, '');
+              const tMemberId = String(t.memberId || t.customerId || t.customerDisplayId || t.bookingHolder?.customerId || '').trim();
 
+              if (cMemberIdStr && tMemberId && cMemberIdStr === tMemberId && !cMemberIdStr.startsWith('[object')) return true;
+              if (cleanCustKey && (tMemberId.toLowerCase() === cleanCustKey || tName.toLowerCase() === cleanCustKey || (tEmail && tEmail.startsWith(cleanCustKey)))) return true;
               if (cEmailLower && tEmail && cEmailLower === tEmail) return true;
               if (cPhoneDigits && tPhoneDigits && cPhoneDigits.length >= 8 && tPhoneDigits.includes(cPhoneDigits.slice(-8))) return true;
-              if (cNameLower && tName && cNameLower === tName && cNameLower !== 'customer') return true;
-              if (cMemberIdStr && tMemberId && cMemberIdStr === tMemberId && !cMemberIdStr.startsWith('[object') && !cMemberIdStr.startsWith('cust_')) return true;
+              if (cNameLower && tName && cNameLower === tName && cNameLower !== 'customer' && cNameLower !== 'connect member') return true;
               return false;
             });
 

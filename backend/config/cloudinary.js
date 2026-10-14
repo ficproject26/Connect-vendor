@@ -53,7 +53,7 @@ const uploadToCloudinary = async (fileBuffer, folder = 'connect_uploads', filena
     const filename = `img_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext || '.jpg'}`;
     const filePath = path.join(uploadsDir, filename);
     fs.writeFileSync(filePath, fileBuffer);
-    return `/uploads/${filename}`;
+    return `/api/uploads/${filename}`;
   } catch (localErr) {
     console.error('❌ Local file save failed:', localErr);
     throw new Error('Failed to save uploaded file to storage');

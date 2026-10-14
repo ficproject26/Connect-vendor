@@ -2,7 +2,8 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { protect, authorize } = require('../middleware/auth');
+const {
+  getOnboardingStatus, protect, authorize } = require('../middleware/auth');
 const {
   getVendorAnalytics,
   createProduct,
@@ -66,6 +67,9 @@ const router = express.Router();
 router.use(protect);
 router.use(authorize('Vendor'));
 
+// Role-based Onboarding Status Endpoint (Requirement 5)
+router.get('/onboarding-status', getOnboardingStatus);
+
 // Upload Endpoint using Cloudinary
 router.post('/upload', (req, res) => {
   upload.single('image')(req, res, async (err) => {
@@ -96,7 +100,7 @@ router.post('/upload', (req, res) => {
         fs.writeFileSync(path.join(uploadsDir, filename), req.file.buffer);
         return res.status(200).json({
           success: true,
-          imageUrl: `/uploads/${filename}`
+          imageUrl: `/api/uploads/${filename}`
         });
       } catch (localSaveErr) {
         return res.status(500).json({ success: false, message: 'Failed to save image' });

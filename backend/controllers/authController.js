@@ -384,23 +384,22 @@ const loginVendor = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
+    // Verify password strictly against hashed password FIRST
+    // Password verified above
+
     // Check Vendor status
     const vendorStatus = (user.status || '').toLowerCase().trim();
     const isApprovedStatus = ['approved', 'active', 'assigned'].includes(vendorStatus);
-    const isExplicitlyDisapproved = ['pending', 'suspended', 'inactive', 'rejected'].includes(vendorStatus) || user.isApproved === false || user.isActive === false || user.isLocked === true;
+    const onboardingStatuses = [
+      'pending', 'submitted', 'pending_pincode_approval', 'pincode_approved',
+      'kyc_pending', 'kyc_in_progress', 'payment_pending', 'pincode_rejected',
+      'kyc_rejected', 'additional_information_required'
+    ];
+    const isOnboardingVendor = isVendorOrAdmin && (onboardingStatuses.includes(vendorStatus) || user.isApproved === false);
 
-    if ((!isApprovedStatus || isExplicitlyDisapproved) && userRole !== 'admin') {
-      if (vendorStatus === 'pending') {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Your account is pending approval by the Admin. Please try again later.' 
-        });
-      } else if (vendorStatus === 'rejected') {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Your account application has been rejected by the Admin.' 
-        });
-      } else if (vendorStatus === 'inactive') {
+    // If genuinely suspended or inactive (and NOT an onboarding state)
+    if (!isApprovedStatus && !isOnboardingVendor && userRole !== 'admin') {
+      if (vendorStatus === 'inactive') {
         return res.status(403).json({ 
           success: false, 
           message: 'Your vendor account has been deactivated by the Admin. Access denied.' 
