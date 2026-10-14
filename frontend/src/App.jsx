@@ -12,24 +12,7 @@ const RouteLoading = () => (
   </div>
 );
 
-// Custom Protected Route Wrapper
-const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { isAuthenticated, user } = useSelector((state) => state.auth);
-
-  if (!isAuthenticated || !user) {
-    return <Navigate to="/" replace />;
-  }
-
-  const userRole = (user?.role || '').toLowerCase().trim();
-  const normalizedAllowedRoles = allowedRoles?.map(r => String(r).toLowerCase().trim());
-
-  if (normalizedAllowedRoles && !normalizedAllowedRoles.includes(userRole)) {
-    return <Navigate to="/" replace />;
-  }
-
-  return children;
-};
-
+import ProtectedRoute from './routes/ProtectedRoute';
 import { useSearchParams } from 'react-router-dom';
 
 const OrdersRedirect = () => {
@@ -84,7 +67,7 @@ function App() {
               <Route 
                 path="/vendor/*" 
                 element={
-                  <ProtectedRoute allowedRoles={['Vendor', 'Admin', 'Member']}>
+                  <ProtectedRoute allowedRoles={['Vendor', 'Admin']}>
                     <VendorDashboard />
                   </ProtectedRoute>
                 } 

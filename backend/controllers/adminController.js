@@ -52,6 +52,7 @@ const approveVendor = async (req, res) => {
     }
 
     vendor.status = 'Approved';
+    vendor.isApproved = true;
     await vendor.save();
 
     res.status(200).json({ success: true, message: 'Vendor request approved successfully', data: vendor });
@@ -72,6 +73,7 @@ const rejectVendor = async (req, res) => {
     }
 
     vendor.status = 'Rejected';
+    vendor.isApproved = false;
     await vendor.save();
 
     res.status(200).json({ success: true, message: 'Vendor request rejected successfully', data: vendor });

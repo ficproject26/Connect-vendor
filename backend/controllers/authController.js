@@ -4,19 +4,21 @@ const qrcode = require('qrcode');
 const { User, MembershipPlan, MembershipCard } = require('../models/Schemas');
 const { uploadToCloudinary } = require('../config/cloudinary');
 
-// Helper function to generate JWT
-const generateToken = (id, email) => {
+// Helper function to generate JWT with scoped claims
+const generateToken = (id, email, extraClaims = {}) => {
   const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'super_secret_jwt_key_9999' : null);
   if (!jwtSecret) {
     throw new Error('JWT_SECRET is not configured on production server');
   }
+  const isPendingOnboarding = extraClaims.tokenType === 'onboarding';
   return jwt.sign(
     { 
       id: id ? id.toString() : id,
-      ...(email ? { email: String(email).toLowerCase().trim() } : {})
+      ...(email ? { email: String(email).toLowerCase().trim() } : {}),
+      ...extraClaims
     },
     jwtSecret,
-    { expiresIn: '30d' }
+    { expiresIn: isPendingOnboarding ? '1d' : '30d' }
   );
 };
 
@@ -192,10 +194,17 @@ const registerVendor = async (req, res) => {
       });
     }
 
-    // Check if user already exists
-    const userExists = await User.findOne({ email });
+    // Check if user already exists (case-insensitive)
+    const cleanEmail = email.trim().toLowerCase();
+    const escapedEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const userExists = await User.findOne({
+      email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') }
+    });
     if (userExists) {
-      return res.status(400).json({ success: false, message: 'User already exists with this email' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'An account with this email address already exists. Please use a different email or log in with your authorized credentials.' 
+      });
     }
 
     // Get files if uploaded and upload to Cloudinary
@@ -293,6 +302,7 @@ const registerVendor = async (req, res) => {
       password: hashedPassword,
       role: 'Vendor',
       status: 'Pending', // Put vendor registration under admin approval
+      isApproved: false,
       vendorType,
       category,
       categoryId: finalCategoryId,
@@ -348,7 +358,7 @@ const registerVendor = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Vendor registered successfully! You can log in now.',
+      message: 'Vendor registration submitted successfully and is awaiting administrative approval.',
       data: {
         id: vendor._id,
         vendorId: vendor.vendorId,
@@ -374,62 +384,89 @@ const loginVendor = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please enter email and password' });
     }
 
-    // Find user by email (fast indexed lookup first)
     const cleanEmail = email.trim().toLowerCase();
     const escapedEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    let user = await User.findOne({ email: cleanEmail });
+
+    // Strict role-scoped lookup: only find authorized Vendor or Admin accounts
+    let user = await User.findOne({ 
+      email: cleanEmail,
+      role: { $in: ['Vendor', 'Admin'] }
+    });
     if (!user) {
-      user = await User.findOne({ email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') } });
+      user = await User.findOne({ 
+        email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') },
+        role: { $in: ['Vendor', 'Admin'] }
+      });
     }
 
     if (!user) {
-      console.warn(`[Login Failed] No vendor user found for email: ${cleanEmail}`);
+      // Check if this email exists under another role (e.g. Member / Customer / Manager / Agent)
+      const otherAccount = await User.findOne({ 
+        email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') }
+      });
+      if (otherAccount) {
+        console.warn(`[Login Rejected] Account for email ${cleanEmail} has role '${otherAccount.role}' and is not authorized for the Vendor portal.`);
+        return res.status(401).json({ 
+          success: false, 
+          message: 'Invalid credentials. Role is not authorized for the vendor portal.' 
+        });
+      }
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    const userRole = (user.role || '').toLowerCase();
-    const isVendorOrAdmin = userRole.includes('vendor') || userRole.includes('admin') || Boolean(user.vendorType) || Boolean(user.isVendor);
-    
-    if (!isVendorOrAdmin) {
-      console.warn(`[Login Failed] User role is not vendor or admin for email: ${cleanEmail}`);
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    const userRole = (user.role || '').toLowerCase().trim();
+    if (userRole !== 'vendor' && userRole !== 'admin') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid credentials. Role is not authorized for the vendor portal.' 
+      });
     }
 
     // Verify password strictly against hashed password FIRST
-    // Password verified above
-
-    // Check Vendor status
-    const vendorStatus = (user.status || '').toLowerCase().trim();
-    const isApprovedStatus = ['approved', 'active', 'assigned'].includes(vendorStatus);
-    const onboardingStatuses = [
-      'pending', 'submitted', 'pending_pincode_approval', 'pincode_approved',
-      'kyc_pending', 'kyc_in_progress', 'payment_pending', 'pincode_rejected',
-      'kyc_rejected', 'additional_information_required'
-    ];
-    const isOnboardingVendor = isVendorOrAdmin && (onboardingStatuses.includes(vendorStatus) || user.isApproved === false);
-
-    // If genuinely suspended or inactive (and NOT an onboarding state)
-    if (!isApprovedStatus && !isOnboardingVendor && userRole !== 'admin') {
-      if (vendorStatus === 'inactive') {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Your vendor account has been deactivated by the Admin. Access denied.' 
-        });
-      } else {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Your vendor account has been suspended. Please contact the administrator.' 
-        });
-      }
-    }
-
-    // Verify password strictly against hashed password
     let isMatch = false;
     if (user && user.password) {
       isMatch = await bcrypt.compare(password, user.password).catch(() => false);
     }
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    // Account state & approval enforcement
+    const vendorStatus = (user.status || '').toLowerCase().trim();
+    const isApprovedStatus = ['approved', 'active', 'assigned'].includes(vendorStatus) && user.isApproved !== false;
+    const onboardingStatuses = [
+      'pending', 'submitted', 'pending_pincode_approval', 'pincode_approved',
+      'kyc_pending', 'kyc_in_progress', 'payment_pending', 'pincode_rejected',
+      'kyc_rejected', 'additional_information_required'
+    ];
+    const isOnboardingVendor = userRole === 'vendor' && (!isApprovedStatus && (onboardingStatuses.includes(vendorStatus) || user.isApproved === false));
+
+    // Suspended or deactivated accounts
+    if (user.isLocked === true || vendorStatus === 'suspended' || vendorStatus === 'inactive') {
+      return res.status(403).json({ 
+        success: false, 
+        isTerminated: true,
+        message: vendorStatus === 'inactive'
+          ? 'Your vendor account has been deactivated by the Admin. Access denied.'
+          : 'Your vendor account has been suspended. Please contact the administrator.' 
+      });
+    }
+
+    // Rejected accounts
+    if (vendorStatus === 'rejected') {
+      return res.status(403).json({
+        success: false,
+        isRejected: true,
+        message: 'Your vendor application was rejected. Please contact the administrator.'
+      });
+    }
+
+    // Fail closed on unknown or missing status
+    if (!isApprovedStatus && !isOnboardingVendor && userRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Account status is invalid or pending administrative approval.'
+      });
     }
 
     const userResponse = user.toObject ? user.toObject() : { ...user };
@@ -449,9 +486,35 @@ const loginVendor = async (req, res) => {
       }
     }
 
+    // If vendor is still in onboarding / approval pipeline, issue ONLY restricted onboarding token
+    if (isOnboardingVendor) {
+      userResponse.isApproved = false;
+      const onboardingToken = generateToken(user._id, user.email, {
+        role: 'Vendor',
+        isApproved: false,
+        status: user.status || 'Pending',
+        tokenType: 'onboarding'
+      });
+      return res.status(200).json({
+        success: true,
+        isPendingApproval: true,
+        token: onboardingToken,
+        user: userResponse,
+        message: 'Account is awaiting administrative approval. Access restricted to onboarding status.'
+      });
+    }
+
+    // Approved vendor or admin
+    userResponse.isApproved = true;
+    const dashboardToken = generateToken(user._id, user.email, {
+      role: user.role,
+      isApproved: true,
+      status: user.status
+    });
+
     res.status(200).json({
       success: true,
-      token: generateToken(user._id, user.email),
+      token: dashboardToken,
       user: userResponse
     });
   } catch (error) {
@@ -582,10 +645,29 @@ const loginMember = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please enter email and password' });
     }
 
-    // Find user by email
-    const user = await User.findOne({ email });
-    if (!user || (user.role !== 'Member' && user.role !== 'Admin')) {
+    const cleanEmail = String(email).trim().toLowerCase();
+    const escapedEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Strict role-scoped query: only Member or Admin
+    let user = await User.findOne({ 
+      email: cleanEmail,
+      role: { $in: ['Member', 'Admin'] }
+    });
+    if (!user) {
+      user = await User.findOne({ 
+        email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') },
+        role: { $in: ['Member', 'Admin'] }
+      });
+    }
+
+    if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    // Enforce account status
+    const statusLower = (user.status || '').toLowerCase().trim();
+    if (user.isLocked === true || statusLower === 'suspended' || statusLower === 'inactive') {
+      return res.status(403).json({ success: false, message: 'Account is suspended or deactivated.' });
     }
 
     // Verify password
@@ -602,7 +684,7 @@ const loginMember = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      token: generateToken(user._id),
+      token: generateToken(user._id, user.email, { role: user.role }),
       user: {
         id: user._id,
         name: user.name,

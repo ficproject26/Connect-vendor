@@ -11,6 +11,10 @@ const protect = async (req, res, next) => {
       // Get token from header
       token = req.headers.authorization.split(' ')[1];
 
+      if (!token || token === 'null' || token === 'undefined') {
+        return res.status(401).json({ success: false, message: 'Not authorized, invalid token provided' });
+      }
+
       // Verify token
       const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'super_secret_jwt_key_9999' : null);
       if (!jwtSecret) {
@@ -34,36 +38,70 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
       }
 
-      // Vendor onboarding and approval enforcement
       const statusLower = (user.status || '').toLowerCase().trim();
       const userRoleLower = (user.role || user.userType || '').toLowerCase().trim();
-      const isVendorRole = userRoleLower.includes('vendor') || userRoleLower.includes('merchant');
-      const isApprovedStatus = ['approved', 'active', 'assigned'].includes(statusLower);
-      const onboardingStatuses = [
-        'pending', 'submitted', 'pending_pincode_approval', 'pincode_approved',
-        'kyc_pending', 'kyc_in_progress', 'payment_pending', 'pincode_rejected',
-        'kyc_rejected', 'additional_information_required'
-      ];
-      const isOnboardingPending = isVendorRole && (!isApprovedStatus && (onboardingStatuses.includes(statusLower) || user.isApproved === false));
+      const isVendorRole = userRoleLower === 'vendor';
+      const isAdminRole = userRoleLower === 'admin';
 
-      if (isOnboardingPending) {
-        // Allow ONLY onboarding status checks, profile inspection, or logout
-        const allowedPaths = ['/onboarding-status', '/onboarding/status', '/profile', '/me', '/logout'];
-        const isAllowed = allowedPaths.some(p => req.path.endsWith(p) || req.originalUrl.includes(p));
-        if (!isAllowed) {
-          return res.status(403).json({
-            success: false,
-            isPendingApproval: true,
-            status: user.status || 'PENDING_PINCODE_APPROVAL',
-            message: 'Access restricted: Vendor account is currently undergoing role-based approval. Please check onboarding status.'
-          });
-        }
-      } else if (isVendorRole && !isApprovedStatus && (statusLower === 'suspended' || statusLower === 'inactive' || user.isLocked === true)) {
+      // Verify token claim role matches database role if claim exists
+      if (decoded.role && decoded.role.toLowerCase().trim() !== userRoleLower) {
+        return res.status(401).json({ success: false, message: 'Not authorized, role context revoked' });
+      }
+
+      // Enforce account termination / suspension / deactivation
+      if (user.isLocked === true || statusLower === 'suspended' || statusLower === 'inactive') {
         return res.status(403).json({ 
           success: false, 
           isTerminated: true,
-          message: 'Your vendor account has been suspended. Please contact the administrator.' 
+          message: statusLower === 'inactive' 
+            ? 'Your vendor account has been deactivated by the Admin. Access denied.'
+            : 'Your vendor account has been suspended. Please contact the administrator.' 
         });
+      }
+
+      // Enforce account rejection
+      if (statusLower === 'rejected') {
+        return res.status(403).json({
+          success: false,
+          isRejected: true,
+          message: 'Your vendor application was rejected. Please contact support.'
+        });
+      }
+
+      // Vendor approval and onboarding enforcement (FAIL CLOSED)
+      if (isVendorRole) {
+        const isApprovedStatus = ['approved', 'active', 'assigned'].includes(statusLower) && user.isApproved !== false;
+        const onboardingStatuses = [
+          'pending', 'submitted', 'pending_pincode_approval', 'pincode_approved',
+          'kyc_pending', 'kyc_in_progress', 'payment_pending', 'pincode_rejected',
+          'kyc_rejected', 'additional_information_required'
+        ];
+        const isOnboarding = onboardingStatuses.includes(statusLower) || user.isApproved === false;
+        const allowedPaths = ['/onboarding-status', '/onboarding/status', '/profile', '/me', '/logout'];
+        const isAllowedPath = allowedPaths.some(p => req.path.endsWith(p) || req.originalUrl.includes(p));
+
+        if (!isApprovedStatus) {
+          if (isOnboarding && isAllowedPath) {
+            // Permit read-only access to onboarding status page
+          } else {
+            return res.status(403).json({
+              success: false,
+              isPendingApproval: true,
+              status: user.status || 'Pending',
+              message: 'Access restricted: Vendor account is currently undergoing administrative approval. Please check onboarding status.'
+            });
+          }
+        }
+
+        // Reject scoped onboarding tokens attempting to access non-onboarding APIs
+        if (decoded.tokenType === 'onboarding' && !isAllowedPath) {
+          return res.status(403).json({
+            success: false,
+            isPendingApproval: true,
+            status: user.status || 'Pending',
+            message: 'Access restricted: Onboarding session is not authorized for dashboard operations.'
+          });
+        }
       }
 
       req.user = user;
@@ -155,7 +193,7 @@ const protect = async (req, res, next) => {
       isAuthorized = true;
     } catch (error) {
       console.error('Auth token error:', error);
-      return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
+      return res.status(401).json({ success: false, message: 'Not authorized, token invalid or expired' });
     }
   }
 
@@ -168,13 +206,22 @@ const protect = async (req, res, next) => {
   }
 };
 
-// Role-based access control middleware
+// Role-based access control middleware with case-insensitive matching
 const authorize = (...roles) => {
+  const allowedRoles = roles.map(r => String(r).toLowerCase().trim());
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user || !req.user.role) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Authentication required' 
+      });
+    }
+
+    const currentRole = String(req.user.role).toLowerCase().trim();
+    if (!allowedRoles.includes(currentRole)) {
       return res.status(403).json({ 
         success: false, 
-        message: `Role (${req.user ? req.user.role : 'Guest'}) is not authorized to access this resource` 
+        message: `Role (${req.user.role}) is not authorized to access this resource` 
       });
     }
     next();

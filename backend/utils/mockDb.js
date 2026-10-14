@@ -56,11 +56,19 @@ class MockModel {
     };
   }
 
-  async find(query = {}) {
+  find(query = {}) {
     const items = this._read();
-    return items
+    const result = items
       .filter(item => this._matchQuery(item, query))
       .map(item => this._wrapItem(item));
+
+    const promise = Promise.resolve(result);
+    promise.select = function() { return promise; };
+    promise.sort = function() { return promise; };
+    promise.lean = function() { return promise; };
+    promise.skip = function() { return promise; };
+    promise.limit = function() { return promise; };
+    return promise;
   }
 
   async findOne(query = {}) {

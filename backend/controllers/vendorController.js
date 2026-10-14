@@ -516,7 +516,7 @@ const createProduct = async (req, res) => {
 
     const vendorSubcategory = getVendorSubcategory(req.user);
     const finalCategory = category || vendorSubcategory || 'General';
-    const vendorId = (req.body.vendorId || req.user._id).toString();
+    const vendorId = req.user._id.toString();
 
     // Strict validation for Stay category hierarchy
     const resolvedMainCat = (mainCategory || subNavbarCategory || '').trim();
