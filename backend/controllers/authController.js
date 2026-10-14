@@ -332,7 +332,18 @@ const registerVendor = async (req, res) => {
       operatingHours,
       businessImages,
       businesses,
-      primaryBusinessId
+      primaryBusinessId,
+      isDirectRequest: true,
+      joiningType: 'direct',
+      createdVia: 'vendor_website',
+      registrationSource: 'direct',
+      requestOrigin: 'vendor_website',
+      requestType: 'onboarding',
+      phone: mobileNumber,
+      pincode: postalCode,
+      assignedArea: `${state || ''} / ${city || ''} (${postalCode || ''})`,
+      assignedState: state || '',
+      assignedDistrict: city || ''
     });
 
     res.status(201).json({
