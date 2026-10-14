@@ -60,11 +60,11 @@ const isValidTimeFormat = (timeStr) => {
 const formatCustomerId = (c, customersList = null) => {
   if (!c) return 'N/A';
   if (typeof c === 'object') {
-    if (c.customerDisplayId && String(c.customerDisplayId).startsWith('FIC-CUST-') && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
-    if (c.customerId && String(c.customerId).startsWith('FIC-CUST-') && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
-    if (c.registrationId && String(c.registrationId).startsWith('FIC-CUST-') && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
+    if (c.customerDisplayId && (String(c.customerDisplayId).startsWith('FIC-CUS-') || String(c.customerDisplayId).startsWith('FIC-CUST-')) && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
+    if (c.customerId && (String(c.customerId).startsWith('FIC-CUS-') || String(c.customerId).startsWith('FIC-CUST-')) && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
+    if (c.registrationId && (String(c.registrationId).startsWith('FIC-CUS-') || String(c.registrationId).startsWith('FIC-CUST-')) && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
     if (c.registrationId && String(c.registrationId).startsWith('REG-')) return String(c.registrationId);
-    if (c.memberId && String(c.memberId).startsWith('FIC-CUST-') && String(c.memberId) !== 'FIC-CUST-100001') return String(c.memberId);
+    if (c.memberId && (String(c.memberId).startsWith('FIC-CUS-') || String(c.memberId).startsWith('FIC-CUST-')) && String(c.memberId) !== 'FIC-CUST-100001') return String(c.memberId);
 
     // Check against customers list
     const list = Array.isArray(customersList) ? customersList : [];
@@ -98,7 +98,7 @@ const formatCustomerId = (c, customersList = null) => {
   }
 
   const rawId = String(c).trim();
-  if (rawId.startsWith('FIC-CUST-') && rawId !== 'FIC-CUST-100001') return rawId;
+  if ((rawId.startsWith('FIC-CUS-') || rawId.startsWith('FIC-CUST-')) && rawId !== 'FIC-CUST-100001') return rawId;
   if (rawId.startsWith('REG-')) return rawId;
   return 'N/A';
 };
@@ -1738,10 +1738,10 @@ const VendorDashboard = () => {
   const getCustomerDisplayId = (order) => {
     if (!order) return 'N/A';
     if (order.bookingHolder?.customerId && String(order.bookingHolder.customerId) !== 'FIC-CUST-100001') return String(order.bookingHolder.customerId);
-    if (order.customerDisplayId && String(order.customerDisplayId).startsWith('FIC-CUST-') && String(order.customerDisplayId) !== 'FIC-CUST-100001') return String(order.customerDisplayId);
-    if (order.customerId && String(order.customerId).startsWith('FIC-CUST-') && String(order.customerId) !== 'FIC-CUST-100001') return String(order.customerId);
+    if (order.customerDisplayId && (String(order.customerDisplayId).startsWith('FIC-CUS-') || String(order.customerDisplayId).startsWith('FIC-CUST-')) && String(order.customerDisplayId) !== 'FIC-CUST-100001') return String(order.customerDisplayId);
+    if (order.customerId && (String(order.customerId).startsWith('FIC-CUS-') || String(order.customerId).startsWith('FIC-CUST-')) && String(order.customerId) !== 'FIC-CUST-100001') return String(order.customerId);
     if (order.registrationId && String(order.registrationId).startsWith('REG-')) return String(order.registrationId);
-    if (order.memberId && String(order.memberId).startsWith('FIC-CUST-') && String(order.memberId) !== 'FIC-CUST-100001') return String(order.memberId);
+    if (order.memberId && (String(order.memberId).startsWith('FIC-CUS-') || String(order.memberId).startsWith('FIC-CUST-')) && String(order.memberId) !== 'FIC-CUST-100001') return String(order.memberId);
 
     const oNameClean = (order.memberName || order.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     const oEmailClean = (order.candidateEmail || order.customer_email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();

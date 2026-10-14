@@ -491,7 +491,7 @@ router.post('/orders', async (req, res) => {
 
     // Resolve canonical Customer ID from database (Customer / User)
     let resolvedCustId = customerDisplayId || req.body.customerId;
-    if (!resolvedCustId || !String(resolvedCustId).startsWith('FIC-CUST-') || resolvedCustId === 'FIC-CUST-100001') {
+    if (!resolvedCustId || (!String(resolvedCustId).startsWith('FIC-CUS-') && !String(resolvedCustId).startsWith('FIC-CUST-')) || resolvedCustId === 'FIC-CUST-100001') {
       const matchConditions = [];
       const cleanPhone = (req.body.customer_phone || req.body.candidatePhone || req.body.phone || '').toString().replace(/[^0-9]/g, '');
       if (cleanPhone && cleanPhone.length >= 10) {
@@ -515,7 +515,7 @@ router.post('/orders', async (req, res) => {
         }
       }
     }
-    if (!resolvedCustId || !String(resolvedCustId).startsWith('FIC-CUST-') || resolvedCustId === 'FIC-CUST-100001') {
+    if (!resolvedCustId || (!String(resolvedCustId).startsWith('FIC-CUS-') && !String(resolvedCustId).startsWith('FIC-CUST-')) || resolvedCustId === 'FIC-CUST-100001') {
       const nLower = (req.body.candidateName || memberName || req.body.customer_name || '').trim().toLowerCase();
       if (nLower === 'swetha' || nLower === 'swetha j') resolvedCustId = 'FIC-CUST-774974';
       else if (nLower === 'sri' || nLower === 'sri bhavani m') resolvedCustId = 'FIC-CUST-214155';
