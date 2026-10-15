@@ -565,6 +565,26 @@ const createProduct = async (req, res) => {
       }
     }
 
+    // Strict validation for Jobs: 10-digit contact number and non-past deadline
+    const isJobProduct = resolvedMainCat.toLowerCase() === 'jobs' || String(finalCategory).toLowerCase().startsWith('job') || String(req.body.type || '').toLowerCase().startsWith('job');
+    if (isJobProduct) {
+      if (contactNumber !== undefined && contactNumber !== null && String(contactNumber).trim() !== '') {
+        const strVal = String(contactNumber).trim();
+        if (!/^[6-9]\d{9}$/.test(strVal)) {
+          return res.status(400).json({ success: false, message: 'Contact number must be a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9 (e.g. 9876543210)' });
+        }
+      }
+      if (deadline) {
+        const istOffsetMs = 5.5 * 60 * 60 * 1000;
+        const istNow = new Date(Date.now() + istOffsetMs);
+        const todayDateStr = istNow.toISOString().split('T')[0];
+        const deadlineDateStr = String(deadline).split('T')[0];
+        if (deadlineDateStr < todayDateStr) {
+          return res.status(400).json({ success: false, message: 'Job deadline cannot be in the past. Please select today or a future date.' });
+        }
+      }
+    }
+
     let finalBoardingPoints = [];
     let finalDroppingPoints = [];
     let finalBoardingPoint = boardingPoint;
@@ -825,10 +845,11 @@ const getProducts = async (req, res) => {
       const relevantOrders = await Order.find({
         $or: [
           { vendorId: { $in: allVendorBusinessIds } },
-          { vendor_id: { $in: allVendorBusinessIds } }
+          { vendor_id: { $in: allVendorBusinessIds } },
+          ...(productIds.length > 0 ? [{ jobId: { $in: productIds } }, { productId: { $in: productIds } }] : [])
         ],
         status: { $nin: ['Cancelled', 'Rejected'] }
-      }).select('items productId product_details finalAmount totalAmount amount status customerId memberId customer_name memberName phone mobileNumber email candidateEmail customer_email').lean();
+      }).select('items productId jobId jobTitle product_details finalAmount totalAmount amount status customerId memberId customer_name memberName phone mobileNumber email candidateEmail customer_email').lean();
 
       const bookingCountMap = {};
       const customersSetMap = {};
@@ -838,8 +859,8 @@ const getProducts = async (req, res) => {
 
         if (ord.items && Array.isArray(ord.items) && ord.items.length > 0) {
           ord.items.forEach(it => {
-            const itId = String(it.productId || it._id || it.id || '');
-            const itName = (it.name || '').trim().toLowerCase();
+            const itId = String(it.productId || it.jobId || it._id || it.id || '');
+            const itName = (it.name || it.jobTitle || '').trim().toLowerCase();
             const qty = Number(it.quantity || it.qty || 1);
             if (itId && productIds.includes(itId)) {
               bookingCountMap[itId] = (bookingCountMap[itId] || 0) + qty;
@@ -860,8 +881,8 @@ const getProducts = async (req, res) => {
             }
           });
         } else {
-          const ordProdId = String(ord.productId || '');
-          const ordProdName = (ord.product_details || '').trim().toLowerCase();
+          const ordProdId = String(ord.jobId || ord.productId || '');
+          const ordProdName = (ord.jobTitle || ord.product_details || '').trim().toLowerCase();
           if (ordProdId && productIds.includes(ordProdId)) {
             bookingCountMap[ordProdId] = (bookingCountMap[ordProdId] || 0) + 1;
             if (custKey) {
@@ -890,6 +911,7 @@ const getProducts = async (req, res) => {
         p.bookingsCount = count;
         p.ordersCount = count;
         p.salesCount = count;
+        p.appliedCount = count;
         p.customersCount = uniqueCustCount;
         p.uniqueCustomers = uniqueCustCount;
 
@@ -955,6 +977,26 @@ const updateProduct = async (req, res) => {
       const validation = await validateCatalogCategoryHierarchy('Stay', finalCategory, targetSubcategory);
       if (!validation.valid) {
         return res.status(400).json({ success: false, message: validation.error });
+      }
+    }
+
+    // Strict validation for Jobs: 10-digit contact number and non-past deadline
+    const isJobProduct = resolvedMainCat.toLowerCase() === 'jobs' || String(finalCategory).toLowerCase().startsWith('job') || String(product.type || '').toLowerCase().startsWith('job');
+    if (isJobProduct) {
+      if (contactNumber !== undefined && contactNumber !== null && String(contactNumber).trim() !== '') {
+        const strVal = String(contactNumber).trim();
+        if (!/^[6-9]\d{9}$/.test(strVal)) {
+          return res.status(400).json({ success: false, message: 'Contact number must be a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9 (e.g. 9876543210)' });
+        }
+      }
+      if (deadline !== undefined && deadline !== null && String(deadline).trim() !== '') {
+        const istOffsetMs = 5.5 * 60 * 60 * 1000;
+        const istNow = new Date(Date.now() + istOffsetMs);
+        const todayDateStr = istNow.toISOString().split('T')[0];
+        const deadlineDateStr = String(deadline).split('T')[0];
+        if (deadlineDateStr < todayDateStr) {
+          return res.status(400).json({ success: false, message: 'Job deadline cannot be in the past. Please select today or a future date.' });
+        }
       }
     }
 
@@ -3829,6 +3871,12 @@ const updateProfile = async (req, res) => {
       const cleanAadhaar = String(req.body.aadhaarNo).replace(/\D/g, '').slice(0, 12);
       if (cleanAadhaar.length === 12) {
         req.body.aadhaarNo = cleanAadhaar;
+        user.aadhaarNo = cleanAadhaar;
+      } else if (cleanAadhaar.length === 0) {
+        req.body.aadhaarNo = '';
+        user.aadhaarNo = '';
+      } else {
+        return res.status(400).json({ success: false, message: 'Aadhaar number must be exactly 12 digits' });
       }
     }
     if (req.body.email !== undefined && req.body.email !== null) {
@@ -3877,7 +3925,7 @@ const updateProfile = async (req, res) => {
 
     // If primary or root business, update top-level business location/name fields on user as well
     if (isRootOrPrimary) {
-      ['businessName', 'address', 'street', 'city', 'state', 'country', 'postalCode', 'companyRegNo', 'gstNumber', 'gstStatus', 'msmeStatus', 'businessLicense'].forEach(key => {
+      ['businessName', 'address', 'street', 'city', 'state', 'country', 'postalCode', 'companyRegNo', 'gstNumber', 'gstStatus', 'msmeStatus', 'businessLicense', 'panNo', 'aadhaarNo'].forEach(key => {
         if (req.body[key] !== undefined) {
           if (key === 'businessName' && String(req.body[key]).trim() === '' && user.businessName) return;
           user[key] = req.body[key];
@@ -3886,26 +3934,29 @@ const updateProfile = async (req, res) => {
     }
 
     // 2. Update active business in user.businesses array
-    if (activeBusinessId && user.businesses && user.businesses.length > 0) {
+    if (user.businesses && user.businesses.length > 0) {
       const bizIndex = user.businesses.findIndex(b => 
         b && (String(b._id || '') === String(activeBusinessId) || String(b.id || '') === String(activeBusinessId))
       );
-      if (bizIndex !== -1) {
-        const b = user.businesses[bizIndex];
+      const targetBiz = bizIndex !== -1 ? user.businesses[bizIndex] : (isRootOrPrimary ? user.businesses[0] : null);
+      if (targetBiz) {
         businessLevelKeys.forEach(key => {
           if (req.body[key] !== undefined) {
-            if (key === 'businessName' && String(req.body[key]).trim() === '' && b.businessName) return;
-            b[key] = req.body[key];
+            if (key === 'businessName' && String(req.body[key]).trim() === '' && targetBiz.businessName) return;
+            targetBiz[key] = req.body[key];
           }
         });
         if (req.body.phone || req.body.mobileNumber || req.body.telephone) {
-          b.phone = req.body.phone || req.body.mobileNumber || req.body.telephone;
+          targetBiz.phone = req.body.phone || req.body.mobileNumber || req.body.telephone;
         }
         if (req.body.pincode || req.body.postalCode || req.body.pinCode) {
-          b.pincode = req.body.pincode || req.body.postalCode || req.body.pinCode;
-          b.postalCode = b.pincode;
+          targetBiz.pincode = req.body.pincode || req.body.postalCode || req.body.pinCode;
+          targetBiz.postalCode = targetBiz.pincode;
         }
-        b.updatedAt = new Date();
+        if (req.body.aadhaarNo !== undefined) {
+          targetBiz.aadhaarNo = req.body.aadhaarNo;
+        }
+        targetBiz.updatedAt = new Date();
       }
     }
 
@@ -4874,7 +4925,13 @@ const updateBusiness = async (req, res) => {
         }
         if (cleanPhone !== undefined) user.mobileNumber = cleanPhone;
         if (panNo !== undefined) user.panNo = panNo;
-        if (aadhaarNo !== undefined) user.aadhaarNo = aadhaarNo;
+        if (aadhaarNo !== undefined) {
+          const cleanA = String(aadhaarNo).replace(/\D/g, '').slice(0, 12);
+          if (cleanA.length === 12 || cleanA.length === 0) {
+            user.aadhaarNo = cleanA;
+            biz.aadhaarNo = cleanA;
+          }
+        }
         if (companyRegNo !== undefined) user.companyRegNo = companyRegNo;
         if (logo !== undefined) user.logo = logo;
         if (businessLicense !== undefined) user.businessLicense = businessLicense;
@@ -5040,7 +5097,7 @@ const getSalesPayments = async (req, res) => {
     }
 
     // Date range / Duration filter in IST timezone (UTC+05:30)
-    const duration = req.query.duration || 'All';
+    const duration = String(req.query.duration || 'All').trim();
     let startDate = null;
     let endDate = null;
 
@@ -5051,37 +5108,61 @@ const getSalesPayments = async (req, res) => {
     const istDay = istNow.getUTCDate();
     const istDayOfWeek = istNow.getUTCDay(); // 0 is Sunday
 
-    if (duration === 'Today') {
-      startDate = new Date(Date.UTC(istYear, istMonth, istDay, 0, 0, 0, 0) - istOffsetMs);
-      endDate = new Date(Date.UTC(istYear, istMonth, istDay, 23, 59, 59, 999) - istOffsetMs);
-    } else if (duration === 'This Week') {
-      const diffToMonday = istDayOfWeek === 0 ? 6 : istDayOfWeek - 1;
-      startDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday, 0, 0, 0, 0) - istOffsetMs);
-      endDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday + 6, 23, 59, 59, 999) - istOffsetMs);
-    } else if (duration === 'This Month') {
-      startDate = new Date(Date.UTC(istYear, istMonth, 1, 0, 0, 0, 0) - istOffsetMs);
-      endDate = new Date(Date.UTC(istYear, istMonth + 1, 0, 23, 59, 59, 999) - istOffsetMs);
-    } else if (duration === 'This Year') {
-      startDate = new Date(Date.UTC(istYear, 0, 1, 0, 0, 0, 0) - istOffsetMs);
-      endDate = new Date(Date.UTC(istYear, 11, 31, 23, 59, 59, 999) - istOffsetMs);
-    } else if (duration === 'Custom') {
-      if (req.query.startDate) {
-        const parts = String(req.query.startDate).split('-');
+    // If explicit start/end dates are provided in query, use them
+    if (req.query.startDate) {
+      const sStr = String(req.query.startDate).trim();
+      if (sStr.includes('T') || sStr.endsWith('Z')) {
+        const parsed = new Date(sStr);
+        if (!isNaN(parsed.getTime())) startDate = parsed;
+      } else {
+        const parts = sStr.split('-');
         if (parts.length === 3) {
           startDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 0, 0, 0, 0) - istOffsetMs);
         } else {
-          startDate = new Date(req.query.startDate);
-          startDate.setHours(0, 0, 0, 0);
+          const parsed = new Date(sStr);
+          if (!isNaN(parsed.getTime())) {
+            parsed.setHours(0, 0, 0, 0);
+            startDate = parsed;
+          }
         }
       }
-      if (req.query.endDate) {
-        const parts = String(req.query.endDate).split('-');
+    }
+
+    if (req.query.endDate) {
+      const eStr = String(req.query.endDate).trim();
+      if (eStr.includes('T') || eStr.endsWith('Z')) {
+        const parsed = new Date(eStr);
+        if (!isNaN(parsed.getTime())) endDate = parsed;
+      } else {
+        const parts = eStr.split('-');
         if (parts.length === 3) {
           endDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59, 999) - istOffsetMs);
         } else {
-          endDate = new Date(req.query.endDate);
-          endDate.setHours(23, 59, 59, 999);
+          const parsed = new Date(eStr);
+          if (!isNaN(parsed.getTime())) {
+            parsed.setHours(23, 59, 59, 999);
+            endDate = parsed;
+          }
         }
+      }
+    }
+
+    // If explicit dates were not provided, compute from duration keyword
+    if (!startDate && !endDate) {
+      const normDur = duration.toLowerCase();
+      if (normDur === 'today') {
+        startDate = new Date(Date.UTC(istYear, istMonth, istDay, 0, 0, 0, 0) - istOffsetMs);
+        endDate = new Date(Date.UTC(istYear, istMonth, istDay, 23, 59, 59, 999) - istOffsetMs);
+      } else if (normDur === 'this week') {
+        const diffToMonday = istDayOfWeek === 0 ? 6 : istDayOfWeek - 1;
+        startDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday, 0, 0, 0, 0) - istOffsetMs);
+        endDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday + 6, 23, 59, 59, 999) - istOffsetMs);
+      } else if (normDur === 'this month') {
+        startDate = new Date(Date.UTC(istYear, istMonth, 1, 0, 0, 0, 0) - istOffsetMs);
+        endDate = new Date(Date.UTC(istYear, istMonth + 1, 0, 23, 59, 59, 999) - istOffsetMs);
+      } else if (normDur === 'this year') {
+        startDate = new Date(Date.UTC(istYear, 0, 1, 0, 0, 0, 0) - istOffsetMs);
+        endDate = new Date(Date.UTC(istYear, 11, 31, 23, 59, 59, 999) - istOffsetMs);
       }
     }
 
@@ -5104,11 +5185,19 @@ const getSalesPayments = async (req, res) => {
       const startMs = startDate ? startDate.getTime() : -Infinity;
       const endMs = endDate ? endDate.getTime() : Infinity;
       uniqueOrders = uniqueOrders.filter(o => {
-        const rawDate = o.paidAt || o.paymentDate || o.createdAt || o.created_at || o.orderDate || o.date;
-        if (!rawDate) return false;
-        const d = new Date(rawDate);
-        const t = d.getTime();
-        if (isNaN(t)) return false;
+        const rawDate = o.paidAt || o.paymentDate || o.createdAt || o.created_at || o.orderDate || o.appointmentDate || o.travelDate || o.checkInDate || o.date;
+        let t = null;
+        if (rawDate) {
+          const d = new Date(rawDate);
+          if (!isNaN(d.getTime())) t = d.getTime();
+        }
+        if (t === null && o._id && typeof o._id === 'string' && o._id.length === 24) {
+          try {
+            const timestamp = parseInt(o._id.substring(0, 8), 16) * 1000;
+            if (!isNaN(timestamp) && timestamp > 0) t = timestamp;
+          } catch (e) {}
+        }
+        if (t === null) return false;
         return t >= startMs && t <= endMs;
       });
     }

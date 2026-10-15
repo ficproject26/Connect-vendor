@@ -6,7 +6,8 @@ import {
   ArrowRight, ShieldCheck, Upload, Plus, Users, TrendingUp, 
   Wallet, Laptop, Headphones, Globe, Calendar, ArrowLeft, Check,
   Shield, CheckCircle2, LayoutGrid, Clock, Percent, Tag,
-  Eye, EyeOff, X, Utensils, Bed, Car, Wrench, ShoppingBag, ShoppingCart, Briefcase, Sparkles
+  Eye, EyeOff, X, Utensils, Bed, Car, Wrench, ShoppingBag, ShoppingCart, Briefcase, Sparkles,
+  RefreshCw, AlertCircle
 } from 'lucide-react';
 import { vendorTaxonomy, getBaseVendorType } from '../../data/servicesData';
 import { getVendorBackendUrl } from '../../services/apiSetup';
@@ -50,18 +51,178 @@ const Register = () => {
   const [currentVendorType, setCurrentVendorType] = useState('');
   const [currentCategory, setCurrentCategory] = useState('');
 
+  // Dynamic Admin Main Categories State
+  const [adminMainCategories, setAdminMainCategories] = useState([]);
+  const [catsLoading, setCatsLoading] = useState(true);
+  const [catsError, setCatsError] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+
+  // Fetch dynamic active main categories from Admin Category Management
+  const fetchMainCategories = async () => {
+    setCatsLoading(true);
+    setCatsError('');
+    try {
+      const backendUrl = getVendorBackendUrl();
+      const res = await axios.get(`${backendUrl}/api/public/categories`);
+      const allCats = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      
+      let categoriesList = [];
+      const seen = new Set();
+      const SYSTEM_MAIN_KEYS = ['services', 'products', 'daily needs', 'food', 'stay', 'travel', 'jobs'];
+
+      if (Array.isArray(allCats) && allCats.length > 0) {
+        allCats.forEach(c => {
+          if (!c || c.isDeleted === true || c.isActive === false) return;
+          
+          const isMain = c.level === 'main' || 
+            (!c.parentId && !c.subcategory && !c.subSubcategory) ||
+            (!c.parentId && SYSTEM_MAIN_KEYS.includes(String(c.name || '').toLowerCase()));
+
+          if (isMain && c.name) {
+            const cleanName = String(c.name).trim();
+            const lower = cleanName.toLowerCase();
+            if (!seen.has(lower)) {
+              seen.add(lower);
+              categoriesList.push({
+                _id: String(c._id || cleanName),
+                name: cleanName,
+                description: c.description || '',
+                isActive: true,
+                level: 'main'
+              });
+            }
+          }
+        });
+      }
+
+      // Secondary fallback if /categories returned empty
+      if (categoriesList.length === 0) {
+        try {
+          const resMain = await axios.get(`${backendUrl}/api/public/categories/main`);
+          if (resMain.data?.success && Array.isArray(resMain.data.categories)) {
+            resMain.data.categories.forEach(item => {
+              const name = typeof item === 'string' ? item : item?.name;
+              const id = typeof item === 'object' && item?._id ? item._id : name;
+              if (name && !seen.has(name.toLowerCase())) {
+                seen.add(name.toLowerCase());
+                categoriesList.push({
+                  _id: String(id || name),
+                  name: name.trim(),
+                  isActive: true,
+                  level: 'main'
+                });
+              }
+            });
+          }
+        } catch (e) {
+          // Fallback ignore
+        }
+      }
+
+      if (categoriesList.length === 0) {
+        throw new Error('No active main categories currently available from category management.');
+      }
+
+      setAdminMainCategories(categoriesList);
+      setCatsLoading(false);
+
+      // Sync selectedCategoryId if currentVendorType was already set
+      if (currentVendorType) {
+        const match = categoriesList.find(c => c.name.toLowerCase() === currentVendorType.toLowerCase());
+        if (match && !selectedCategoryId) {
+          setSelectedCategoryId(match._id);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load main categories:', err);
+      setCatsError(err.response?.data?.message || err.message || 'Failed to load business categories from admin category management.');
+      setCatsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMainCategories();
+
+    // Prevent background page scrolling while registration popup is open
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
+  const getCategoryIcon = (catName) => {
+    const lower = String(catName || '').toLowerCase();
+    if (lower.includes('food') || lower.includes('restaurant') || lower.includes('cater')) return Utensils;
+    if (lower.includes('stay') || lower.includes('hotel') || lower.includes('room') || lower.includes('lodge')) return Bed;
+    if (lower.includes('travel') || lower.includes('transport') || lower.includes('tour') || lower.includes('cab')) return Car;
+    if (lower.includes('service') || lower.includes('repair')) return Wrench;
+    if (lower.includes('product') || lower.includes('retail') || lower.includes('shop')) return ShoppingBag;
+    if (lower.includes('daily') || lower.includes('grocery') || lower.includes('mart')) return ShoppingCart;
+    if (lower.includes('job') || lower.includes('career') || lower.includes('hire')) return Briefcase;
+    return Store;
+  };
+
+  const getCategoryColorStyles = (index) => {
+    const palette = [
+      { bg: 'bg-[#fff7ed]', border: 'border-[#ffedd5]', hover: 'hover:border-[#fb923c]', active: 'ring-2 ring-[#ea580c] border-[#ea580c]', iconBg: 'bg-[#ffedd5]', iconColor: 'text-[#ea580c]' },
+      { bg: 'bg-[#eff6ff]', border: 'border-[#dbeafe]', hover: 'hover:border-[#60a5fa]', active: 'ring-2 ring-[#2563eb] border-[#2563eb]', iconBg: 'bg-[#dbeafe]', iconColor: 'text-[#2563eb]' },
+      { bg: 'bg-[#f0fdf4]', border: 'border-[#dcfce7]', hover: 'hover:border-[#4ade80]', active: 'ring-2 ring-[#16a34a] border-[#16a34a]', iconBg: 'bg-[#dcfce7]', iconColor: 'text-[#16a34a]' },
+      { bg: 'bg-[#faf5ff]', border: 'border-[#f3e8ff]', hover: 'hover:border-[#c084fc]', active: 'ring-2 ring-[#9333ea] border-[#9333ea]', iconBg: 'bg-[#f3e8ff]', iconColor: 'text-[#9333ea]' },
+      { bg: 'bg-[#eef2ff]', border: 'border-[#e0e7ff]', hover: 'hover:border-[#818cf8]', active: 'ring-2 ring-[#4f46e5] border-[#4f46e5]', iconBg: 'bg-[#e0e7ff]', iconColor: 'text-[#4f46e5]' },
+      { bg: 'bg-[#fefce8]', border: 'border-[#fef9c3]', hover: 'hover:border-[#facc15]', active: 'ring-2 ring-[#ca8a04] border-[#ca8a04]', iconBg: 'bg-[#fef9c3]', iconColor: 'text-[#ca8a04]' },
+      { bg: 'bg-[#f0fdfa]', border: 'border-[#ccfbf1]', hover: 'hover:border-[#2dd4bf]', active: 'ring-2 ring-[#0d9488] border-[#0d9488]', iconBg: 'bg-[#ccfbf1]', iconColor: 'text-[#0d9488]' }
+    ];
+    return palette[index % palette.length];
+  };
+
+  const isCategorySelected = (cat) => {
+    const catName = typeof cat === 'string' ? cat : cat?.name;
+    const catId = typeof cat === 'object' && cat?._id ? cat._id : catName;
+    return selectedVendorTypesOrder.includes(catName) || 
+           currentVendorType === catName ||
+           (selectedCategoryId && selectedCategoryId === catId);
+  };
+
+  const toggleCategorySelection = (cat) => {
+    const catName = typeof cat === 'string' ? cat : cat?.name;
+    const catId = typeof cat === 'object' && cat?._id ? cat._id : catName;
+    const isSelected = isCategorySelected(cat);
+
+    if (isSelected) {
+      const next = selectedVendorTypesOrder.filter(t => t !== catName);
+      setSelectedVendorTypesOrder(next);
+      if (currentVendorType === catName) {
+        const nextCatName = next[0] || '';
+        setCurrentVendorType(nextCatName);
+        const nextCatObj = adminMainCategories.find(c => c.name === nextCatName);
+        setSelectedCategoryId(nextCatObj?._id || nextCatName || '');
+      }
+    } else {
+      setSelectedVendorTypesOrder(prev => [...prev, catName]);
+      setCurrentVendorType(catName);
+      setSelectedCategoryId(catId);
+    }
+  };
+
   const getSelectedBusinessesList = () => {
     if (selectedVendorTypesOrder.length > 0) {
-      return selectedVendorTypesOrder.map(vType => ({
-        vendorType: vType,
-        category: vType,
-        subcategory: vType
-      }));
+      return selectedVendorTypesOrder.map(vType => {
+        const catObj = adminMainCategories.find(c => c.name === vType || c._id === vType);
+        return {
+          vendorType: vType,
+          category: vType,
+          categoryId: catObj?._id || selectedCategoryId || '',
+          subcategory: vType
+        };
+      });
     }
     if (!currentVendorType) return [];
+    const catObj = adminMainCategories.find(c => c.name === currentVendorType || c._id === currentVendorType);
     return [{
       vendorType: currentVendorType,
       category: currentVendorType,
+      categoryId: catObj?._id || selectedCategoryId || '',
       subcategory: currentVendorType
     }];
   };
@@ -92,20 +253,6 @@ const Register = () => {
         });
         return updated;
       });
-    }
-  };
-
-  const toggleCategorySelection = (vType) => {
-    const isSelected = selectedVendorTypesOrder.includes(vType) || currentVendorType === vType;
-    if (isSelected) {
-      const next = selectedVendorTypesOrder.filter(t => t !== vType);
-      setSelectedVendorTypesOrder(next);
-      if (currentVendorType === vType) {
-        setCurrentVendorType(next[0] || '');
-      }
-    } else {
-      setSelectedVendorTypesOrder(prev => [...prev, vType]);
-      setCurrentVendorType(vType);
     }
   };
 
@@ -349,7 +496,7 @@ const Register = () => {
       if (!businessName) return 'Business / Shop Name is required';
       if (!logoFile) return 'Shop / Brand Logo is required';
       const businessesList = getSelectedBusinessesList();
-      if (businessesList.length === 0) return 'Product or Service category must be selected';
+      if (businessesList.length === 0 || !currentVendorType) return 'Main Business Category is required. Please select a category.';
       if (!mobileNumber) return 'Business Phone Number is required';
       if (!/^\d{10}$/.test(mobileNumber)) return 'Phone number must be 10 digits';
       if (!email) return 'Email Address is required';
@@ -440,7 +587,7 @@ const Register = () => {
       formData.append('vendorType', primaryBiz.vendorType);
       formData.append('category', primaryBiz.category);
       const computedCategoryId = primaryBiz.category.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-      formData.append('categoryId', computedCategoryId);
+      formData.append('categoryId', selectedCategoryId || primaryBiz.categoryId || computedCategoryId);
       formData.append('subcategory', primaryBiz.subcategory);
       formData.append('businesses', JSON.stringify(businessesList));
       formData.append('businessName', businessName);
@@ -512,113 +659,28 @@ const Register = () => {
     { id: 5, label: 'Review' }
   ];
 
-  // Category card definitions matching reference design
-  const categoryCards = [
-    {
-      id: 'Food',
-      name: 'Food & Catering',
-      icon: Utensils,
-      bgClass: 'bg-[#fff7ed]',
-      borderClass: 'border-[#fed7aa]',
-      hoverBorder: 'hover:border-[#fb923c]',
-      activeClass: 'ring-2 ring-[#ea580c] border-[#ea580c]',
-      iconBg: 'bg-[#ffedd5]',
-      iconColor: 'text-[#ea580c]'
-    },
-    {
-      id: 'Stay',
-      name: 'Stay & Accommodation',
-      icon: Bed,
-      bgClass: 'bg-[#f0f9ff]',
-      borderClass: 'border-[#bae6fd]',
-      hoverBorder: 'hover:border-[#38bdf8]',
-      activeClass: 'ring-2 ring-[#0284c7] border-[#0284c7]',
-      iconBg: 'bg-[#e0f2fe]',
-      iconColor: 'text-[#0284c7]'
-    },
-    {
-      id: 'Travel',
-      name: 'Travel & Transport',
-      icon: Car,
-      bgClass: 'bg-[#f0fdf4]',
-      borderClass: 'border-[#bbf7d0]',
-      hoverBorder: 'hover:border-[#4ade80]',
-      activeClass: 'ring-2 ring-[#16a34a] border-[#16a34a]',
-      iconBg: 'bg-[#dcfce7]',
-      iconColor: 'text-[#16a34a]'
-    },
-    {
-      id: 'Services',
-      name: 'Other Services',
-      icon: Wrench,
-      bgClass: 'bg-[#faf5ff]',
-      borderClass: 'border-[#e9d5ff]',
-      hoverBorder: 'hover:border-[#c084fc]',
-      activeClass: 'ring-2 ring-[#9333ea] border-[#9333ea]',
-      iconBg: 'bg-[#f3e8ff]',
-      iconColor: 'text-[#9333ea]'
-    },
-    {
-      id: 'Products',
-      name: 'Products & Retail',
-      icon: ShoppingBag,
-      bgClass: 'bg-[#eef2ff]',
-      borderClass: 'border-[#c7d2fe]',
-      hoverBorder: 'hover:border-[#818cf8]',
-      activeClass: 'ring-2 ring-[#4f46e5] border-[#4f46e5]',
-      iconBg: 'bg-[#e0e7ff]',
-      iconColor: 'text-[#4f46e5]'
-    },
-    {
-      id: 'Daily Needs',
-      name: 'Daily Needs & Grocery',
-      icon: ShoppingCart,
-      bgClass: 'bg-[#fefce8]',
-      borderClass: 'border-[#fef08a]',
-      hoverBorder: 'hover:border-[#facc15]',
-      activeClass: 'ring-2 ring-[#ca8a04] border-[#ca8a04]',
-      iconBg: 'bg-[#fef9c3]',
-      iconColor: 'text-[#ca8a04]'
-    },
-    {
-      id: 'Jobs',
-      name: 'Jobs & Careers',
-      icon: Briefcase,
-      bgClass: 'bg-[#f0fdfa]',
-      borderClass: 'border-[#99f6e4]',
-      hoverBorder: 'hover:border-[#2dd4bf]',
-      activeClass: 'ring-2 ring-[#0d9488] border-[#0d9488]',
-      iconBg: 'bg-[#ccfbf1]',
-      iconColor: 'text-[#0d9488]'
-    }
-  ];
-
-  const isCategorySelected = (catId) => {
-    return selectedVendorTypesOrder.includes(catId) || currentVendorType === catId;
-  };
-
   return (
     <div 
-      className="min-h-screen w-full flex items-center justify-center p-3 sm:p-5 lg:p-8 font-sans relative overflow-x-hidden bg-cover bg-center bg-no-repeat bg-fixed"
+      className="fixed inset-0 w-screen h-screen overflow-hidden flex items-center justify-center p-2 sm:p-4 md:p-6 font-sans relative bg-cover bg-center bg-no-repeat select-none z-30"
       style={{ backgroundImage: "url('/images/vendor_registration_bg.jpg')" }}
     >
       {/* Subtle overlay to enhance contrast and readability */}
-      <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1px] pointer-events-none z-0" />
+      <div className="absolute inset-0 bg-slate-900/15 backdrop-blur-[1px] pointer-events-none z-0" />
 
-      {/* Main Centered Registration Card */}
-      <div className="w-full max-w-4xl bg-white/98 backdrop-blur-md rounded-3xl shadow-[0_20px_60px_-15px_rgba(15,23,42,0.3)] border border-slate-100 flex flex-col relative z-10 my-auto overflow-hidden animate-fadeIn">
+      {/* Main Centered Registration Card (Slightly reduced size, fixed modal container) */}
+      <div className="w-full max-w-2xl lg:max-w-[740px] h-[92vh] max-h-[650px] sm:max-h-[670px] bg-white/98 backdrop-blur-md rounded-2xl sm:rounded-3xl shadow-[0_20px_60px_-15px_rgba(15,23,42,0.35)] border border-slate-100 flex flex-col relative z-10 overflow-hidden animate-fadeIn">
         
-        {/* CARD HEADER (Matching reference image: Storefront Icon + Title + Subtitle + Close button) */}
-        <div className="p-5 sm:p-7 pb-4 sm:pb-5 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0 bg-white">
-          <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+        {/* CARD HEADER (Fixed at top) */}
+        <div className="p-4 sm:p-5 pb-3 sm:pb-4 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0 bg-white">
+          <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">
             {/* Storefront Icon */}
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 shadow-sm shrink-0">
-              <Store size={26} strokeWidth={2.2} />
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 shadow-sm shrink-0">
+              <Store size={24} strokeWidth={2.2} />
             </div>
 
             {/* Title & Subtitle */}
             <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight leading-tight">
+              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight leading-tight">
                 Vendor Registration
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 font-normal mt-0.5 truncate">
@@ -638,18 +700,18 @@ const Register = () => {
           </button>
         </div>
 
-        {/* 5-STEP PROGRESS INDICATOR */}
-        <div className="px-5 sm:px-7 py-3 bg-slate-50/70 border-b border-slate-100 shrink-0 overflow-x-auto scrollbar-none">
-          <div className="flex items-center justify-between min-w-[500px]">
+        {/* 5-STEP PROGRESS INDICATOR (Fixed at top) */}
+        <div className="px-4 sm:px-6 py-2.5 bg-slate-50/80 border-b border-slate-100 shrink-0 overflow-x-auto scrollbar-none">
+          <div className="flex items-center justify-between min-w-[460px]">
             {stepsList.map((step, idx) => {
               const isActive = currentStep === step.id;
               const isCompleted = currentStep > step.id;
 
               return (
                 <React.Fragment key={step.id}>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
                     <div 
-                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-200 ${
+                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-200 ${
                         isActive
                           ? 'bg-[#8C532C] text-white shadow-md ring-4 ring-[#8C532C]/15'
                           : isCompleted
@@ -657,10 +719,10 @@ const Register = () => {
                             : 'bg-white border border-slate-200 text-slate-400'
                       }`}
                     >
-                      {isCompleted ? <Check size={14} strokeWidth={3} /> : step.id}
+                      {isCompleted ? <Check size={13} strokeWidth={3} /> : step.id}
                     </div>
                     <span 
-                      className={`text-xs sm:text-sm font-semibold whitespace-nowrap ${
+                      className={`text-xs font-semibold whitespace-nowrap ${
                         isActive 
                           ? 'text-[#8C532C]' 
                           : isCompleted 
@@ -674,7 +736,7 @@ const Register = () => {
 
                   {idx < stepsList.length - 1 && (
                     <div 
-                      className={`flex-1 h-[2px] mx-3 rounded transition-colors ${
+                      className={`flex-1 h-[2px] mx-2 sm:mx-3 rounded transition-colors ${
                         currentStep > step.id ? 'bg-emerald-500' : 'bg-slate-200'
                       }`} 
                     />
@@ -685,23 +747,23 @@ const Register = () => {
           </div>
         </div>
 
-        {/* ALERTS */}
+        {/* ALERTS (Fixed directly below progress indicator) */}
         {error && (
-          <div className="mx-5 sm:mx-7 mt-4 flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium animate-shake">
+          <div className="shrink-0 mx-4 sm:mx-6 mt-3 flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium animate-shake">
             <span className="font-bold text-rose-500">⚠</span>
             <span>{error}</span>
           </div>
         )}
 
         {success && (
-          <div className="mx-5 sm:mx-7 mt-4 flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium">
+          <div className="shrink-0 mx-4 sm:mx-6 mt-3 flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium">
             <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
             <span>{success}</span>
           </div>
         )}
 
-        {/* SCROLLABLE FORM BODY */}
-        <div className="p-5 sm:p-7 overflow-y-auto max-h-[62vh] sm:max-h-[64vh] space-y-6">
+        {/* SCROLLABLE FORM BODY (Only this central container scrolls vertically) */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
 
           {/* STEP 1: BUSINESS INFO */}
           {currentStep === 1 && (
@@ -968,54 +1030,120 @@ const Register = () => {
                 </div>
               </div>
 
-              {/* SERVICE / CATEGORY SELECTION CARDS (Direct Match to Reference Design) */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-1.5">
-                    Select Your Services <span className="text-rose-500">*</span>
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Choose the services or category you provide.
-                  </p>
+              {/* MAIN BUSINESS CATEGORY SECTION (Populated dynamically from Admin Category Management) */}
+              <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-1.5">
+                      Main Business Category <span className="text-rose-500">*</span>
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Select the primary business category configured by Admin.
+                    </p>
+                  </div>
+                  {adminMainCategories.length > 0 && !catsLoading && (
+                    <button
+                      type="button"
+                      onClick={fetchMainCategories}
+                      title="Refresh categories"
+                      className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors p-1"
+                    >
+                      <RefreshCw size={12} />
+                      <span className="hidden sm:inline">Refresh</span>
+                    </button>
+                  )}
                 </div>
 
-                {/* Grid of Colorful Service Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  {categoryCards.map((cat) => {
-                    const IconComponent = cat.icon;
-                    const selected = isCategorySelected(cat.id);
-
-                    return (
-                      <div
-                        key={cat.id}
-                        onClick={() => toggleCategorySelection(cat.id)}
-                        className={`p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between select-none ${cat.bgClass} ${selected ? cat.activeClass : `${cat.borderClass} ${cat.hoverBorder}`}`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`w-10 h-10 rounded-xl ${cat.iconBg} ${cat.iconColor} flex items-center justify-center shrink-0 shadow-sm`}>
-                            <IconComponent size={20} strokeWidth={2.2} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-800 leading-snug truncate">
-                              {cat.name}
-                            </p>
-                          </div>
+                {/* Loading State */}
+                {catsLoading && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    {[1, 2, 3, 4].map(i => (
+                      <div key={i} className="p-3.5 rounded-2xl border border-slate-100 bg-slate-50/70 animate-pulse flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-slate-200" />
+                          <div className="h-4 w-28 bg-slate-200 rounded" />
                         </div>
+                        <div className="w-5 h-5 rounded-md bg-slate-200" />
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-                        {/* Checkbox */}
-                        <div 
-                          className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all shrink-0 ml-3 ${
+                {/* Error State with Retry Button */}
+                {!catsLoading && catsError && (
+                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={18} className="text-amber-600 shrink-0" />
+                      <span className="text-xs sm:text-sm font-medium">{catsError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={fetchMainCategories}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all shrink-0"
+                    >
+                      <RefreshCw size={12} /> Retry
+                    </button>
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {!catsLoading && !catsError && adminMainCategories.length === 0 && (
+                  <div className="p-6 text-center bg-slate-50 border border-slate-200 rounded-2xl">
+                    <p className="text-xs sm:text-sm text-slate-600 font-medium">No active main business categories configured yet.</p>
+                    <button
+                      type="button"
+                      onClick={fetchMainCategories}
+                      className="mt-2 text-xs text-[#8C532C] font-semibold hover:underline"
+                    >
+                      Click to reload
+                    </button>
+                  </div>
+                )}
+
+                {/* Dynamic Category Cards */}
+                {!catsLoading && !catsError && adminMainCategories.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    {adminMainCategories.map((cat, idx) => {
+                      const IconComponent = getCategoryIcon(cat.name);
+                      const styles = getCategoryColorStyles(idx);
+                      const selected = isCategorySelected(cat);
+
+                      return (
+                        <div
+                          key={cat._id || cat.name}
+                          onClick={() => toggleCategorySelection(cat)}
+                          className={`p-3 sm:p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between select-none ${styles.bg} ${
                             selected 
-                              ? 'bg-[#8C532C] border-[#8C532C] text-white shadow-sm' 
-                              : 'bg-white border-slate-300'
+                              ? styles.active 
+                              : `${styles.border} ${styles.hover}`
                           }`}
                         >
-                          {selected && <Check size={12} strokeWidth={3} />}
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${styles.iconBg} ${styles.iconColor} flex items-center justify-center shrink-0 shadow-sm`}>
+                              <IconComponent size={18} strokeWidth={2.2} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs sm:text-sm font-bold text-slate-800 leading-snug truncate">
+                                {cat.name}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Checkbox */}
+                          <div 
+                            className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all shrink-0 ml-2.5 ${
+                              selected 
+                                ? 'bg-[#8C532C] border-[#8C532C] text-white shadow-sm' 
+                                : 'bg-white border-slate-300'
+                            }`}
+                          >
+                            {selected && <Check size={12} strokeWidth={3} />}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Shop / Business Images (Optional) */}
@@ -1562,7 +1690,7 @@ const Register = () => {
                     <div><span className="font-semibold text-slate-700">Shop Name:</span> {businessName}</div>
                     <div><span className="font-semibold text-slate-700">Operating Hours:</span> {operatingHours}</div>
                     <div className="sm:col-span-2">
-                      <span className="font-semibold text-slate-700 block mb-1">Selected Services:</span>
+                      <span className="font-semibold text-slate-700 block mb-1">Main Business Category:</span>
                       <div className="flex flex-wrap gap-1.5">
                         {getSelectedBusinessesList().map(b => (
                           <span key={b.vendorType} className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-[#8C532C] border border-[#8C532C]/30">
@@ -1665,8 +1793,8 @@ const Register = () => {
 
         </div>
 
-        {/* CARD FOOTER & NAVIGATION BUTTONS (Matching Reference Style) */}
-        <div className="p-4 sm:p-6 bg-slate-50/70 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+        {/* CARD FOOTER & NAVIGATION BUTTONS (Fixed at bottom) */}
+        <div className="p-3.5 sm:p-4 px-4 sm:px-6 bg-white border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           
           {/* Footer Terms & Login Links */}
           <div className="text-xs text-slate-500 flex items-center gap-1.5 order-2 sm:order-1 text-center sm:text-left">
@@ -1724,8 +1852,8 @@ const Register = () => {
           </div>
         </div>
 
-        {/* Bottom Login Hint */}
-        <div className="py-2.5 bg-slate-100/60 border-t border-slate-200/50 text-center text-xs text-slate-500">
+        {/* Bottom Login Hint (Fixed at bottom) */}
+        <div className="py-2 bg-slate-50 border-t border-slate-100 text-center text-xs text-slate-500 shrink-0">
           Already have a vendor account?{' '}
           <Link to="/login?type=vendor" className="text-[#8C532C] font-bold hover:underline">
             Login here

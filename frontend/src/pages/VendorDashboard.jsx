@@ -2345,7 +2345,8 @@ const VendorDashboard = () => {
   const getItemSalesData = (itemId, targetItem = null) => {
     const allRecords = [
       ...(Array.isArray(orders) ? orders : []),
-      ...(Array.isArray(bookings) ? bookings : [])
+      ...(Array.isArray(bookings) ? bookings : []),
+      ...(Array.isArray(applications) ? applications : [])
     ];
     
     let count = 0;
@@ -2358,7 +2359,7 @@ const VendorDashboard = () => {
 
     if (allRecords.length > 0) {
       allRecords.forEach(order => {
-        if (order.status !== 'Cancelled' && order.status !== 'Rejected') {
+        if (order.status !== 'Cancelled' && order.status !== 'Rejected' && order.status !== 'REJECTED') {
           let isMatch = false;
           let qty = 1;
           let price = 0;
@@ -2366,8 +2367,8 @@ const VendorDashboard = () => {
           // 1. Check inside order.items array
           if (order.items && Array.isArray(order.items) && order.items.length > 0) {
             for (const i of order.items) {
-              const itemProdId = String(i.productId || i._id || i.id || '').trim();
-              const itemNameClean = (i.name || i.productName || '').trim().toLowerCase();
+              const itemProdId = String(i.productId || i.jobId || i._id || i.id || '').trim();
+              const itemNameClean = (i.name || i.productName || i.jobTitle || '').trim().toLowerCase();
               
               if ((targetIdStr && itemProdId === targetIdStr) || (targetNameClean && itemNameClean && (targetNameClean === itemNameClean || itemNameClean.includes(targetNameClean)))) {
                 isMatch = true;
@@ -2378,10 +2379,10 @@ const VendorDashboard = () => {
             }
           }
 
-          // 2. Check top-level order properties (for direct bookings/appointments/services/travel/stay)
+          // 2. Check top-level order properties (for direct bookings/appointments/services/travel/stay/jobs)
           if (!isMatch) {
-            const orderProdId = String(order.productId || order.product_details_id || order.serviceId || order.travelId || order.itemId || order.packageId || order.roomId || order.hotelId || '').trim();
-            const orderProdDetails = (order.product_details || order.doctorName || order.serviceName || order.packageName || order.vehicleName || order.bikeName || order.carName || order.busName || order.roomName || order.roomNumber || order.hotelName || order.title || order.name || '').trim().toLowerCase();
+            const orderProdId = String(order.jobId || order.productId || order.product_details_id || order.serviceId || order.travelId || order.itemId || order.packageId || order.roomId || order.hotelId || '').trim();
+            const orderProdDetails = (order.jobTitle || order.product_details || order.doctorName || order.serviceName || order.packageName || order.vehicleName || order.bikeName || order.carName || order.busName || order.roomName || order.roomNumber || order.hotelName || order.title || order.name || '').trim().toLowerCase();
 
             if ((targetIdStr && orderProdId === targetIdStr) || (targetNameClean && orderProdDetails && (targetNameClean === orderProdDetails || orderProdDetails.includes(targetNameClean) || targetNameClean.includes(orderProdDetails)))) {
               isMatch = true;
@@ -2394,10 +2395,10 @@ const VendorDashboard = () => {
             count += qty;
             revenue += price > 0 ? (price * qty) : Number(order.finalAmount || order.totalAmount || 0);
             
-            const custKey = order.memberId || order.customerId || order.memberName || order.candidateEmail || order._id;
+            const custKey = order.memberId || order.customerId || order.memberName || order.candidateName || order.candidateEmail || order._id;
             if (custKey) uniqueCustomers.add(String(custKey));
             
-            const rawName = order.memberName || order.customer_name || order.customerName || order.bookingHolder?.name || '';
+            const rawName = order.candidateName || order.memberName || order.customer_name || order.customerName || order.bookingHolder?.name || '';
             let resolvedCustName = rawName && rawName !== 'Customer' && rawName !== 'Connect Member' ? rawName : '';
             if (!resolvedCustName && (order.memberId || order.customerId)) {
               const custKey = String(order.memberId || order.customerId);
@@ -2406,12 +2407,12 @@ const VendorDashboard = () => {
             }
             if (!resolvedCustName) resolvedCustName = rawName || 'Customer details unavailable';
 
-            const rawCustId = order.customerId || order.customerDisplayId || order.memberId;
+            const rawCustId = order.customerId || order.customerDisplayId || order.memberId || order.applicationId;
             let resolvedCustId = '';
             if (rawCustId && !/^[0-9a-fA-F]{24}$/.test(String(rawCustId))) {
               resolvedCustId = String(rawCustId);
             } else {
-              const found = customers.find(c => c.name === resolvedCustName || (order.customer_email && c.email === order.customer_email));
+              const found = customers.find(c => c.name === resolvedCustName || (order.customer_email && c.email === order.customer_email) || (order.candidateEmail && c.email === order.candidateEmail));
               if (found) resolvedCustId = formatCustomerId(found);
             }
 
@@ -2432,7 +2433,7 @@ const VendorDashboard = () => {
 
     // Fallback to backend-computed count on item if records were not preloaded or empty
     if (count === 0 && targetItem) {
-      const persistedCount = Number(targetItem.bookingCount ?? targetItem.bookingsCount ?? targetItem.ordersCount ?? targetItem.salesCount ?? 0);
+      const persistedCount = Number(targetItem.appliedCount ?? targetItem.bookingCount ?? targetItem.bookingsCount ?? targetItem.ordersCount ?? targetItem.salesCount ?? 0);
       if (persistedCount > 0) {
         count = persistedCount;
       }
@@ -2966,12 +2967,13 @@ const VendorDashboard = () => {
               });
             }
           } else {
-            const [analyticsRes, ordersRes, bookingsRes, productsRes, customersRes] = await Promise.allSettled([
+            const [analyticsRes, ordersRes, bookingsRes, productsRes, customersRes, appsRes] = await Promise.allSettled([
               axios.get(`${getVendorBackendUrl()}/api/vendor/analytics`, getAxiosConfig()),
               axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
               axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig()),
               axios.get(`${getVendorBackendUrl()}/api/vendor/products`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig())
+              axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/applications`, getAxiosConfig())
             ]);
             if (analyticsRes.status === 'fulfilled' && analyticsRes.value.data.success) {
               setAnalytics(analyticsRes.value.data.data);
@@ -2988,16 +2990,20 @@ const VendorDashboard = () => {
             if (customersRes.status === 'fulfilled' && customersRes.value.data.success) {
               setCustomers(customersRes.value.data.data);
             }
+            if (appsRes.status === 'fulfilled' && appsRes.value.data.success) {
+              setApplications(appsRes.value.data.data);
+            }
           }
         } else if (activeTab === 'catalog') {
           const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
           const targetCategoryType = (currentCategoryContext && currentCategoryContext !== 'All')
             ? currentCategoryContext
             : getProductMainCategory('', activeBiz?.vendorType || user?.vendorType || '');
-          const [prodRes, ordersRes, bookingsRes] = await Promise.allSettled([
+          const [prodRes, ordersRes, bookingsRes, appsRes] = await Promise.allSettled([
             axios.get(`${getVendorBackendUrl()}/api/vendor/products?type=${encodeURIComponent(targetCategoryType)}`, getAxiosConfig()),
             axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
-            axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig())
+            axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig()),
+            axios.get(`${getVendorBackendUrl()}/api/vendor/applications`, getAxiosConfig())
           ]);
           if (prodRes.status === 'fulfilled' && prodRes.value.data.success) {
             setCatalog(prodRes.value.data.data);
@@ -3007,6 +3013,9 @@ const VendorDashboard = () => {
           }
           if (bookingsRes.status === 'fulfilled' && bookingsRes.value.data.success) {
             setBookings(bookingsRes.value.data.data);
+          }
+          if (appsRes.status === 'fulfilled' && appsRes.value.data.success) {
+            setApplications(appsRes.value.data.data);
           }
         } else if (activeTab === 'orders') {
           const catParam = orderCategoryFilter && orderCategoryFilter !== 'All'
@@ -3865,6 +3874,32 @@ const VendorDashboard = () => {
       }
     }
 
+    if (selectedMainCat === 'Jobs' || vendorType.startsWith('Job') || terms.catalogItem === 'Job') {
+      const cleanPhone = (itemForm.contactNumber || '').toString().trim().replace(/\D/g, '');
+      if (!cleanPhone || !/^[6-9]\d{9}$/.test(cleanPhone)) {
+        setError('Please enter a valid 10-digit Indian contact number starting with 6, 7, 8, or 9.');
+        return;
+      }
+      if (!itemForm.deadline) {
+        setError('Application deadline is required.');
+        return;
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const parts = String(itemForm.deadline).split('-');
+      let deadlineDate;
+      if (parts.length === 3) {
+        deadlineDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      } else {
+        deadlineDate = new Date(itemForm.deadline);
+        deadlineDate.setHours(0, 0, 0, 0);
+      }
+      if (isNaN(deadlineDate.getTime()) || deadlineDate < today) {
+        setError('Application deadline cannot be in the past.');
+        return;
+      }
+    }
+
     const isTravelRoute = vendorType.startsWith('Travel') || selectedMainCat === 'Travel' ||
       ['Bus Booking', 'Travels', 'Travel', 'Bus', 'Car', 'Bike', 'Travel Ticket', 'Cabs', 'Transport'].some(c => c.toLowerCase() === (itemForm.category || '').toLowerCase()) ||
       ['Sleeper Buses', 'Seater Buses', 'AC Buses', 'Non-AC Buses', 'Volvo Buses', 'Luxury Coaches', 'Intercity Buses'].some(sc => sc.toLowerCase() === (itemForm.subcategory || '').toLowerCase());
@@ -3949,6 +3984,9 @@ const VendorDashboard = () => {
 
     const payload = {
       ...itemForm,
+      ...(selectedMainCat === 'Jobs' && {
+        contactNumber: (itemForm.contactNumber || '').toString().trim().replace(/\D/g, '').slice(0, 10)
+      }),
       boardingPoints: cleanBps,
       droppingPoints: cleanDps,
       boardingPoint: (cleanBps[0]?.name) || itemForm.boardingPoint || '',
@@ -4186,6 +4224,13 @@ const VendorDashboard = () => {
     const cleanPostal = profileForm.postalCode ? String(profileForm.postalCode).replace(/\D/g, '').slice(0, 6) : '';
     const cleanPan = profileForm.panNo ? String(profileForm.panNo).toUpperCase().replace(/[^A-Z0-9]/g, '').trim() : '';
     const cleanAadhaar = profileForm.aadhaarNo ? String(profileForm.aadhaarNo).replace(/\D/g, '').slice(0, 12) : '';
+
+    if (cleanAadhaar && cleanAadhaar.length !== 12) {
+      const errText = 'Please enter a valid 12-digit Aadhaar number.';
+      setError(errText);
+      setProfileError(errText);
+      return;
+    }
 
     setIsSavingProfile(true);
     try {
@@ -5131,22 +5176,24 @@ const VendorDashboard = () => {
 
         {activeTab === 'dashboard' && user?.role === 'Vendor' && (() => {
           const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
+          const isJobBiz = vendorType.startsWith('Job') || terms.catalogName === 'Job Vacancies' || terms.catalogItem === 'Job' || terms.ordersName === 'Applications';
           const isTravelBiz = vendorType.startsWith('Travel') || terms.catalogName === 'Travel Routes' || terms.catalogItem === 'Travel Route';
           const isServicesBiz = /service|hospital|technician|clinic/i.test(vendorType) || /service/i.test(terms.catalogName || '') || terms.catalogName === 'Doctors' || terms.catalogItem === 'Doctor' || terms.catalogItem === 'Service';
           const isStayBiz = /stay|hotel/i.test(vendorType) || terms.catalogName === 'Rooms' || terms.catalogItem === 'Room';
           const isFoodBiz = /food|restaurant/i.test(vendorType) || terms.catalogName === 'Menu' || terms.catalogItem === 'Dish';
           const isDailyNeedsBiz = /daily needs|grocery|pharmacy/i.test(vendorType) || terms.catalogName === 'Medicines';
-          const isProductBiz = !isTravelBiz && !isServicesBiz && !isStayBiz && !isFoodBiz && !isDailyNeedsBiz;
+          const isProductBiz = !isJobBiz && !isTravelBiz && !isServicesBiz && !isStayBiz && !isFoodBiz && !isDailyNeedsBiz;
 
-          // Merge both orders and bookings, deduplicated by ID
+          // Merge orders, bookings, and applications, deduplicated by ID
           const combinedRecords = [
             ...(Array.isArray(orders) ? orders : []),
-            ...(Array.isArray(bookings) ? bookings : [])
+            ...(Array.isArray(bookings) ? bookings : []),
+            ...(Array.isArray(applications) ? applications : [])
           ];
           const recordMap = new Map();
           combinedRecords.forEach(r => {
             if (!r) return;
-            const rid = String(r._id || r.id || r.order_number || '');
+            const rid = String(r._id || r.id || r.order_number || r.applicationId || '');
             if (rid && !recordMap.has(rid)) {
               recordMap.set(rid, r);
             }
@@ -5169,20 +5216,22 @@ const VendorDashboard = () => {
             const oType = String(o.type || '').toLowerCase();
             const oCat = String(o.category || '').toLowerCase();
 
+            const isJobRecord = oType === 'job' || oType === 'jobs' || oType === 'job application' || oType === 'application' || recCat === 'Jobs' || oCat === 'jobs' || Boolean(o.jobId || o.jobTitle || o.applicationId || o.candidateName);
             const isServiceRecord = isServicesBooking(o) || recCat === CATEGORY_SERVICES || oType === 'services' || oType === 'service' || oType === 'appointment' || oCat === 'services' || oCat === 'service' || Boolean(o.doctorName || o.serviceName);
             const isTravelRecord = isTravelBooking(o) || recCat === CATEGORY_TRAVEL || oType === 'travel' || oCat === 'travel' || Boolean(o.travelDate || o.journeyDate);
             const isStayRecord = isStayBooking(o) || recCat === CATEGORY_STAY || oType === 'stay' || oType === 'hotel' || oCat === 'stay' || oCat === 'hotel' || Boolean(o.checkInDate || o.roomNumber);
             const isFoodRecord = recCat === CATEGORY_FOOD || oType === 'food' || oType === 'restaurant' || oCat === 'food' || oCat === 'restaurant' || Boolean(o.tableNumber);
 
+            if (isJobBiz) return isJobRecord;
             if (isTravelBiz) return isTravelRecord;
             if (isServicesBiz) return isServiceRecord;
             if (isStayBiz) return isStayRecord;
             if (isFoodBiz) return isFoodRecord;
             if (isDailyNeedsBiz) {
-              return !isTravelRecord && !isServiceRecord && !isStayRecord && (recCat === CATEGORY_DAILY_NEEDS || oType === 'daily needs' || oCat === 'daily needs' || oType === 'products' || oType === 'order');
+              return !isTravelRecord && !isServiceRecord && !isStayRecord && !isJobRecord && (recCat === CATEGORY_DAILY_NEEDS || oType === 'daily needs' || oCat === 'daily needs' || oType === 'products' || oType === 'order');
             }
             if (isProductBiz) {
-              return !isTravelRecord && !isServiceRecord && !isStayRecord;
+              return !isTravelRecord && !isServiceRecord && !isStayRecord && !isJobRecord;
             }
             return true;
           });
@@ -5560,15 +5609,83 @@ const VendorDashboard = () => {
                 {/* Recent Orders Table (2/3 width) */}
                 <div className="xl:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Recent {terms.ordersName}</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                      Recent {isJobBiz || terms.ordersName === 'Applications' ? 'Applications' : terms.ordersName}
+                    </h3>
                     <button 
-                      onClick={() => navigateToOrders('All')} 
+                      onClick={() => {
+                        if (isJobBiz || terms.ordersName === 'Applications') {
+                          setActiveTab('applications');
+                        } else {
+                          navigateToOrders('All');
+                        }
+                      }} 
                       className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
                     >
                       View All
                     </button>
                   </div>
-                  {recentOrdersList.length === 0 ? (
+                  {isJobBiz || terms.ordersName === 'Applications' ? (
+                    (() => {
+                      const recentAppsList = [...applications]
+                        .sort((a, b) => new Date(b.applicationDate || b.createdAt || b.created_at || 0) - new Date(a.applicationDate || a.createdAt || a.created_at || 0))
+                        .slice(0, 5);
+
+                      if (recentAppsList.length === 0) {
+                        return <p className="text-slate-400 dark:text-slate-500 text-center py-8">No job applications received yet</p>;
+                      }
+
+                      return (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="border-b border-slate-100 dark:border-slate-800/50 text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+                                <th className="px-6 py-4">Application ID</th>
+                                <th className="px-6 py-4">Applicant Name</th>
+                                <th className="px-6 py-4">Job Title</th>
+                                <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4 whitespace-nowrap min-w-[120px]">Application Date</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {recentAppsList.map(app => (
+                                <tr
+                                  key={app._id || app.id || app.order_number}
+                                  onClick={() => setActiveTab('applications')}
+                                  className="border-b border-slate-50 dark:border-slate-800/20 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
+                                  title="Click to view in Applications pipeline"
+                                >
+                                  <td className="px-6 py-4 text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                                    #{String(app.applicationId || app.order_number || app.id || app._id || 'N/A').replace(/^#+/, '')}
+                                  </td>
+                                  <td className="px-6 py-4 text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                    {app.candidateName || app.memberName || app.customer_name || 'Candidate'}
+                                  </td>
+                                  <td className="px-6 py-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                    {app.jobTitle || 'Job Application'}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                                      ['REJECTED', 'Cancelled', 'Rejected'].includes(app.status)
+                                        ? 'bg-rose-50 border-rose-100 text-rose-600 dark:bg-rose-950/20 dark:border-rose-900/30 dark:text-rose-400'
+                                        : ['SELECTED', 'HIRED', 'Delivered', 'Completed'].includes(app.status)
+                                        ? 'bg-emerald-50 border-emerald-100 text-emerald-600 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-400'
+                                        : 'bg-yellow-50 border-yellow-100 text-yellow-600 dark:bg-yellow-950/20 dark:border-yellow-900/30 dark:text-yellow-400'
+                                    }`}>
+                                      {app.status || 'APPLICATION RECEIVED'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                    {formatOrderDate(app)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()
+                  ) : recentOrdersList.length === 0 ? (
                     <p className="text-slate-400 dark:text-slate-500 text-center py-8">No bookings / orders made yet</p>
                   ) : (
                     <div className="overflow-x-auto">
@@ -6228,7 +6345,7 @@ const VendorDashboard = () => {
 
                                   {/* Metadata fields grid */}
                                   {(() => {
-                                    const shouldShowStock = !isService && ['Products', 'Daily Needs', 'Food', 'Jobs', 'Education'].includes(mainCat);
+                                    const shouldShowStock = mainCat === 'Jobs' || (!isService && ['Products', 'Daily Needs', 'Food', 'Education'].includes(mainCat));
                                     const salesInfo = getItemSalesData(item._id, item);
                                     const salesCount = salesInfo.count;
                                     const customersCount = salesInfo.customersCount;
@@ -6249,7 +6366,7 @@ const VendorDashboard = () => {
                                         )}
                                         <div className="text-center border-l border-slate-200 dark:border-slate-800">
                                           <span className="block text-[7px] sm:text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'Applied' : isService ? 'Bookings' : 'Customers'}</span>
-                                          <span className="font-bold text-emerald-600 dark:text-emerald-400">{isService ? salesCount : customersCount}</span>
+                                          <span className="font-bold text-emerald-600 dark:text-emerald-400">{mainCat === 'Jobs' ? salesCount : (isService ? salesCount : customersCount)}</span>
                                         </div>
                                       </div>
                                     );
@@ -10448,12 +10565,16 @@ const VendorDashboard = () => {
         onClose={() => setIsItemModalOpen(false)} 
         title={`${isEditItem ? 'Update' : 'Add New'} ${terms.catalogItem}`}
         closeOnOutsideClick={false}
+        maxWidth={selectedMainCat === 'Jobs' ? "max-w-2xl" : "max-w-lg"}
       >
         <form onSubmit={handleSaveItem} className="space-y-4">
           {selectedMainCat === 'Jobs' ? (
-            <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Row 1: Job Name & Category */}
               <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Name</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Job Name <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   required
@@ -10464,91 +10585,92 @@ const VendorDashboard = () => {
                 />
               </div>
 
-              {selectedMainCat && (
-                <>
-                  <div className="space-y-1 animate-fadeIn">
-                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Category</label>
-                    <select
-                      required
-                      value={itemForm.category}
-                      onChange={e => {
-                        const newCat = e.target.value;
-                        setItemForm(prev => ({ ...prev, category: newCat, subcategory: '' }));
-                      }}
-                      className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
-                    >
-                      {(() => {
-                        const currentTax = getCategoryTaxonomy();
-                        const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
-                        const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
-                        const invalidCategories = ['membership', 'count', 'general', 'standard', 'all_subcategories_deleted_marker', 'all_child_deleted_marker', 'na', 'n/a', 'undefined', 'null', 'orders'];
-                        
-                        const parentKeys = [...new Set(taxParentKeys.map(k => (k || '').trim()))].filter(cat => {
-                          if (!cat) return false;
-                          const lower = cat.toLowerCase();
-                          if (mainCatNames.some(m => m.toLowerCase() === lower)) return false;
-                          if (invalidCategories.includes(lower)) return false;
-                          return true;
-                        });
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Job Category <span className="text-red-500">*</span>
+                </label>
+                <select
+                  required
+                  value={itemForm.category}
+                  onChange={e => {
+                    const newCat = e.target.value;
+                    setItemForm(prev => ({ ...prev, category: newCat, subcategory: '' }));
+                  }}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
+                >
+                  {(() => {
+                    const currentTax = getCategoryTaxonomy();
+                    const taxParentKeys = selectedMainCat && currentTax[selectedMainCat] ? Object.keys(currentTax[selectedMainCat]) : [];
+                    const mainCatNames = ['Services', 'Products', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+                    const invalidCategories = ['membership', 'count', 'general', 'standard', 'all_subcategories_deleted_marker', 'all_child_deleted_marker', 'na', 'n/a', 'undefined', 'null', 'orders'];
+                    
+                    const parentKeys = [...new Set(taxParentKeys.map(k => (k || '').trim()))].filter(cat => {
+                      if (!cat) return false;
+                      const lower = cat.toLowerCase();
+                      if (mainCatNames.some(m => m.toLowerCase() === lower)) return false;
+                      if (invalidCategories.includes(lower)) return false;
+                      return true;
+                    });
 
-                        return (
-                          <>
-                            <option value="" className="bg-white dark:bg-slate-900 text-slate-400">
-                              -- Select Category --
-                            </option>
-                            {parentKeys.map(cat => (
-                              <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                                {cat}
-                              </option>
-                            ))}
-                          </>
-                        );
-                      })()}
-                    </select>
-                  </div>
+                    return (
+                      <>
+                        <option value="" className="bg-white dark:bg-slate-900 text-slate-400">
+                          -- Select Category --
+                        </option>
+                        {parentKeys.map(cat => (
+                          <option key={cat} value={cat} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {cat}
+                          </option>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </select>
+              </div>
 
-                  <div className="space-y-1 animate-fadeIn">
-                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Child Category</label>
-                    <select
-                      value={itemForm.subcategory}
-                      disabled={!itemForm.category}
-                      onChange={e => setItemForm(prev => ({ ...prev, subcategory: e.target.value }))}
-                      className={`w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white ${!itemForm.category ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    >
-                      {(() => {
-                        if (!itemForm.category) {
-                          return <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">-- Select Category First --</option>;
-                        }
+              {/* Row 2: Child Category & Job Type */}
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Child Category</label>
+                <select
+                  value={itemForm.subcategory}
+                  disabled={!itemForm.category}
+                  onChange={e => setItemForm(prev => ({ ...prev, subcategory: e.target.value }))}
+                  className={`w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white ${!itemForm.category ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {(() => {
+                    if (!itemForm.category) {
+                      return <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">-- Select Category First --</option>;
+                    }
 
-                        const currentTax = getCategoryTaxonomy();
-                        const taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
+                    const currentTax = getCategoryTaxonomy();
+                    const taxonomySubOpts = (currentTax[selectedMainCat] && currentTax[selectedMainCat][itemForm.category]) || [];
 
-                        const cleanChildOpts = [...new Set((taxonomySubOpts || []).filter(c => c && c !== 'ALL_CHILD_DELETED_MARKER' && c.toLowerCase() !== 'general' && c.toLowerCase() !== 'standard'))];
+                    const cleanChildOpts = [...new Set((taxonomySubOpts || []).filter(c => c && c !== 'ALL_CHILD_DELETED_MARKER' && c.toLowerCase() !== 'general' && c.toLowerCase() !== 'standard'))];
 
-                        if (cleanChildOpts.length === 0) {
-                          return <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">-- No Child Category Available --</option>;
-                        }
+                    if (cleanChildOpts.length === 0) {
+                      return <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-400">-- No Child Category Available --</option>;
+                    }
 
-                        return (
-                          <>
-                            <option value="" className="bg-white dark:bg-slate-900 text-slate-400">
-                              -- Select Child Category --
-                            </option>
-                            {cleanChildOpts.map(type => (
-                              <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                                {type}
-                              </option>
-                            ))}
-                          </>
-                        );
-                      })()}
-                    </select>
-                  </div>
-                </>
-              )}
+                    return (
+                      <>
+                        <option value="" className="bg-white dark:bg-slate-900 text-slate-400">
+                          -- Select Child Category --
+                        </option>
+                        {cleanChildOpts.map(type => (
+                          <option key={type} value={type} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {type}
+                          </option>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </select>
+              </div>
 
               <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Type</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Job Type <span className="text-red-500">*</span>
+                </label>
                 <select
                   required
                   value={itemForm.jobType}
@@ -10564,8 +10686,9 @@ const VendorDashboard = () => {
                 </select>
               </div>
 
+              {/* Optional Duration if Internship */}
               {itemForm.jobType === 'Internship' && (
-                <div className="space-y-1 animate-fadeIn">
+                <div className="space-y-1 animate-fadeIn sm:col-span-2">
                   <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Duration</label>
                   <input
                     type="text"
@@ -10578,20 +10701,11 @@ const VendorDashboard = () => {
                 </div>
               )}
 
+              {/* Row 3: Experience & Salary */}
               <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Location</label>
-                <input
-                  type="text"
-                  required
-                  value={itemForm.jobLocation}
-                  onChange={e => setItemForm({ ...itemForm, jobLocation: e.target.value })}
-                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                  placeholder="e.g. Bangalore / Remote"
-                />
-              </div>
-
-              <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Experience Required</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Experience Required <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   required
@@ -10603,7 +10717,9 @@ const VendorDashboard = () => {
               </div>
 
               <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Salary / Package (₹/year)</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Salary / Package (₹/year) <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="number"
                   required
@@ -10614,37 +10730,47 @@ const VendorDashboard = () => {
                 />
               </div>
 
+              {/* Row 4: Vacancies & Location */}
               <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Skills Requirement</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Vacancies / Openings <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={itemForm.stock}
+                  onChange={e => setItemForm({ ...itemForm, stock: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="e.g. 5"
+                />
+              </div>
+
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Job Location <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   required
-                  value={itemForm.skills}
-                  onChange={e => setItemForm({ ...itemForm, skills: e.target.value })}
+                  value={itemForm.jobLocation}
+                  onChange={e => setItemForm({ ...itemForm, jobLocation: e.target.value })}
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                  placeholder="e.g. React, Node.js, JavaScript"
+                  placeholder="e.g. Bangalore / Remote"
                 />
               </div>
 
+              {/* Row 5: Deadline & Contact Number */}
               <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Job Description</label>
-                <textarea
-                  required
-                  value={itemForm.description}
-                  rows={3}
-                  onChange={e => setItemForm({ ...itemForm, description: e.target.value })}
-                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                  placeholder="Describe the job roles, responsibilities..."
-                />
-              </div>
-
-              <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Deadline Date</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Deadline Date <span className="text-red-500">*</span>
+                </label>
                 <div className="relative flex items-center">
                   <input
                     type="date"
                     required
                     ref={deadlineInputRef}
+                    min={new Date().toLocaleDateString('en-CA')}
                     value={itemForm.deadline || ''}
                     onChange={e => setItemForm({ ...itemForm, deadline: e.target.value })}
                     className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none text-slate-800 dark:text-slate-200 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
@@ -10653,18 +10779,47 @@ const VendorDashboard = () => {
               </div>
 
               <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Application Tips</label>
-                <textarea
-                  value={itemForm.applicationTips}
-                  rows={2}
-                  onChange={e => setItemForm({ ...itemForm, applicationTips: e.target.value })}
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Contact Number <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="tel"
+                  required
+                  maxLength={10}
+                  value={itemForm.contactNumber || ''}
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setItemForm({ ...itemForm, contactNumber: val });
+                  }}
+                  onPaste={e => {
+                    e.preventDefault();
+                    const pasteData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 10);
+                    setItemForm({ ...itemForm, contactNumber: pasteData });
+                  }}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
+                  placeholder="10-digit mobile (e.g. 9876543210)"
+                />
+              </div>
+
+              {/* Row 6: Mail ID & Qualification */}
+              <div className="space-y-1 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Mail ID <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={itemForm.mailId}
+                  onChange={e => setItemForm({ ...itemForm, mailId: e.target.value })}
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                  placeholder="e.g. Attach portfolio link and highlight React projects"
+                  placeholder="e.g. careers@connect.com"
                 />
               </div>
 
               <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Qualification Required</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Qualification Required <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   required
@@ -10675,6 +10830,7 @@ const VendorDashboard = () => {
                 />
               </div>
 
+              {/* Row 7: Linked Profile & Pin Code */}
               <div className="space-y-1 animate-fadeIn">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Linked Profile (URL)</label>
                 <input
@@ -10687,42 +10843,72 @@ const VendorDashboard = () => {
               </div>
 
               <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Contact Number</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Pin Code</label>
                 <input
                   type="text"
                   required
-                  value={itemForm.contactNumber}
-                  onChange={e => setItemForm({ ...itemForm, contactNumber: e.target.value })}
-                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                  placeholder="e.g. +91 9999999999"
+                  maxLength={6}
+                  value={itemForm.pinCode}
+                  onChange={e => setItemForm({ ...itemForm, pinCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
+                  placeholder="e.g. 600001"
                 />
               </div>
 
-              <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Mail ID</label>
+              {/* Row 8: Availability Status */}
+              <div className="space-y-1 animate-fadeIn sm:col-span-2">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Availability Status</label>
+                <select
+                  value={itemForm.status}
+                  onChange={e => setItemForm({ ...itemForm, status: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-white"
+                >
+                  {terms.catalogStatuses.map(status => (
+                    <option key={status} value={status} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{status}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Full Width Rows: Skills, Tips, Description */}
+              <div className="space-y-1 animate-fadeIn sm:col-span-2">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Skills Requirement <span className="text-red-500">*</span>
+                </label>
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={itemForm.mailId}
-                  onChange={e => setItemForm({ ...itemForm, mailId: e.target.value })}
+                  value={itemForm.skills}
+                  onChange={e => setItemForm({ ...itemForm, skills: e.target.value })}
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                  placeholder="e.g. careers@connect.com"
+                  placeholder="e.g. React, Node.js, JavaScript"
                 />
               </div>
 
-
-              <div className="space-y-1 animate-fadeIn">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Vacancies / Openings</label>
-                <input
-                  type="number"
-                  required
-                  value={itemForm.stock}
-                  onChange={e => setItemForm({ ...itemForm, stock: e.target.value })}
+              <div className="space-y-1 animate-fadeIn sm:col-span-2">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Application Tips</label>
+                <textarea
+                  value={itemForm.applicationTips}
+                  rows={2}
+                  onChange={e => setItemForm({ ...itemForm, applicationTips: e.target.value })}
                   className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                  placeholder="e.g. 5"
+                  placeholder="e.g. Attach portfolio link and highlight React projects"
                 />
               </div>
-            </>
+
+              <div className="space-y-1 animate-fadeIn sm:col-span-2">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
+                  Job Description <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  required
+                  value={itemForm.description}
+                  rows={3}
+                  onChange={e => setItemForm({ ...itemForm, description: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                  placeholder="Describe the job roles, responsibilities..."
+                />
+              </div>
+            </div>
           ) : (
             <>
           <div className="space-y-1">
@@ -11399,7 +11585,7 @@ required
 
 
 
-          {(selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || selectedMainCat === 'Food' || selectedMainCat === 'Jobs' || selectedMainCat === 'Education') && (
+          {(selectedMainCat === 'Products' || selectedMainCat === 'Daily Needs' || selectedMainCat === 'Food' || selectedMainCat === 'Education') && (
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">
                 {selectedMainCat === 'Education' ? 'Batch Size / Seats' :
@@ -11449,31 +11635,35 @@ required
             </>
           )}
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Pin Code</label>
-            <input
-              type="text"
-              required
-              maxLength={6}
-              value={itemForm.pinCode}
-              onChange={e => setItemForm({ ...itemForm, pinCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-              className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
-              placeholder="e.g. 600001"
-            />
-          </div>
+          {selectedMainCat !== 'Jobs' && (
+            <>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Pin Code</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  value={itemForm.pinCode}
+                  onChange={e => setItemForm({ ...itemForm, pinCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
+                  placeholder="e.g. 600001"
+                />
+              </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Availability Status</label>
-            <select
-              value={itemForm.status}
-              onChange={e => setItemForm({ ...itemForm, status: e.target.value })}
-              className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-            >
-              {terms.catalogStatuses.map(status => (
-                <option key={status} value={status} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{status}</option>
-              ))}
-            </select>
-          </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Availability Status</label>
+                <select
+                  value={itemForm.status}
+                  onChange={e => setItemForm({ ...itemForm, status: e.target.value })}
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                >
+                  {terms.catalogStatuses.map(status => (
+                    <option key={status} value={status} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{status}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
 
           {!(selectedMainCat === 'Jobs' || vendorType.startsWith('Job') || terms.catalogItem === 'Job') && (
@@ -11683,20 +11873,20 @@ required
                 </div>
               );
             })()}
-
-            {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold rounded-xl flex items-start gap-2 break-words overflow-hidden leading-relaxed my-2">
-                <span className="shrink-0 text-sm">⚠️</span>
-                <span className="flex-1 break-words">{error}</span>
-              </div>
-            )}
-            {message && (
-              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-xl flex items-start gap-2 break-words overflow-hidden leading-relaxed my-2">
-                <span className="shrink-0 text-sm">✓</span>
-                <span className="flex-1 break-words">{message}</span>
-              </div>
-            )}
           </div>
+          )}
+
+          {error && (
+            <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold rounded-xl flex items-start gap-2 break-words overflow-hidden leading-relaxed my-2">
+              <span className="shrink-0 text-sm">⚠️</span>
+              <span className="flex-1 break-words">{error}</span>
+            </div>
+          )}
+          {message && (
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-xl flex items-start gap-2 break-words overflow-hidden leading-relaxed my-2">
+              <span className="shrink-0 text-sm">✓</span>
+              <span className="flex-1 break-words">{message}</span>
+            </div>
           )}
 
           <div className="flex gap-3 pt-2">

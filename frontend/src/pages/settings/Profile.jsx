@@ -179,9 +179,15 @@ const Profile = () => {
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
+    const cleanAadhaar = profileForm.aadhaarNo ? String(profileForm.aadhaarNo).replace(/\D/g, '').slice(0, 12) : '';
+    if (cleanAadhaar && cleanAadhaar.length !== 12) {
+      setError('Please enter a valid 12-digit Aadhaar number.');
+      return;
+    }
     try {
       const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/profile`, {
         ...profileForm,
+        aadhaarNo: cleanAadhaar,
         activeBusinessId
       }, getAxiosConfig());
       if (res.data.success) {

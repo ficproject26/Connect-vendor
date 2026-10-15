@@ -195,6 +195,38 @@ export default function VendorPayments() {
   const [adminPeriodInfo, setAdminPeriodInfo] = useState(null);
   const [selectedAdminDetail, setSelectedAdminDetail] = useState(null);
 
+  // Helper: compute exact ISO date boundaries for standard duration filters
+  const computeDurationRange = (duration) => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const day = now.getDate();
+    const dayOfWeek = now.getDay(); // 0 is Sunday
+
+    if (duration === 'Today') {
+      const start = new Date(year, month, day, 0, 0, 0, 0);
+      const end = new Date(year, month, day, 23, 59, 59, 999);
+      return { startDate: start.toISOString(), endDate: end.toISOString() };
+    }
+    if (duration === 'This Week') {
+      const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const start = new Date(year, month, day - diffToMonday, 0, 0, 0, 0);
+      const end = new Date(year, month, day - diffToMonday + 6, 23, 59, 59, 999);
+      return { startDate: start.toISOString(), endDate: end.toISOString() };
+    }
+    if (duration === 'This Month') {
+      const start = new Date(year, month, 1, 0, 0, 0, 0);
+      const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+      return { startDate: start.toISOString(), endDate: end.toISOString() };
+    }
+    if (duration === 'This Year') {
+      const start = new Date(year, 0, 1, 0, 0, 0, 0);
+      const end = new Date(year, 11, 31, 23, 59, 59, 999);
+      return { startDate: start.toISOString(), endDate: end.toISOString() };
+    }
+    return { startDate: null, endDate: null };
+  };
+
   // ---------------------------------------------------------
   // Fetch Sales Payments
   // ---------------------------------------------------------
@@ -222,6 +254,10 @@ export default function VendorPayments() {
       if (salesDuration === 'Custom') {
         if (salesFromDate) params.startDate = salesFromDate;
         if (salesToDate) params.endDate = salesToDate;
+      } else {
+        const computed = computeDurationRange(salesDuration);
+        if (computed.startDate) params.startDate = computed.startDate;
+        if (computed.endDate) params.endDate = computed.endDate;
       }
 
       const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/payments/sales`, { params });
@@ -287,6 +323,10 @@ export default function VendorPayments() {
       if (adminDuration === 'Custom') {
         if (adminFromDate) params.startDate = adminFromDate;
         if (adminToDate) params.endDate = adminToDate;
+      } else {
+        const computed = computeDurationRange(adminDuration);
+        if (computed.startDate) params.startDate = computed.startDate;
+        if (computed.endDate) params.endDate = computed.endDate;
       }
 
       const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/settlements`, { params });
