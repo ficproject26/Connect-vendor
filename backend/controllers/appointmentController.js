@@ -131,10 +131,25 @@ const createBooking = async (req, res) => {
       age,
       guestDetails,
       guestList,
-      additionalGuests
+      additionalGuests,
+      checkInDate: inputCheckInDate,
+      checkOutDate: inputCheckOutDate,
+      checkInTime: inputCheckInTime,
+      checkOutTime: inputCheckOutTime,
+      nightsCount: inputNightsCount,
+      numberOfNights,
+      roomsCount: inputRoomsCount,
+      numberOfRooms
     } = req.body;
 
-    if (!memberName || !productId || !appointmentDate) {
+    const resolvedCheckInDate = inputCheckInDate || req.body.check_in_date || appointmentDate;
+    const resolvedCheckOutDate = inputCheckOutDate || req.body.check_out_date || req.body.checkoutDate || req.body.departureDate || null;
+    const resolvedCheckInTime = inputCheckInTime || req.body.check_in_time || '12:00 PM';
+    const resolvedCheckOutTime = inputCheckOutTime || req.body.check_out_time || req.body.checkoutTime || '11:00 AM';
+    const resolvedNightsCount = Number(inputNightsCount || numberOfNights || 1);
+    const resolvedRoomsCount = Number(inputRoomsCount || numberOfRooms || 1);
+
+    if (!memberName || !productId || !resolvedCheckInDate) {
       return res.status(400).json({ success: false, message: 'Guest name, room, and check-in date are required' });
     }
 
@@ -208,19 +223,26 @@ const createBooking = async (req, res) => {
       vendorId,
       memberId: guestId,
       memberName,
-      type: 'Booking',
+      type: 'Stay',
+      category: 'Stay',
       items: [{
         productId: product._id,
         name: product.name,
         price: product.price,
-        quantity: 1
+        quantity: resolvedRoomsCount
       }],
-      totalAmount: product.price,
-      discountApplied: product.price > price ? product.price - price : 0,
+      totalAmount: product.price * resolvedRoomsCount,
+      discountApplied: (product.price * resolvedRoomsCount) > price ? (product.price * resolvedRoomsCount) - price : 0,
       finalAmount: price,
       status: status || 'Accepted',
-      appointmentDate,
-      appointmentTimeSlot: appointmentTimeSlot || '1', // nights
+      appointmentDate: resolvedCheckInDate,
+      appointmentTimeSlot: appointmentTimeSlot || `${resolvedCheckInTime} - ${resolvedCheckOutTime}`,
+      checkInDate: resolvedCheckInDate,
+      checkInTime: resolvedCheckInTime,
+      checkOutDate: resolvedCheckOutDate,
+      checkOutTime: resolvedCheckOutTime,
+      nightsCount: resolvedNightsCount,
+      roomsCount: resolvedRoomsCount,
       roomNumber: roomNumber || '',
       gender: gender || primaryGuest.gender || null,
       age: age || primaryGuest.age || null,

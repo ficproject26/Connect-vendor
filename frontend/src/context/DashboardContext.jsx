@@ -312,7 +312,10 @@ export const DashboardProvider = ({ children }) => {
       customersName: isHospitalBiz ? 'Patients' : (isServiceBiz ? 'Customers' : (isJobBiz ? 'Candidates' : (isEducationBiz ? 'Students' : 'Customers'))),
       customersSub: isHospitalBiz ? 'View patient appointment history' : (isServiceBiz ? 'View customer booking history' : (isJobBiz ? 'View candidate application history' : (isEducationBiz ? 'View student enrollment history' : 'View customer order history'))),
       customerSpentLabel: isHospitalBiz ? 'Total Paid (₹)' : (isServiceBiz ? 'Total Spent (₹)' : 'Total Spent (₹)'),
-      orderStatuses
+      orderStatuses,
+      catalogStatuses: (isHospitalBiz || isServiceBiz || isJobBiz || isEducationBiz || isStayBiz || isTravelBiz) 
+        ? ['Available', 'Unavailable'] 
+        : ['Available', 'Out of Stock']
     };
   };
 

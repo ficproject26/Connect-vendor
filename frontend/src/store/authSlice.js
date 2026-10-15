@@ -166,6 +166,15 @@ const authSlice = createSlice({
           state.user.logo = activeBiz.logo;
           state.user.businessLicense = activeBiz.businessLicense;
           state.user.businessImages = activeBiz.businessImages;
+          state.user.address = activeBiz.address || state.user.address;
+          state.user.city = activeBiz.city || state.user.city;
+          state.user.phone = activeBiz.phone || state.user.phone;
+          state.user.businessId = activeBiz._id || activeBiz.id;
+          state.user.activeBusinessId = activeId;
+          const propId = activeBiz.propertyId || activeBiz.documents?.property_id?.number;
+          if (propId && /^\d{13}$/.test(String(propId).trim())) {
+            state.user.propertyId = String(propId).trim();
+          }
           localStorage.setItem('vendor_user', JSON.stringify(state.user));
         }
       }

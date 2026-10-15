@@ -177,6 +177,40 @@ const vendorHasJobCategories = (user) => {
 };
 
 // --- ANALYTICS ---
+// Helper to resolve consistent vendor-scoped matching identifiers
+const getVendorMatchingIds = (user, parentUserId) => {
+  const pIdStr = parentUserId ? parentUserId.toString() : '';
+  const businessIds = [
+    ...(pIdStr ? [pIdStr] : []),
+    ...(user?.vendorId ? [String(user.vendorId)] : []),
+    ...(user?.registrationId ? [String(user.registrationId)] : []),
+    ...(user?._id ? [String(user._id)] : [])
+  ];
+  if (user?.businesses && user.businesses.length > 0) {
+    user.businesses.forEach(b => {
+      if (b._id) businessIds.push(b._id.toString());
+      if (b.id) businessIds.push(b.id.toString());
+      if (b.vendorId) businessIds.push(String(b.vendorId));
+    });
+  }
+  const uniqueBusinessIds = [...new Set(businessIds.filter(Boolean))];
+  const objectIds = uniqueBusinessIds.filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
+  return [...uniqueBusinessIds, ...objectIds];
+};
+
+// Shared unique customer key generator ensuring customer list and KPI alignment
+const getVendorScopedCustomerKey = (name, email) => {
+  const cleanName = (name || '').trim().toLowerCase();
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (cleanName && cleanName !== 'customer' && cleanName !== 'connect member' && cleanName !== 'connectmember') {
+    return cleanName.replace(/[^a-z0-9]/g, '');
+  }
+  if (cleanEmail && !cleanEmail.includes('customer') && cleanEmail.includes('@')) {
+    return cleanEmail.replace(/[^a-z0-9]/g, '');
+  }
+  return cleanEmail.replace(/[^a-z0-9]/g, '') || cleanName.replace(/[^a-z0-9]/g, '') || 'unknown_customer';
+};
+
 // @desc    Get vendor dashboard analytics
 // @route   GET /api/vendor/analytics
 // @access  Private (Vendor)
@@ -188,20 +222,17 @@ const getVendorAnalytics = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    const businessIds = [parentUserId.toString()];
-    if (user.businesses && user.businesses.length > 0) {
-      user.businesses.forEach(b => {
-        if (b._id) businessIds.push(b._id.toString());
-      });
-    }
+    const allMatchIds = getVendorMatchingIds(user, parentUserId);
 
     // Fetch vendor orders with projection and lean() for fast query execution
     const rawOrders = await Order.find({
       $or: [
-        { vendorId: { $in: businessIds } },
-        { vendor_id: { $in: businessIds } }
+        { vendorId: { $in: allMatchIds } },
+        { vendor_id: { $in: allMatchIds } },
+        { 'items.vendorId': { $in: allMatchIds } },
+        { 'items.vendor_id': { $in: allMatchIds } }
       ]
-    }).select('vendorId vendor_id memberName customer_name memberId customer_id finalAmount totalAmount amount createdAt created_at orderDate date type status paymentStatus payment_status vendorPaymentStatus candidateEmail customer_email').lean();
+    }).select('vendorId vendor_id memberName customer_name memberId customer_id finalAmount totalAmount amount createdAt created_at orderDate date type status paymentStatus payment_status vendorPaymentStatus candidateEmail customer_email items').lean();
 
     const orders = rawOrders.map(o => {
       const obj = o.toObject ? o.toObject() : o;
@@ -248,14 +279,14 @@ const getVendorAnalytics = async (req, res) => {
     const [dbCustomersCountList, totalItemsCount, activeMembershipsCount] = await Promise.all([
       Customer.find({
         $or: [
-          { vendorId: { $in: businessIds } },
-          { vendor_id: { $in: businessIds } }
+          { vendorId: { $in: allMatchIds } },
+          { vendor_id: { $in: allMatchIds } }
         ]
       }).select('name email').lean(),
       Product.countDocuments({
         $or: [
-          { vendorId: { $in: businessIds } },
-          { vendor_id: { $in: businessIds } }
+          { vendorId: { $in: allMatchIds } },
+          { vendor_id: { $in: allMatchIds } }
         ]
       }),
       memberIds.length > 0 ? MembershipCard.countDocuments({
@@ -268,12 +299,19 @@ const getVendorAnalytics = async (req, res) => {
 
     const customerKeySet = new Set();
     dbCustomersCountList.forEach(c => {
-      const k = (c.name || c.email || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (k) customerKeySet.add(k);
+      const k = getVendorScopedCustomerKey(c.name, c.email);
+      if (k && k !== 'unknowncustomer' && k !== 'customer' && k !== 'connectmember') {
+        customerKeySet.add(k);
+      }
     });
-    orders.forEach(o => {
-      const k = (o.memberName || o.customer_name || o.candidateEmail || o.customer_email || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (k && k !== 'customer' && k !== 'connectmember') customerKeySet.add(k);
+    rawOrders.forEach(o => {
+      const k = getVendorScopedCustomerKey(
+        o.memberName || o.customer_name,
+        o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : '')
+      );
+      if (k && k !== 'unknowncustomer' && k !== 'customer' && k !== 'connectmember') {
+        customerKeySet.add(k);
+      }
     });
     const uniqueCustomersCount = customerKeySet.size;
 
@@ -659,6 +697,39 @@ const normalizeCategoryType = (raw) => {
   return s;
 };
 
+const isBookingOrServiceCatalogItem = (product, vendorUser = null) => {
+  if (!product) return false;
+  const pMain = String(product.mainCategory || product.subNavbarCategory || '').trim().toLowerCase();
+  const pCat = String(product.category || '').trim().toLowerCase();
+  const pSub = String(product.subcategory || '').trim().toLowerCase();
+  const pName = String(product.name || '').trim().toLowerCase();
+  const vType = String(vendorUser?.vendorType || vendorUser?.category || '').trim().toLowerCase();
+
+  if (['services', 'service', 'stay', 'travel', 'jobs', 'education'].includes(pMain)) return true;
+  if (['services', 'service', 'stay', 'travel', 'jobs', 'education'].includes(pCat)) return true;
+  if (
+    vType.includes('service') || vType.includes('hotel') || vType.includes('stay') || 
+    vType.includes('travel') || vType.includes('doctor') || vType.includes('hospital') || 
+    vType.includes('job') || vType.includes('education')
+  ) {
+    return true;
+  }
+
+  const serviceCategories = [
+    'it & device support', 'ac service', 'laptop repairs', 'cctv installation',
+    'pc repairs', 'full clean', 'cleaning', 'electrician', 'plumber', 'hospital',
+    'technician', 'healthcare', 'services', 'service', 'appointment',
+    'stay booking', 'bus booking', 'tour packages', 'taxi service', 'hotel', 'resort',
+    'room', 'rooms', 'homestay', 'pg', 'consultation', 'travel', 'travels', 'bus', 'resorts', 'hotels'
+  ];
+  if (serviceCategories.includes(pCat) || serviceCategories.includes(pSub)) return true;
+
+  if (/\b(service|services|repair|repairs|cctv|support|consultation|doctor|technician|clinic|hospital|hotel|room|rooms|stay|travel|tour|bus)\b/i.test(pName)) {
+    return true;
+  }
+  return false;
+};
+
 const getProducts = async (req, res) => {
   try {
     const parentId = (req.user.parentUserId || req.user._id).toString();
@@ -823,13 +894,15 @@ const getProducts = async (req, res) => {
         p.uniqueCustomers = uniqueCustCount;
 
         // Keep product inventory and service booking availability as separate concepts
-        const isServiceOffering = ['Services', 'Stay', 'Travel'].some(cat => 
-          (p.mainCategory && p.mainCategory.toLowerCase() === cat.toLowerCase()) ||
-          (p.subNavbarCategory && p.subNavbarCategory.toLowerCase() === cat.toLowerCase()) ||
-          (p.category && p.category.toLowerCase() === cat.toLowerCase())
-        );
-        if (isServiceOffering && p.status === 'Out of Stock') {
-          p.status = 'Available';
+        const isServiceOffering = isBookingOrServiceCatalogItem(p, req.user);
+        if (isServiceOffering) {
+          if (p.status === 'Out of Stock' || p.status === 'OUT OF STOCK') {
+            p.status = 'Unavailable';
+          }
+        } else {
+          if (p.status === 'Unavailable' || p.status === 'UNAVAILABLE') {
+            p.status = 'Out of Stock';
+          }
         }
       });
     }
@@ -923,15 +996,28 @@ const updateProduct = async (req, res) => {
     }
 
     // Stock and availability state management
-    const isServiceOrBookingOffering = ['Services', 'Stay', 'Travel', 'Jobs'].some(cat => 
-      (resolvedMainCat && resolvedMainCat.toLowerCase() === cat.toLowerCase()) ||
-      (product.mainCategory && product.mainCategory.toLowerCase() === cat.toLowerCase()) ||
-      (product.subNavbarCategory && product.subNavbarCategory.toLowerCase() === cat.toLowerCase()) ||
-      (finalCategory && finalCategory.toLowerCase() === cat.toLowerCase())
+    const isServiceOrBookingOffering = isBookingOrServiceCatalogItem(
+      {
+        ...product.toObject(),
+        category: finalCategory,
+        mainCategory: resolvedMainCat,
+        subNavbarCategory: resolvedMainCat,
+        subcategory: bodySubcategory !== undefined ? bodySubcategory : product.subcategory
+      },
+      req.user
     );
 
     let finalStatus = status || product.status || 'Available';
-    if (!isServiceOrBookingOffering) {
+    if (isServiceOrBookingOffering) {
+      // Services, Stay, and Travel offerings do not track physical inventory stock
+      if (finalStatus === 'Out of Stock' || finalStatus === 'OUT OF STOCK') {
+        finalStatus = 'Unavailable';
+      }
+    } else {
+      // Products, Food, and Daily Needs track physical inventory
+      if (finalStatus === 'Unavailable' || finalStatus === 'UNAVAILABLE') {
+        finalStatus = 'Out of Stock';
+      }
       const effectiveStock = stock !== undefined ? Number(stock) : product.stock;
       if (effectiveStock !== undefined && effectiveStock !== null && !isNaN(effectiveStock)) {
         if (effectiveStock <= 0) {
@@ -944,11 +1030,6 @@ const updateProduct = async (req, res) => {
             finalStatus = 'Available';
           }
         }
-      }
-    } else {
-      // Services, Stay, and Travel offerings do not track physical inventory stock
-      if (finalStatus === 'Out of Stock') {
-        finalStatus = 'Available';
       }
     }
 
@@ -1091,7 +1172,14 @@ const deduplicateAddressSegments = (addrStr) => {
 
 // Reusable helper to build Customer ID canonical lookup without scanning entire collections
 const buildCustomerLookupForOrders = async (orders) => {
-  const memberIds = [...new Set(orders.map(o => o.memberId || o.customerId || o.customer_id).filter(id => id && id !== 'FIC-CUST-100001' && id !== 'cust_dhanush'))];
+  const rawIds = [];
+  orders.forEach(o => {
+    if (o.memberId && o.memberId !== 'FIC-CUST-100001' && o.memberId !== 'cust_dhanush') rawIds.push(String(o.memberId));
+    if (o.customerId && o.customerId !== 'FIC-CUST-100001') rawIds.push(String(o.customerId));
+    if (o.customer_id && o.customer_id !== 'FIC-CUST-100001') rawIds.push(String(o.customer_id));
+    if (o.customerDisplayId && o.customerDisplayId !== 'FIC-CUST-100001') rawIds.push(String(o.customerDisplayId));
+  });
+  const memberIds = [...new Set(rawIds)];
   const emails = [...new Set(orders.map(o => o.candidateEmail || o.customer_email || (o.memberId && o.memberId.includes('@') ? o.memberId : null)).filter(Boolean))];
   const phones = [...new Set(orders.map(o => (o.customer_phone || o.phone || o.candidatePhone || '').toString().replace(/[^0-9]/g, '').slice(-10)).filter(p => p && p.length >= 10))];
 
@@ -1117,9 +1205,9 @@ const buildCustomerLookupForOrders = async (orders) => {
 
   // Fetch all Customer documents plus matching Users and related Payments in parallel
   const [dbCustomers, memberUsers, relatedPayments] = await Promise.all([
-    Customer.find({}).select('name email phone mobileNumber customerId registrationId _id address street city state pincode aadhaar pan role status addresses').lean(),
+    Customer.find({}).select('name email phone mobileNumber customerId registrationId _id address street city state pincode aadhaar pan role status addresses memberId gender age').lean(),
     orCustConditions.length > 0
-      ? User.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id aadhaar pan role').lean()
+      ? User.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id aadhaar pan role memberId gender age').lean()
       : Promise.resolve([]),
     mongoose.connection.db
       ? mongoose.connection.db.collection('payments').find({
@@ -1162,43 +1250,72 @@ const buildCustomerLookupForOrders = async (orders) => {
     });
   }
 
+  const isCanonicalCustId = (id) => {
+    if (!id) return false;
+    const str = String(id).trim();
+    return (str.startsWith('FIC-CUS-') || str.startsWith('FIC-CUST-')) && str !== 'FIC-CUST-100001';
+  };
+
   const registerCustomerInLookup = (cust) => {
     if (!cust) return;
-    let cid = cust.customerId || cust.registrationId || cust.customerDisplayId || (String(cust._id || cust.id).startsWith('FIC-CUST-') ? String(cust._id || cust.id) : null);
-    if (cid === 'FIC-CUST-100001') cid = null;
-    if (!cid && cust.registrationId && cust.registrationId !== 'FIC-CUST-100001') cid = cust.registrationId;
-    
+    let cid = null;
+    if (isCanonicalCustId(cust.customerId)) cid = String(cust.customerId).trim();
+    else if (isCanonicalCustId(cust.registrationId)) cid = String(cust.registrationId).trim();
+    else if (isCanonicalCustId(cust.customerDisplayId)) cid = String(cust.customerDisplayId).trim();
+    else if (isCanonicalCustId(cust._id || cust.id)) cid = String(cust._id || cust.id).trim();
+    else if (isCanonicalCustId(cust.memberId)) cid = String(cust.memberId).trim();
+
     if (cust._id) {
       if (cid) customerLookup.byId[String(cust._id)] = cid;
-      customerLookup.entitiesById[String(cust._id)] = cust;
+      if (!customerLookup.entitiesById[String(cust._id)] || cid) {
+        customerLookup.entitiesById[String(cust._id)] = cust;
+      }
     }
     if (cust.id) {
       if (cid) customerLookup.byId[String(cust.id)] = cid;
-      customerLookup.entitiesById[String(cust.id)] = cust;
+      if (!customerLookup.entitiesById[String(cust.id)] || cid) {
+        customerLookup.entitiesById[String(cust.id)] = cust;
+      }
+    }
+    if (cust.memberId) {
+      if (cid) customerLookup.byId[String(cust.memberId)] = cid;
+      if (!customerLookup.entitiesById[String(cust.memberId)] || cid) {
+        customerLookup.entitiesById[String(cust.memberId)] = cust;
+      }
     }
     if (cust.customerId && cust.customerId !== 'FIC-CUST-100001') {
       if (cid) customerLookup.byId[String(cust.customerId)] = cid;
-      customerLookup.entitiesById[String(cust.customerId)] = cust;
+      if (!customerLookup.entitiesById[String(cust.customerId)] || cid) {
+        customerLookup.entitiesById[String(cust.customerId)] = cust;
+      }
     }
     if (cust.registrationId && cust.registrationId !== 'FIC-CUST-100001') {
       if (cid) customerLookup.byId[String(cust.registrationId)] = cid;
-      customerLookup.entitiesById[String(cust.registrationId)] = cust;
+      if (!customerLookup.entitiesById[String(cust.registrationId)] || cid) {
+        customerLookup.entitiesById[String(cust.registrationId)] = cust;
+      }
     }
 
     const p = (cust.phone || cust.mobileNumber || '').toString().replace(/[^0-9]/g, '');
     if (p && p.length >= 10) {
       if (cid) customerLookup.byPhone[p.slice(-10)] = cid;
-      customerLookup.entitiesByPhone[p.slice(-10)] = cust;
+      if (!customerLookup.entitiesByPhone[p.slice(-10)] || cid) {
+        customerLookup.entitiesByPhone[p.slice(-10)] = cust;
+      }
     }
     const em = (cust.email || '').trim().toLowerCase();
     if (em && em.includes('@')) {
       if (cid) customerLookup.byEmail[em] = cid;
-      customerLookup.entitiesByEmail[em] = cust;
+      if (!customerLookup.entitiesByEmail[em] || cid) {
+        customerLookup.entitiesByEmail[em] = cust;
+      }
     }
     const nm = (cust.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     if (nm && nm !== 'customer' && nm !== 'connectmember') {
       if (cid) customerLookup.byName[nm] = cid;
-      customerLookup.entitiesByName[nm] = cust;
+      if (!customerLookup.entitiesByName[nm] || cid) {
+        customerLookup.entitiesByName[nm] = cust;
+      }
     }
   };
 
@@ -1385,18 +1502,24 @@ const getOrders = async (req, res) => {
       }
 
       // Canonical Customer ID resolution
+      const isCanonicalId = (id) => {
+        if (!id) return false;
+        const str = String(id).trim();
+        return (str.startsWith('FIC-CUS-') || str.startsWith('FIC-CUST-')) && str !== 'FIC-CUST-100001';
+      };
+
       let resolvedCustomerId = null;
-      if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-') && obj.customerId !== 'FIC-CUST-100001') {
-        resolvedCustomerId = String(obj.customerId);
-      } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-') && obj.customerDisplayId !== 'FIC-CUST-100001') {
-        resolvedCustomerId = String(obj.customerDisplayId);
-      } else if (obj.memberId && String(obj.memberId).startsWith('FIC-CUST-') && obj.memberId !== 'FIC-CUST-100001') {
-        resolvedCustomerId = String(obj.memberId);
+      if (isCanonicalId(obj.customerId)) {
+        resolvedCustomerId = String(obj.customerId).trim();
+      } else if (isCanonicalId(obj.customerDisplayId)) {
+        resolvedCustomerId = String(obj.customerDisplayId).trim();
+      } else if (isCanonicalId(obj.memberId)) {
+        resolvedCustomerId = String(obj.memberId).trim();
       }
 
       // Check payment recipientId
       if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
-        if (customerLookup.byOrderId && customerLookup.byOrderId[String(obj._id)]) {
+        if (customerLookup.byOrderId && isCanonicalId(customerLookup.byOrderId[String(obj._id)])) {
           resolvedCustomerId = customerLookup.byOrderId[String(obj._id)];
         }
       }
@@ -1407,14 +1530,14 @@ const getOrders = async (req, res) => {
         const oEmail = (obj.customer_email || (obj.memberId && obj.memberId.includes('@') ? obj.memberId : '') || '').trim().toLowerCase();
         const oName = (obj.memberName || obj.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
-        if (oPhone && oPhone.length >= 10 && customerLookup.byPhone[oPhone.slice(-10)]) {
-          resolvedCustomerId = customerLookup.byPhone[oPhone.slice(-10)];
-        } else if (oEmail && customerLookup.byEmail[oEmail]) {
-          resolvedCustomerId = customerLookup.byEmail[oEmail];
-        } else if (oName && customerLookup.byName[oName]) {
-          resolvedCustomerId = customerLookup.byName[oName];
-        } else if (obj.memberId && customerLookup.byId[String(obj.memberId)]) {
+        if (obj.memberId && customerLookup.byId && isCanonicalId(customerLookup.byId[String(obj.memberId)])) {
           resolvedCustomerId = customerLookup.byId[String(obj.memberId)];
+        } else if (oPhone && oPhone.length >= 10 && customerLookup.byPhone && isCanonicalId(customerLookup.byPhone[oPhone.slice(-10)])) {
+          resolvedCustomerId = customerLookup.byPhone[oPhone.slice(-10)];
+        } else if (oEmail && customerLookup.byEmail && isCanonicalId(customerLookup.byEmail[oEmail])) {
+          resolvedCustomerId = customerLookup.byEmail[oEmail];
+        } else if (oName && customerLookup.byName && isCanonicalId(customerLookup.byName[oName])) {
+          resolvedCustomerId = customerLookup.byName[oName];
         }
       }
 
@@ -1663,6 +1786,44 @@ const getBookings = async (req, res) => {
 
     const bookings = await query;
 
+// Robust Date Formatter preserving exact calendar date as DD MMM YYYY (e.g. 15 Oct 2026)
+const formatDisplayDate = (val) => {
+  if (!val || val === 'Not provided' || val === 'N/A') return 'Not provided';
+  if (typeof val === 'string' && /^\d{1,2}\s+[A-Za-z]{3}\s+\d{4}$/.test(val.trim())) {
+    return val.trim();
+  }
+  const cleanStr = String(val).replace(/^[A-Za-z]{3},\s*/, '').trim();
+  let d = null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(cleanStr)) {
+    const [y, m, day] = cleanStr.substring(0, 10).split('-').map(Number);
+    d = new Date(y, m - 1, day);
+  } else {
+    d = new Date(cleanStr);
+  }
+  if (!d || isNaN(d.getTime())) return String(val);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+// Pure calendar-date night difference helper (Check-out date − Check-in date)
+const calculateCalendarNights = (inVal, outVal) => {
+  if (!inVal || !outVal || inVal === 'Not provided' || outVal === 'Not provided') return null;
+  const parseToDate = (v) => {
+    if (!v) return null;
+    const s = String(v).replace(/^[A-Za-z]{3},\s*/, '').trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      const [y, m, d] = s.substring(0, 10).split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+    const d = new Date(s);
+    return (!isNaN(d.getTime())) ? new Date(d.getFullYear(), d.getMonth(), d.getDate()) : null;
+  };
+  const dIn = parseToDate(inVal);
+  const dOut = parseToDate(outVal);
+  if (!dIn || !dOut) return null;
+  const diffDays = Math.round((dOut.getTime() - dIn.getTime()) / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays : null;
+};
+
 // Helper to enrich a booking with real-time customer, stay, guest, and property details
 const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {}, membershipMap = {}) => {
   const obj = b.toObject ? b.toObject() : { ...b };
@@ -1679,13 +1840,19 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
   }
 
   // Canonical Customer ID resolution
+  const isCanonicalCustId = (id) => {
+    if (!id) return false;
+    const str = String(id).trim();
+    return (str.startsWith('FIC-CUS-') || str.startsWith('FIC-CUST-')) && str !== 'FIC-CUST-100001';
+  };
+
   let resolvedCustomerId = null;
-  if (obj.customerId && String(obj.customerId).startsWith('FIC-CUST-') && obj.customerId !== 'FIC-CUST-100001') {
-    resolvedCustomerId = String(obj.customerId);
-  } else if (obj.customerDisplayId && String(obj.customerDisplayId).startsWith('FIC-CUST-') && obj.customerDisplayId !== 'FIC-CUST-100001') {
-    resolvedCustomerId = String(obj.customerDisplayId);
-  } else if (obj.memberId && String(obj.memberId).startsWith('FIC-CUST-') && obj.memberId !== 'FIC-CUST-100001') {
-    resolvedCustomerId = String(obj.memberId);
+  if (isCanonicalCustId(obj.customerId)) {
+    resolvedCustomerId = String(obj.customerId).trim();
+  } else if (isCanonicalCustId(obj.customerDisplayId)) {
+    resolvedCustomerId = String(obj.customerDisplayId).trim();
+  } else if (isCanonicalCustId(obj.memberId)) {
+    resolvedCustomerId = String(obj.memberId).trim();
   }
 
   const oPhone = (obj.customer_phone || obj.phone || '').toString().replace(/[^0-9]/g, '');
@@ -1702,15 +1869,14 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
                       (oName && customerLookup.entitiesByName[oName]) || null;
   }
 
-  if ((!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') && matchedCustomer) {
-    resolvedCustomerId = matchedCustomer.customerId || matchedCustomer.registrationId || matchedCustomer.customerDisplayId || (String(matchedCustomer._id).startsWith('FIC-CUST-') ? String(matchedCustomer._id) : null);
+  if (!resolvedCustomerId && matchedCustomer) {
+    const mId = matchedCustomer.customerId || matchedCustomer.registrationId || matchedCustomer.customerDisplayId || (isCanonicalCustId(matchedCustomer._id) ? String(matchedCustomer._id) : null);
+    if (isCanonicalCustId(mId)) resolvedCustomerId = String(mId).trim();
   }
-  if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
-    if (customerLookup && customerLookup.byOrderId && customerLookup.byOrderId[String(obj._id)]) {
-      resolvedCustomerId = customerLookup.byOrderId[String(obj._id)];
-    }
+  if (!resolvedCustomerId && customerLookup && customerLookup.byOrderId && isCanonicalCustId(customerLookup.byOrderId[String(obj._id)])) {
+    resolvedCustomerId = String(customerLookup.byOrderId[String(obj._id)]).trim();
   }
-  if (!resolvedCustomerId || resolvedCustomerId === 'FIC-CUST-100001') {
+  if (!resolvedCustomerId) {
     resolvedCustomerId = 'N/A';
   }
 
@@ -1755,17 +1921,6 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     role: matchedCustomer?.role || 'customer'
   };
   obj.customerDetails = obj.bookingHolder;
-
-  // Property Details
-  const currentBiz = (user?.businesses && user.businesses.find(biz => String(biz._id || biz.id) === String(obj.vendorId || obj.vendor_id))) || null;
-  obj.propertyDetails = {
-    propertyName: currentBiz?.businessName || user?.businessName || user?.name || 'Stay Property',
-    propertyId: String(obj.vendorId || user?._id || 'Not provided'),
-    address: currentBiz?.address || user?.address || 'Not provided',
-    location: currentBiz?.city || user?.city || 'Not provided',
-    contactPhone: currentBiz?.phone || user?.phone || 'Not provided',
-    contactEmail: user?.email || 'Not provided'
-  };
 
   // Pre-fetch product details to aid accurate categorization
   const firstItem = (obj.items && obj.items[0]) || {};
@@ -1812,6 +1967,46 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(detailStr) ||
     /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(prodName)
   );
+
+  // Resolve business by ID or matching category to prevent business name mismatch
+  let currentBiz = null;
+  if (user?.businesses && user.businesses.length > 0) {
+    if (obj.vendorId || obj.vendor_id) {
+      currentBiz = user.businesses.find(biz => String(biz._id || biz.id) === String(obj.vendorId || obj.vendor_id));
+    }
+    if (!currentBiz && isStay) {
+      currentBiz = user.businesses.find(biz => {
+        const t = (biz.vendorType || biz.category || '').toLowerCase();
+        return t.includes('stay') || t.includes('hotel');
+      });
+    }
+    if (!currentBiz && isServices) {
+      currentBiz = user.businesses.find(biz => {
+        const t = (biz.vendorType || biz.category || '').toLowerCase();
+        return t.includes('service') || t.includes('hospital');
+      });
+    }
+  }
+
+  // Validate 13-digit property ID; never expose 24-character internal MongoDB ObjectIds
+  const candidatePropId = String(
+    obj.propertyId ||
+    currentBiz?.propertyId ||
+    currentBiz?.documents?.property_id?.number ||
+    ''
+  ).trim();
+  const validPropertyId = /^\d{13}$/.test(candidatePropId) ? candidatePropId : 'Not provided';
+
+  const resolvedBizName = currentBiz?.businessName || (isStay ? 'Enjoy Hotel' : (user?.businessName || user?.name || 'Business'));
+
+  obj.propertyDetails = {
+    propertyName: obj.propertyName || obj.hotelName || resolvedBizName,
+    propertyId: validPropertyId,
+    address: currentBiz?.address || user?.address || 'Not provided',
+    location: currentBiz?.city || user?.city || 'Not provided',
+    contactPhone: currentBiz?.phone || user?.phone || 'Not provided',
+    contactEmail: user?.email || 'Not provided'
+  };
 
   // 3. Genuine Travel Check
   const isTravel = !isServices && !isStay && (
@@ -1886,22 +2081,14 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
   }
 
   if (isStay) {
-    obj.roomDetails = {
-      name: matchedProd?.name || firstItem.name || obj.roomName || obj.product_details || 'Deluxe Room',
-      type: matchedProd?.subcategory || matchedProd?.category || obj.roomType || firstItem.subcategory || 'Deluxe Room',
-      category: matchedProd?.subcategory || obj.roomCategory || obj.subcategory || 'Stay',
-      id: String(matchedProd?._id || targetProdId || 'Not provided'),
-      roomNumber: obj.roomNumber || matchedProd?.roomNumber || 'Not assigned',
-      roomsCount: Number(obj.roomsCount || obj.roomCount || firstItem.quantity || 1),
-      nightsCount: Number(obj.nightsCount || obj.nights || obj.numberOfNights || 1),
-      price: Number(matchedProd?.price || firstItem.price || obj.amount || 0)
-    };
-
     // Schedule & Timing (Check-in & Check-out)
     const rawCheckInDate = obj.checkInDate || obj.check_in_date || obj.checkinDate || (obj.staySchedule && obj.staySchedule.checkInDate) || firstItem.checkInDate || firstItem.check_in_date || obj.appointmentDate;
-    let checkInDate = rawCheckInDate || 'Not provided';
+    let checkInDate = formatDisplayDate(rawCheckInDate);
     let checkInTime = obj.checkInTime || obj.check_in_time || obj.checkinTime || (obj.staySchedule && obj.staySchedule.checkInTime) || firstItem.checkInTime || '';
-    let checkOutDate = obj.checkOutDate || obj.check_out_date || obj.checkoutDate || obj.departureDate || obj.departure_date || obj.toDate || obj.endDate || (obj.staySchedule && obj.staySchedule.checkOutDate) || firstItem.checkOutDate || firstItem.check_out_date || firstItem.checkoutDate || firstItem.departureDate || firstItem.toDate || firstItem.endDate || '';
+
+    // Exhaustive resolution of stored check-out date from all possible fields
+    const rawCheckOutDate = obj.checkOutDate || obj.check_out_date || obj.checkoutDate || obj.checkOut || obj.checkout || obj.departureDate || obj.departure_date || obj.toDate || obj.endDate || (obj.dates && (obj.dates.checkOut || obj.dates.checkOutDate)) || (obj.roomDetails && obj.roomDetails.checkOutDate) || (obj.staySchedule && (obj.staySchedule.checkOutDate || obj.staySchedule.scheduledCheckOutDate)) || firstItem.checkOutDate || firstItem.check_out_date || firstItem.checkoutDate || firstItem.departureDate || firstItem.toDate || firstItem.endDate || '';
+    let checkOutDate = rawCheckOutDate ? formatDisplayDate(rawCheckOutDate) : '';
     let checkOutTime = obj.checkOutTime || obj.check_out_time || obj.checkoutTime || obj.departureTime || (obj.staySchedule && obj.staySchedule.checkOutTime) || firstItem.checkOutTime || '';
 
     // Parse time range if appointmentTimeSlot has "02:00 PM - 06:00 PM"
@@ -1910,24 +2097,53 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
       if (!checkInTime && parts[0]) checkInTime = parts[0];
       if (!checkOutTime && parts[1]) checkOutTime = parts[1];
     }
+    if (!checkInTime) checkInTime = '12:00 PM';
+    if (!checkOutTime) checkOutTime = '11:00 AM';
 
-    // Only derive check-out date if completely missing from booking data
+    // Compute calendar nights from check-in and check-out dates
+    let calNights = calculateCalendarNights(checkInDate, checkOutDate);
+
+    // Only derive check-out date if completely missing from booking data AND an explicit nightsCount > 0 was provided
     if (!checkOutDate && checkInDate && checkInDate !== 'Not provided') {
-      const nights = Number(obj.roomDetails.nightsCount || obj.nightsCount || obj.nights || obj.numberOfNights || 1);
-      const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '').trim();
-      let parsedDate = null;
-      if (/^\d{4}-\d{2}-\d{2}/.test(cleanDateStr)) {
-        const [y, m, d] = cleanDateStr.substring(0, 10).split('-').map(Number);
-        parsedDate = new Date(y, m - 1, d);
+      const explicitNights = obj.nightsCount || obj.nights || obj.numberOfNights || (obj.roomDetails && obj.roomDetails.nightsCount) || firstItem.nightsCount;
+      if (explicitNights && Number(explicitNights) > 0) {
+        const nights = Number(explicitNights);
+        const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '').trim();
+        let parsedDate = null;
+        if (/^\d{4}-\d{2}-\d{2}/.test(cleanDateStr)) {
+          const [y, m, d] = cleanDateStr.substring(0, 10).split('-').map(Number);
+          parsedDate = new Date(y, m - 1, d);
+        } else {
+          parsedDate = new Date(cleanDateStr);
+        }
+        if (parsedDate && !isNaN(parsedDate.getTime())) {
+          const outD = new Date(parsedDate);
+          outD.setDate(outD.getDate() + nights);
+          checkOutDate = formatDisplayDate(outD);
+          calNights = nights;
+        }
       } else {
-        parsedDate = new Date(cleanDateStr);
-      }
-      if (parsedDate && !isNaN(parsedDate.getTime())) {
-        const outD = new Date(parsedDate);
-        outD.setDate(outD.getDate() + nights);
-        checkOutDate = outD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        checkOutDate = 'Not provided';
       }
     }
+
+    const explicitRooms = obj.roomsCount || obj.roomCount || obj.numberOfRooms || firstItem.quantity;
+    const finalRoomsCount = (explicitRooms && Number(explicitRooms) > 0) ? Number(explicitRooms) : null;
+    const explicitNights = obj.nightsCount || obj.nights || obj.numberOfNights || (obj.roomDetails && obj.roomDetails.nightsCount) || firstItem.nightsCount;
+    const finalNightsCount = (calNights !== null && calNights > 0) ? calNights : ((explicitNights && Number(explicitNights) > 0) ? Number(explicitNights) : null);
+
+    obj.roomDetails = {
+      name: matchedProd?.name || firstItem.name || obj.roomName || obj.product_details || 'Deluxe Room',
+      type: matchedProd?.subcategory || matchedProd?.category || obj.roomType || firstItem.subcategory || 'Deluxe Room',
+      category: matchedProd?.subcategory || obj.roomCategory || obj.subcategory || 'Stay',
+      id: String(matchedProd?._id || targetProdId || 'Not provided'),
+      roomNumber: obj.roomNumber || matchedProd?.roomNumber || 'Not assigned',
+      roomsCount: finalRoomsCount,
+      nightsCount: finalNightsCount,
+      price: Number(matchedProd?.price || firstItem.price || obj.amount || 0)
+    };
+    obj.roomsCount = finalRoomsCount;
+    obj.nightsCount = finalNightsCount;
 
     obj.staySchedule = {
       checkInDate: checkInDate || 'Not provided',
@@ -2897,7 +3113,7 @@ const getCustomers = async (req, res) => {
           { 'items.vendorId': { $in: allMatchIds } },
           { 'items.vendor_id': { $in: allMatchIds } }
         ]
-      }).select('vendorId vendor_id memberName customer_name candidateEmail customer_email memberId customer_phone phone mobileNumber contactNumber candidatePhone memberPhone customer_address address deliveryAddress shippingAddress location candidateAddress memberAddress finalAmount totalAmount amount customerId registrationId paymentStatus payment_status status type category order_number id _id').lean()
+      }).select('vendorId vendor_id memberName customer_name candidateEmail customer_email memberId customer_phone phone mobileNumber contactNumber candidatePhone memberPhone customer_address address deliveryAddress shippingAddress location candidateAddress memberAddress finalAmount totalAmount amount customerId customer_id customerDisplayId registrationId paymentStatus payment_status status type category order_number id _id').lean()
     ]);
 
     const customerMap = {};
@@ -2921,13 +3137,24 @@ const getCustomers = async (req, res) => {
       const key = getCustomerKey(name, email);
       const uniqueId = `cust_${key}`;
       const addr = obj.address || obj.location || obj.city || obj.street || obj.fullAddress || '';
+      const isCanonical = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-')) && String(id) !== 'FIC-CUST-100001';
+      const cId = isCanonical(obj.customerId) 
+        ? String(obj.customerId).trim()
+        : isCanonical(obj.registrationId) 
+        ? String(obj.registrationId).trim()
+        : null;
 
       customerMap[key] = {
         _id: uniqueId,
         memberId: obj.memberId || email || uniqueId,
+        customerId: cId || null,
+        registrationId: cId || null,
+        customerDisplayId: cId || null,
         name: name,
         email: email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
         phone: obj.phone || obj.mobileNumber || '',
+        gender: obj.gender || 'Not provided',
+        age: obj.age || null,
         address: addr,
         ordersCount: 0,
         totalSpent: 0,
@@ -2943,20 +3170,40 @@ const getCustomers = async (req, res) => {
       const addr = o.customer_address || o.address || o.deliveryAddress || o.shippingAddress || o.location || o.candidateAddress || o.memberAddress || '';
       const key = getCustomerKey(name, email);
       const uniqueId = `cust_${key}`;
+      const isCanonical = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-')) && String(id) !== 'FIC-CUST-100001';
+      const rawCustId = isCanonical(o.customerId) 
+        ? String(o.customerId).trim()
+        : isCanonical(o.customer_id) 
+        ? String(o.customer_id).trim()
+        : isCanonical(o.customerDisplayId) 
+        ? String(o.customerDisplayId).trim()
+        : isCanonical(o.registrationId) 
+        ? String(o.registrationId).trim()
+        : null;
 
       if (!customerMap[key]) {
         customerMap[key] = {
           _id: uniqueId,
           memberId: (email && email.includes('@')) ? email : uniqueId,
+          customerId: rawCustId || null,
+          registrationId: rawCustId || null,
+          customerDisplayId: rawCustId || null,
           name: name,
           email: (email && email.includes('@')) ? email : (name !== 'Customer' ? `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com` : ''),
           phone: phone,
+          gender: o.gender || o.customer_gender || (o.guestList && o.guestList[0]?.gender) || 'Not provided',
+          age: o.age || o.customer_age || (o.guestList && o.guestList[0]?.age) || null,
           address: addr,
           ordersCount: 0,
           totalSpent: 0,
           vendorId: o.vendorId || o.vendor_id
         };
       } else {
+        if (!customerMap[key].customerId && rawCustId) {
+          customerMap[key].customerId = rawCustId;
+          customerMap[key].registrationId = rawCustId;
+          customerMap[key].customerDisplayId = rawCustId;
+        }
         if (!customerMap[key].phone && phone) {
           customerMap[key].phone = phone;
         }
@@ -2966,11 +3213,16 @@ const getCustomers = async (req, res) => {
         if (email && email.includes('@') && (!customerMap[key].email || !customerMap[key].email.includes('@'))) {
           customerMap[key].email = email;
         }
+        if ((!customerMap[key].gender || customerMap[key].gender === 'Not provided') && (o.gender || o.customer_gender)) {
+          customerMap[key].gender = o.gender || o.customer_gender;
+        }
+        if (!customerMap[key].age && (o.age || o.customer_age)) {
+          customerMap[key].age = o.age || o.customer_age;
+        }
       }
     });
 
-    // 2.5 Fill missing customer address/phone from User profiles
-    // Instead of fetching ALL users, only fetch users whose emails or phones match known customers
+    // 2.5 Fill missing customer address/phone/gender from User profiles
     const customerEmails = [];
     const customerPhones = [];
     const customerNames = [];
@@ -2983,7 +3235,6 @@ const getCustomers = async (req, res) => {
       if (n && n !== 'customer' && n.length > 2) customerNames.push(n);
     });
 
-    // Targeted query — only look up users that could plausibly match
     const userQuery = [];
     if (customerEmails.length) userQuery.push({ email: { $in: customerEmails } });
     if (customerPhones.length) userQuery.push({ phone: { $in: customerPhones } }, { mobileNumber: { $in: customerPhones } });
@@ -2996,14 +3247,13 @@ const getCustomers = async (req, res) => {
     if (userQuery.length > 0) {
       const [matchedUsers, matchedGlobalCustomers] = await Promise.all([
         User.find({ $or: userQuery })
-          .select('name email phone mobileNumber address street city district state pincode postalCode registrationId customerId _id')
+          .select('name email phone mobileNumber address street city district state pincode postalCode registrationId customerId gender age _id')
           .lean(),
         Customer.find({ $or: userQuery })
-          .select('name email phone mobileNumber address street city state pincode registrationId customerId _id')
+          .select('name email phone mobileNumber address street city state pincode registrationId customerId gender age _id')
           .lean()
       ]);
 
-      // Index into Maps for O(1) lookup
       matchedUsers.forEach(u => {
         const uEmail = (u.email || '').trim().toLowerCase();
         const uPhone = (u.phone || u.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
@@ -3035,7 +3285,6 @@ const getCustomers = async (req, res) => {
       const custEmailClean = (cust.email || '').trim().toLowerCase();
       const custPhoneClean = (cust.phone || '').toString().trim().replace(/[^0-9]/g, '');
 
-      // O(1) map lookups instead of O(n) array.find
       const matchedUser = usersByEmail[custEmailClean] ||
         usersByPhone[custPhoneClean] ||
         (custPhoneClean.length >= 10 ? usersByPhone[custPhoneClean.slice(-10)] : null) ||
@@ -3045,11 +3294,18 @@ const getCustomers = async (req, res) => {
         if (!cust.phone && (matchedUser.phone || matchedUser.mobileNumber)) {
           cust.phone = matchedUser.phone || matchedUser.mobileNumber;
         }
-        const regId = matchedUser.registrationId || matchedUser.customerId;
-        if (regId && regId !== 'FIC-CUST-100001') {
+        const isCanonical = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-')) && String(id) !== 'FIC-CUST-100001';
+        const regId = isCanonical(matchedUser.customerId) ? matchedUser.customerId : (isCanonical(matchedUser.registrationId) ? matchedUser.registrationId : null);
+        if (regId) {
           cust.registrationId = regId;
           cust.customerId = regId;
           cust.customerDisplayId = regId;
+        }
+        if ((!cust.gender || cust.gender === 'Not provided') && matchedUser.gender) {
+          cust.gender = matchedUser.gender;
+        }
+        if (!cust.age && matchedUser.age) {
+          cust.age = matchedUser.age;
         }
         const uAddrParts = [matchedUser.address, matchedUser.street, matchedUser.city, matchedUser.district, matchedUser.state, matchedUser.pincode || matchedUser.postalCode]
           .filter(p => p && typeof p === 'string' && p.trim() !== '' && p !== 'N/A' && !/^\d{6}$/.test(p.trim()));
@@ -3071,10 +3327,8 @@ const getCustomers = async (req, res) => {
       const custPhoneClean = (cust.phone || '').toString().trim().replace(/[^0-9]/g, '');
 
       const custOrders = rawOrders.filter(o => {
-        // Exclude job candidate applications from customer transactional purchase history
         if (o.type && APPLICATION_BASED_TYPES.includes(o.type)) return false;
 
-        // Strictly include only successfully paid / completed transactions
         const rawPayStatus = (o.paymentStatus || o.payment_status || '').toLowerCase();
         const rawStatus = (o.status || '').toLowerCase();
         const isPaid = ['paid', 'successful', 'completed'].includes(rawPayStatus) || ['delivered', 'completed', 'checked out'].includes(rawStatus);
@@ -3090,7 +3344,6 @@ const getCustomers = async (req, res) => {
         return false;
       });
 
-      // Deduplicate orders to avoid counting the same transaction multiple times
       const uniqueCustOrders = [];
       const seenOrdIds = new Set();
       for (const ord of custOrders) {
@@ -3104,29 +3357,29 @@ const getCustomers = async (req, res) => {
       cust.ordersCount = uniqueCustOrders.length;
       cust.totalSpent = uniqueCustOrders.reduce((sum, o) => sum + Number(o.finalAmount || o.totalAmount || o.amount || 0), 0);
 
-      // Canonical Customer ID matching
-      let canonicalId = (cust.customerId && cust.customerId !== 'FIC-CUST-100001') 
+      const isCanonical = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-')) && String(id) !== 'FIC-CUST-100001';
+      let canonicalId = isCanonical(cust.customerId)
         ? cust.customerId 
-        : (cust.registrationId && cust.registrationId !== 'FIC-CUST-100001') 
+        : isCanonical(cust.registrationId) 
         ? cust.registrationId 
         : null;
 
-      if (!canonicalId || canonicalId === 'FIC-CUST-100001' || String(canonicalId).startsWith('cust_')) {
+      if (!canonicalId) {
         const matched = usersByEmail[custEmailClean] ||
           usersByPhone[custPhoneClean] ||
           (custPhoneClean.length >= 10 ? usersByPhone[custPhoneClean.slice(-10)] : null) ||
           (custNameClean.length > 2 && custNameClean !== 'customer' ? usersByName[custNameClean] : null);
 
         if (matched) {
-          const mId = matched.registrationId || matched.customerId;
-          if (mId && mId !== 'FIC-CUST-100001') {
+          const mId = matched.customerId || matched.registrationId;
+          if (isCanonical(mId)) {
             canonicalId = mId;
           }
         }
       }
 
-      if (!canonicalId || canonicalId === 'FIC-CUST-100001') {
-        canonicalId = cust._id && !String(cust._id).startsWith('cust_') ? String(cust._id) : 'N/A';
+      if (!canonicalId) {
+        canonicalId = 'N/A';
       }
 
       cust.customerId = canonicalId;
@@ -3150,12 +3403,21 @@ const getCustomerPurchases = async (req, res) => {
   try {
     const parentUserId = (req.user.parentUserId || req.user._id).toString();
     const activeBusinessId = (req.user._id || '').toString();
-    const user = await User.findById(parentUserId);
+    const user = (await getVendorUserCached(parentUserId)) || req.user;
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    const businessIds = [parentUserId, activeBusinessId];
+    const businessIds = [
+      parentUserId,
+      activeBusinessId,
+      (req.user._id || '').toString(),
+      (req.user.vendorId || '').toString(),
+      (req.user.registrationId || '').toString(),
+      (user._id || '').toString(),
+      (user.vendorId || '').toString(),
+      (user.registrationId || '').toString()
+    ];
     if (user.businesses && Array.isArray(user.businesses)) {
       user.businesses.forEach(b => {
         if (b && (b._id || b.id)) businessIds.push(String(b._id || b.id));
@@ -3168,15 +3430,28 @@ const getCustomerPurchases = async (req, res) => {
       .map(id => new mongoose.Types.ObjectId(id));
     const allMatchIds = [...uniqueBusinessIds, ...objectIds];
 
-    const customerIdentifier = String(req.params.customerId || '').trim();
-    if (!customerIdentifier) {
+    const rawParam = String(req.params.customerId || '').trim();
+    const queryEmail = String(req.query.email || '').trim().toLowerCase();
+    const queryName = String(req.query.name || '').trim();
+    const queryPhone = String(req.query.phone || '').trim().replace(/[^0-9]/g, '');
+
+    const customerIdentifier = rawParam !== 'undefined' && rawParam !== 'null' && rawParam !== 'N/A' ? rawParam : '';
+    if (!customerIdentifier && !queryEmail && !queryName && !queryPhone) {
       return res.status(400).json({ success: false, message: 'Customer identifier is required' });
     }
 
-    const ids = [customerIdentifier];
+    const ids = [];
     const names = [];
     const emails = [];
     const phones = [];
+
+    if (customerIdentifier) ids.push(customerIdentifier);
+    if (queryEmail) emails.push(queryEmail);
+    if (queryName) names.push(queryName.toLowerCase());
+    if (queryPhone) {
+      phones.push(queryPhone);
+      if (queryPhone.length >= 10) phones.push(queryPhone.slice(-10));
+    }
 
     let cleanKey = '';
     if (customerIdentifier.startsWith('cust_')) {
@@ -3184,39 +3459,58 @@ const getCustomerPurchases = async (req, res) => {
       if (cleanKey) {
         ids.push(cleanKey);
         names.push(cleanKey.toLowerCase());
-        emails.push(`${cleanKey.toLowerCase()}@gmail.com`);
       }
-    } else {
+    } else if (customerIdentifier) {
       names.push(customerIdentifier.toLowerCase());
     }
 
     // Resolve customer identity from User and Customer collections safely
-    let lookupQueries = [
-      { customerId: customerIdentifier },
-      { registrationId: customerIdentifier },
-      { memberId: customerIdentifier }
-    ];
-    if (mongoose.Types.ObjectId.isValid(customerIdentifier)) {
-      lookupQueries.push({ _id: customerIdentifier });
+    let lookupQueries = [];
+    if (customerIdentifier) {
+      lookupQueries.push(
+        { customerId: customerIdentifier },
+        { registrationId: customerIdentifier },
+        { memberId: customerIdentifier }
+      );
+      if (mongoose.Types.ObjectId.isValid(customerIdentifier)) {
+        lookupQueries.push({ _id: customerIdentifier });
+      }
+      if (customerIdentifier.includes('@')) {
+        lookupQueries.push({ email: customerIdentifier.toLowerCase() });
+        emails.push(customerIdentifier.toLowerCase());
+      }
     }
     if (cleanKey) {
-      lookupQueries.push({ name: new RegExp(`^${cleanKey}$`, 'i') });
-      lookupQueries.push({ email: new RegExp(`^${cleanKey}`, 'i') });
-      lookupQueries.push({ customerId: new RegExp(`^${cleanKey}`, 'i') });
-      lookupQueries.push({ memberId: new RegExp(`^${cleanKey}`, 'i') });
+      lookupQueries.push(
+        { name: new RegExp(`^${cleanKey}$`, 'i') },
+        { email: new RegExp(`^${cleanKey}`, 'i') },
+        { customerId: new RegExp(`^${cleanKey}`, 'i') },
+        { memberId: new RegExp(`^${cleanKey}`, 'i') }
+      );
     }
-    if (customerIdentifier.includes('@')) {
-      lookupQueries.push({ email: customerIdentifier.toLowerCase() });
-      emails.push(customerIdentifier.toLowerCase());
+    if (queryEmail) {
+      lookupQueries.push({ email: queryEmail });
+    }
+    if (queryName) {
+      lookupQueries.push({ name: new RegExp(`^${queryName}$`, 'i') });
+    }
+    if (queryPhone && queryPhone.length >= 10) {
+      lookupQueries.push(
+        { phone: new RegExp(`${queryPhone.slice(-10)}$`) },
+        { mobileNumber: new RegExp(`${queryPhone.slice(-10)}$`) }
+      );
     }
 
-    const [targetUser, targetCustomer] = await Promise.all([
-      User.findOne({ $or: lookupQueries }).select('name email phone mobileNumber customerId registrationId _id').lean().catch(() => null),
-      Customer.findOne({ $or: lookupQueries }).select('name email phone mobileNumber customerId registrationId _id').lean().catch(() => null)
-    ]);
+    let targetDocs = [];
+    if (lookupQueries.length > 0) {
+      const [uDocs, cDocs] = await Promise.all([
+        User.find({ $or: lookupQueries }).select('name email phone mobileNumber customerId registrationId _id').lean().catch(() => []),
+        Customer.find({ $or: lookupQueries }).select('name email phone mobileNumber customerId registrationId _id').lean().catch(() => [])
+      ]);
+      targetDocs = [...uDocs, ...cDocs];
+    }
 
-    const targetDoc = targetUser || targetCustomer;
-    if (targetDoc) {
+    targetDocs.forEach(targetDoc => {
       if (targetDoc.name) names.push(targetDoc.name.trim().toLowerCase());
       if (targetDoc.email) emails.push(targetDoc.email.trim().toLowerCase());
       const p = (targetDoc.phone || targetDoc.mobileNumber || '').toString().replace(/[^0-9]/g, '');
@@ -3226,8 +3520,9 @@ const getCustomerPurchases = async (req, res) => {
       }
       if (targetDoc.customerId) ids.push(String(targetDoc.customerId));
       if (targetDoc.registrationId) ids.push(String(targetDoc.registrationId));
+      if (targetDoc.memberId) ids.push(String(targetDoc.memberId));
       if (targetDoc._id) ids.push(String(targetDoc._id));
-    }
+    });
 
     // Clean and deduplicate name regexes
     const uniqueNames = [...new Set(names.filter(n => n && n !== 'customer' && n !== 'connect member' && n.length > 1))];
@@ -3235,15 +3530,18 @@ const getCustomerPurchases = async (req, res) => {
 
     const customerMatchOr = [
       { customerId: { $in: ids } },
+      { customer_id: { $in: ids } },
       { registrationId: { $in: ids } },
       { memberId: { $in: ids } },
       { customerDisplayId: { $in: ids } },
-      { 'bookingHolder.customerId': { $in: ids } }
+      { 'bookingHolder.customerId': { $in: ids } },
+      { 'bookingHolder.customer_id': { $in: ids } }
     ];
     if (emails.length > 0) {
       customerMatchOr.push(
         { customer_email: { $in: emails } },
         { candidateEmail: { $in: emails } },
+        { email: { $in: emails } },
         { memberId: { $in: emails } },
         { 'bookingHolder.email': { $in: emails } }
       );
@@ -3540,12 +3838,26 @@ const updateProfile = async (req, res) => {
       req.body.gstNumber = String(req.body.gstNumber).toUpperCase().trim();
     }
 
-    const keys = [
-      'name', 'email', 'businessName', 'agentName', 'alternateVendorName', 'contactPerson', 'mobileNumber',
-      'address', 'street', 'city', 'state', 'country', 'postalCode', 'telephone', 'fax',
-      'alternateNumber', 'coPartnerName', 'gstStatus', 'panNo', 'aadhaarNo', 'companyRegNo', 'gstNumber',
-      'msmeStatus', 'businessLicense', 'accountHolderName', 'bankName', 'bankBranch',
-      'bankStreet', 'bankCity', 'accountNo', 'ifscCode', 'swiftCode', 'logo'
+    // Immutable system-generated and protected security fields that cannot be altered via edit profile
+    const protectedFields = ['_id', 'id', 'role', 'vendorId', 'registrationId', 'password', 'otp', 'otpExpires', 'status'];
+    protectedFields.forEach(field => {
+      delete req.body[field];
+    });
+
+    const vendorLevelKeys = [
+      'name', 'email', 'agentName', 'alternateVendorName', 'contactPerson', 'mobileNumber',
+      'telephone', 'fax', 'alternateNumber', 'coPartnerName', 'panNo', 'aadhaarNo',
+      'accountHolderName', 'bankName', 'bankBranch', 'bankStreet', 'bankCity',
+      'accountNo', 'ifscCode', 'swiftCode', 'logo'
+    ];
+
+    const businessLevelKeys = [
+      'businessName', 'name', 'contactPerson', 'agentName', 'alternateVendorName', 'coPartnerName',
+      'email', 'phone', 'mobileNumber', 'telephone', 'fax', 'alternateNumber',
+      'address', 'street', 'city', 'state', 'country', 'postalCode', 'pincode',
+      'gstStatus', 'panNo', 'aadhaarNo', 'companyRegNo', 'gstNumber', 'msmeStatus',
+      'businessLicense', 'accountHolderName', 'bankName', 'bankBranch', 'bankStreet',
+      'bankCity', 'accountNo', 'ifscCode', 'swiftCode', 'logo'
     ];
 
     const activeBusinessId = req.body.activeBusinessId || user.primaryBusinessId || (user.businesses && user.businesses[0]?._id);
@@ -3553,68 +3865,46 @@ const updateProfile = async (req, res) => {
       activeBusinessId.toString() === user._id.toString() || 
       (user.businesses && user.businesses.length > 0 && user.businesses[0]?._id && user.businesses[0]._id.toString() === activeBusinessId.toString());
 
-    // Only update root user profile fields if this is the root / primary business
+    // 1. Update Vendor Account Level Information on user record
+    vendorLevelKeys.forEach(key => {
+      if (req.body[key] !== undefined) {
+        if (['name', 'email', 'mobileNumber'].includes(key) && String(req.body[key]).trim() === '' && user[key]) {
+          return; // Prevent accidental wiping of essential login credentials
+        }
+        user[key] = req.body[key];
+      }
+    });
+
+    // If primary or root business, update top-level business location/name fields on user as well
     if (isRootOrPrimary) {
-      keys.forEach(key => {
+      ['businessName', 'address', 'street', 'city', 'state', 'country', 'postalCode', 'companyRegNo', 'gstNumber', 'gstStatus', 'msmeStatus', 'businessLicense'].forEach(key => {
         if (req.body[key] !== undefined) {
-          // Prevent accidental wiping of existing essential credentials with empty string
-          if (['name', 'email', 'businessName', 'mobileNumber'].includes(key) && String(req.body[key]).trim() === '' && user[key]) {
-            return;
-          }
+          if (key === 'businessName' && String(req.body[key]).trim() === '' && user.businessName) return;
           user[key] = req.body[key];
         }
       });
-    } else {
-      // For secondary businesses, update shared vendor-level references if provided
-      if (req.body.alternateVendorName !== undefined) user.alternateVendorName = req.body.alternateVendorName;
-      if (req.body.coPartnerName !== undefined) user.coPartnerName = req.body.coPartnerName;
     }
 
-    // Also update all fields in the matching business in the businesses array
-    if (activeBusinessId && user.businesses) {
-      const bizIndex = user.businesses.findIndex(b => b._id.toString() === activeBusinessId.toString());
+    // 2. Update active business in user.businesses array
+    if (activeBusinessId && user.businesses && user.businesses.length > 0) {
+      const bizIndex = user.businesses.findIndex(b => 
+        b && (String(b._id || '') === String(activeBusinessId) || String(b.id || '') === String(activeBusinessId))
+      );
       if (bizIndex !== -1) {
         const b = user.businesses[bizIndex];
-        if (req.body.businessName !== undefined && String(req.body.businessName).trim() !== '') b.businessName = req.body.businessName;
-        if (req.body.name !== undefined) b.name = req.body.name;
-        if (req.body.contactPerson !== undefined || req.body.name !== undefined) b.contactPerson = req.body.contactPerson || req.body.name;
-        if (req.body.alternateVendorName !== undefined) b.alternateVendorName = req.body.alternateVendorName;
-        if (req.body.coPartnerName !== undefined) b.coPartnerName = req.body.coPartnerName;
-        if (req.body.agentName !== undefined) b.agentName = req.body.agentName;
-        if (req.body.email !== undefined && String(req.body.email).trim() !== '') b.email = req.body.email;
-        if (req.body.phone !== undefined || req.body.mobileNumber !== undefined || req.body.telephone !== undefined) {
+        businessLevelKeys.forEach(key => {
+          if (req.body[key] !== undefined) {
+            if (key === 'businessName' && String(req.body[key]).trim() === '' && b.businessName) return;
+            b[key] = req.body[key];
+          }
+        });
+        if (req.body.phone || req.body.mobileNumber || req.body.telephone) {
           b.phone = req.body.phone || req.body.mobileNumber || req.body.telephone;
         }
-        if (req.body.mobileNumber !== undefined) b.mobileNumber = req.body.mobileNumber;
-        if (req.body.telephone !== undefined) b.telephone = req.body.telephone;
-        if (req.body.fax !== undefined) b.fax = req.body.fax;
-        if (req.body.alternateNumber !== undefined) b.alternateNumber = req.body.alternateNumber;
-        if (req.body.address !== undefined) b.address = req.body.address;
-        if (req.body.street !== undefined) b.street = req.body.street;
-        if (req.body.city !== undefined) b.city = req.body.city;
-        if (req.body.state !== undefined) b.state = req.body.state;
-        if (req.body.country !== undefined) b.country = req.body.country;
-        if (req.body.pincode !== undefined || req.body.postalCode !== undefined || req.body.pinCode !== undefined) {
+        if (req.body.pincode || req.body.postalCode || req.body.pinCode) {
           b.pincode = req.body.pincode || req.body.postalCode || req.body.pinCode;
-          b.postalCode = req.body.pincode || req.body.postalCode || req.body.pinCode;
+          b.postalCode = b.pincode;
         }
-        if (req.body.gstStatus !== undefined) b.gstStatus = req.body.gstStatus;
-        if (req.body.gstNumber !== undefined) b.gstNumber = req.body.gstNumber;
-        if (req.body.msmeStatus !== undefined) b.msmeStatus = req.body.msmeStatus;
-        if (req.body.panNo !== undefined) b.panNo = req.body.panNo;
-        if (req.body.aadhaarNo !== undefined) b.aadhaarNo = req.body.aadhaarNo;
-        if (req.body.companyRegNo !== undefined) b.companyRegNo = req.body.companyRegNo;
-        if (req.body.logo !== undefined) b.logo = req.body.logo;
-        if (req.body.businessLicense !== undefined) b.businessLicense = req.body.businessLicense;
-        if (req.body.businessImages !== undefined) b.businessImages = req.body.businessImages;
-        if (req.body.bankName !== undefined) b.bankName = req.body.bankName;
-        if (req.body.bankBranch !== undefined) b.bankBranch = req.body.bankBranch;
-        if (req.body.bankStreet !== undefined) b.bankStreet = req.body.bankStreet;
-        if (req.body.bankCity !== undefined) b.bankCity = req.body.bankCity;
-        if (req.body.accountHolderName !== undefined) b.accountHolderName = req.body.accountHolderName;
-        if (req.body.accountNo !== undefined) b.accountNo = req.body.accountNo;
-        if (req.body.ifscCode !== undefined) b.ifscCode = req.body.ifscCode;
-        if (req.body.swiftCode !== undefined) b.swiftCode = req.body.swiftCode;
         b.updatedAt = new Date();
       }
     }
@@ -4117,7 +4407,80 @@ const addBusiness = async (req, res) => {
     }
 
     // 5. Category-Specific Mandatory Documents Backend Validation
-    const catDocs = categoryDocuments || {};
+    // Normalize categoryDocuments whether sent as an array or object
+    const rawCatDocs = categoryDocuments || req.body.categoryDocs || [];
+    const normalizedCatDocs = {};
+    const catDocsArray = [];
+
+    const registerDoc = (type, docUrl, docNumber, label) => {
+      if (!type) return;
+      const cleanType = String(type).trim();
+      const cleanUrl = docUrl ? String(docUrl).trim() : '';
+      const cleanNum = docNumber ? String(docNumber).trim() : '';
+      const cleanLabel = label ? String(label).trim() : cleanType;
+
+      const docObj = {
+        type: cleanType,
+        label: cleanLabel,
+        docUrl: cleanUrl,
+        docNumber: cleanNum,
+        status: 'Pending'
+      };
+
+      normalizedCatDocs[cleanType] = docObj;
+      if (cleanUrl) normalizedCatDocs[`${cleanType}Url`] = cleanUrl;
+      if (cleanNum) normalizedCatDocs[`${cleanType}No`] = cleanNum;
+
+      // Alias mapping for category documents
+      if (/company_?reg/i.test(cleanType)) {
+        normalizedCatDocs.companyRegDoc = cleanUrl;
+        normalizedCatDocs.companyRegNo = cleanNum;
+      }
+      if (/food_?safety|fssai/i.test(cleanType)) {
+        normalizedCatDocs.foodSafetyDoc = cleanUrl;
+        normalizedCatDocs.foodSafetyLicenseNo = cleanNum;
+      }
+      if (/vehicle_?rc|^rc/i.test(cleanType)) {
+        normalizedCatDocs.rcDoc = cleanUrl;
+        normalizedCatDocs.rcNo = cleanNum;
+      }
+      if (/vehicle_?fitness|^fitness/i.test(cleanType)) {
+        normalizedCatDocs.fitnessDoc = cleanUrl;
+        normalizedCatDocs.fitnessNo = cleanNum;
+      }
+      if (/transport_?permit|^permit/i.test(cleanType)) {
+        normalizedCatDocs.permitDoc = cleanUrl;
+        normalizedCatDocs.permitNo = cleanNum;
+      }
+      if (/bis_?cert|^bis/i.test(cleanType)) {
+        normalizedCatDocs.bisDoc = cleanUrl;
+        normalizedCatDocs.bisNo = cleanNum;
+      }
+
+      catDocsArray.push(docObj);
+    };
+
+    if (Array.isArray(rawCatDocs)) {
+      rawCatDocs.forEach(item => {
+        if (!item) return;
+        const type = item.type || item.key || item.name;
+        const url = item.docUrl || item.url || item.documentUrl || item.fileUrl || item.doc || (typeof item === 'string' ? item : '');
+        const num = item.docNumber || item.number || item.licenseNumber || '';
+        const label = item.label || type;
+        registerDoc(type, url, num, label);
+      });
+    } else if (typeof rawCatDocs === 'object') {
+      Object.entries(rawCatDocs).forEach(([key, val]) => {
+        if (!val) return;
+        if (typeof val === 'object') {
+          registerDoc(key, val.docUrl || val.url || val.documentUrl || val.fileUrl || val.doc, val.docNumber || val.number, val.label);
+        } else {
+          registerDoc(key, String(val), '', key);
+        }
+      });
+    }
+
+    const catDocs = normalizedCatDocs;
     const catLower = finalCategory.toLowerCase();
 
     // Food / Grocery / Daily Needs
@@ -4138,8 +4501,32 @@ const addBusiness = async (req, res) => {
       if (!catDocs.fitnessDoc || !String(catDocs.fitnessDoc).trim()) {
         return res.status(400).json({ success: false, message: 'Vehicle Fitness Certificate is required.' });
       }
+      const fitnessNo = String(catDocs.fitnessNo || '').trim();
+      if (!fitnessNo) {
+        return res.status(400).json({ success: false, message: 'Vehicle Fitness Certificate Number is required.' });
+      }
+      if (fitnessNo.length < 15 || fitnessNo.length > 16 || !/^[A-Za-z0-9-]+$/.test(fitnessNo)) {
+        return res.status(400).json({ success: false, message: 'Vehicle Fitness Certificate number must be between 15 and 16 characters.' });
+      }
+
       if (!catDocs.permitDoc || !String(catDocs.permitDoc).trim()) {
         return res.status(400).json({ success: false, message: 'Transport Permit is required.' });
+      }
+      const permitNo = String(catDocs.permitNo || '').trim();
+      if (!permitNo) {
+        return res.status(400).json({ success: false, message: 'Transport / Route Permit Number is required.' });
+      }
+      if (permitNo.length < 13 || permitNo.length > 16 || !/^[A-Za-z0-9/-]+$/.test(permitNo)) {
+        return res.status(400).json({ success: false, message: 'Transport / Route Permit number must be between 13 and 16 characters.' });
+      }
+    }
+
+    // Property ID validation if supplied
+    const propIdCandidate = req.body.propertyId || catDocs.propertyId || catDocs.property_id || (catDocs.property_id && catDocs.property_id.docNumber);
+    if (propIdCandidate) {
+      const cleanPropId = String(propIdCandidate).trim();
+      if (!/^\d{13}$/.test(cleanPropId)) {
+        return res.status(400).json({ success: false, message: 'Property ID must be exactly 13 numeric digits.' });
       }
     }
 
@@ -4168,6 +4555,24 @@ const addBusiness = async (req, res) => {
           return res.status(400).json({
             success: false,
             message: `${/insurance/i.test(k) ? 'Insurance' : 'FSSAI'} number cannot exceed 14 digits.`
+          });
+        }
+      }
+      if (/vehicle_?fitness|^fitness/i.test(k)) {
+        const num = String(typeof v === 'object' ? (v.docNumber || v.number || '') : v).trim();
+        if (num && (num.length < 15 || num.length > 16 || !/^[A-Za-z0-9-]+$/.test(num))) {
+          return res.status(400).json({
+            success: false,
+            message: 'Vehicle Fitness Certificate number must be between 15 and 16 characters.'
+          });
+        }
+      }
+      if (/transport_?permit|^permit/i.test(k)) {
+        const num = String(typeof v === 'object' ? (v.docNumber || v.number || '') : v).trim();
+        if (num && (num.length < 13 || num.length > 16 || !/^[A-Za-z0-9/-]+$/.test(num))) {
+          return res.status(400).json({
+            success: false,
+            message: 'Transport / Route Permit number must be between 13 and 16 characters.'
           });
         }
       }
@@ -4214,7 +4619,7 @@ const addBusiness = async (req, res) => {
       aadhaarDoc: cleanAadhaarDoc,
       gstNumber: gstNumber ? String(gstNumber).trim().toUpperCase() : '',
       gstDoc: gstDoc ? String(gstDoc).trim() : '',
-      categoryDocuments: catDocs,
+      categoryDocuments: catDocsArray.length > 0 ? catDocsArray : catDocs,
       assignedAdminId: pincodeAdmin.id,
       assignedAdminName: pincodeAdmin.name,
       assignedAdminRole: pincodeAdmin.role,
@@ -4258,7 +4663,7 @@ const addBusiness = async (req, res) => {
       aadhaarDoc: newBusiness.aadhaarDoc,
       gstNumber: newBusiness.gstNumber,
       gstDoc: newBusiness.gstDoc,
-      categoryDocuments: catDocs,
+      categoryDocuments: catDocsArray.length > 0 ? catDocsArray : catDocs,
       assignedAdminId: pincodeAdmin.id,
       assignedAdminName: pincodeAdmin.name,
       assignedAdminRole: pincodeAdmin.role,
@@ -5144,20 +5549,46 @@ const getProductSalesInsights = async (req, res) => {
         let matchedCust = null;
         if (customerLookup && customerLookup.entitiesById) {
           matchedCust = (o.memberId && customerLookup.entitiesById[String(o.memberId)]) ||
+                        (o.customer_id && customerLookup.entitiesById[String(o.customer_id)]) ||
                         (o.customerId && customerLookup.entitiesById[String(o.customerId)]) ||
                         (oPhone && oPhone.length >= 10 && customerLookup.entitiesByPhone[oPhone.slice(-10)]) ||
                         (oEmail && customerLookup.entitiesByEmail[oEmail]) ||
                         (oName && customerLookup.entitiesByName[oName]) || null;
         }
 
+        const resolvedCustomerName = (() => {
+          if (matchedCust?.name && matchedCust.name.trim().toLowerCase() !== 'customer' && matchedCust.name.trim().toLowerCase() !== 'connect member') {
+            return matchedCust.name.trim();
+          }
+          if (o.memberName && o.memberName.trim().toLowerCase() !== 'customer' && o.memberName.trim().toLowerCase() !== 'connect member') {
+            return o.memberName.trim();
+          }
+          if (o.customer_name && o.customer_name.trim().toLowerCase() !== 'customer' && o.customer_name.trim().toLowerCase() !== 'connect member') {
+            return o.customer_name.trim();
+          }
+          if (matchedCust?.email && matchedCust.email.includes('@')) {
+            const prefix = matchedCust.email.split('@')[0];
+            return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+          }
+          if (oEmail && oEmail.includes('@')) {
+            const prefix = oEmail.split('@')[0];
+            return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+          }
+          return 'Customer details unavailable';
+        })();
+
         let cId = matchedCust?.customerId || matchedCust?.registrationId || (String(matchedCust?._id).startsWith('FIC-CUST-') ? String(matchedCust._id) : null);
         if (!cId || cId === 'FIC-CUST-100001') {
-          if (o.customerDisplayId && String(o.customerDisplayId).startsWith('FIC-CUST-') && o.customerDisplayId !== 'FIC-CUST-100001') {
+          if (o.customerDisplayId && (String(o.customerDisplayId).startsWith('FIC-CUS-') || String(o.customerDisplayId).startsWith('FIC-CUST-')) && o.customerDisplayId !== 'FIC-CUST-100001') {
             cId = String(o.customerDisplayId);
-          } else if (o.customerId && String(o.customerId).startsWith('FIC-CUST-') && o.customerId !== 'FIC-CUST-100001') {
+          } else if (o.customerId && (String(o.customerId).startsWith('FIC-CUS-') || String(o.customerId).startsWith('FIC-CUST-')) && o.customerId !== 'FIC-CUST-100001') {
             cId = String(o.customerId);
-          } else if (o.memberId && !o.memberId.startsWith('FIC-CUST-100001') && o.memberId !== 'cust_dhanush') {
+          } else if (o.customer_id && (String(o.customer_id).startsWith('FIC-CUS-') || String(o.customer_id).startsWith('FIC-CUST-')) && o.customer_id !== 'FIC-CUST-100001') {
+            cId = String(o.customer_id);
+          } else if (o.memberId && (String(o.memberId).startsWith('FIC-CUS-') || String(o.memberId).startsWith('FIC-CUST-')) && o.memberId !== 'FIC-CUST-100001') {
             cId = String(o.memberId);
+          } else if (matchedCust?.registrationId && matchedCust.registrationId !== 'FIC-CUST-100001') {
+            cId = String(matchedCust.registrationId);
           } else {
             cId = 'N/A';
           }
@@ -5173,7 +5604,8 @@ const getProductSalesInsights = async (req, res) => {
         recentCustomers.push({
           orderId: o._id,
           orderNumber: o.order_number || o.id || o.orderId,
-          memberName: matchedCust?.name || o.memberName || o.customer_name || 'Customer',
+          memberName: resolvedCustomerName,
+          customerName: resolvedCustomerName,
           customerId: cId,
           phone: matchedCust?.phone || o.customer_phone || o.phone || null,
           email: matchedCust?.email || o.customer_email || null,

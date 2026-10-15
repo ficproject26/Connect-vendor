@@ -780,6 +780,26 @@ const verifySubscriptionPayment = async (req, res) => {
     payment.approvedBy = approverInfo.text;
     await payment.save();
 
+    // Reconcile and cancel older superseded pending payment attempts for this business
+    try {
+      await SubscriptionPayment.updateMany(
+        {
+          vendorId,
+          businessId: String(businessId),
+          paymentStatus: 'PENDING',
+          _id: { $ne: payment._id }
+        },
+        {
+          $set: {
+            paymentStatus: 'CANCELLED',
+            failureReason: 'Superseded by successful payment retry'
+          }
+        }
+      );
+    } catch (reconcileErr) {
+      console.warn('Notice reconciling pending subscriptions:', reconcileErr.message);
+    }
+
     // Requirement 2: Vendor Business-wise Subscription
     // Update or create active subscription record
     let subscription = await Subscription.findOne({ 
@@ -988,6 +1008,26 @@ const handleRazorpayWebhook = async (req, res) => {
           payment.validFrom = startDate;
           payment.validUntil = endDate;
           await payment.save();
+
+          // Reconcile superseded pending payment attempts for this business
+          try {
+            await SubscriptionPayment.updateMany(
+              {
+                vendorId: payment.vendorId,
+                businessId: String(payment.businessId),
+                paymentStatus: 'PENDING',
+                _id: { $ne: payment._id }
+              },
+              {
+                $set: {
+                  paymentStatus: 'CANCELLED',
+                  failureReason: 'Superseded by successful payment retry'
+                }
+              }
+            );
+          } catch (reconcileErr) {
+            console.warn('Webhook pending reconciliation warning:', reconcileErr.message);
+          }
 
           await Subscription.findOneAndUpdate(
             { vendorId: payment.vendorId, businessId: payment.businessId },

@@ -20,16 +20,17 @@ const Customers = () => {
 
   const formatCustomerId = (c) => {
     if (!c) return 'N/A';
+    const isCanonical = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-')) && String(id) !== 'FIC-CUST-100001';
     if (typeof c === 'object') {
-      if (c.customerDisplayId && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
-      if (c.customerId && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
-      if (c.registrationId && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
-      if (c.memberId && String(c.memberId) !== 'FIC-CUST-100001' && !c.memberId.includes('@')) return String(c.memberId);
-      if (c.id && String(c.id) !== 'FIC-CUST-100001') return String(c.id);
-      if (c._id && String(c._id) !== 'FIC-CUST-100001') return String(c._id);
+      if (isCanonical(c.customerId)) return String(c.customerId);
+      if (isCanonical(c.customerDisplayId)) return String(c.customerDisplayId);
+      if (isCanonical(c.registrationId)) return String(c.registrationId);
+      if (isCanonical(c.memberId)) return String(c.memberId);
+      if (isCanonical(c.id)) return String(c.id);
+      if (isCanonical(c._id)) return String(c._id);
     }
     const rawId = String(c).trim();
-    if (rawId && rawId !== 'FIC-CUST-100001') return rawId;
+    if (isCanonical(rawId)) return rawId;
     return 'N/A';
   };
 
@@ -97,10 +98,11 @@ const Customers = () => {
                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                           />
                         </div>
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{c.name}</h3>
-                          <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[170px]" title={c.email}>{c.email}</p>
+                          <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1 break-all leading-snug" title={c.email}>{c.email}</p>
                           <p className="text-[10px] text-slate-400 mt-0.5">ID: {formatCustomerId(c)}</p>
+                          <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Gender: {c.gender || 'Not provided'}</p>
                         </div>
                       </div>
 

@@ -57,14 +57,16 @@ const isValidTimeFormat = (timeStr) => {
   return regex24.test(trimmed) || regex12.test(trimmed);
 };
 
+const isCanonicalCustId = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-')) && String(id) !== 'FIC-CUST-100001';
+
 const formatCustomerId = (c, customersList = null) => {
   if (!c) return 'N/A';
   if (typeof c === 'object') {
-    if (c.customerDisplayId && (String(c.customerDisplayId).startsWith('FIC-CUS-') || String(c.customerDisplayId).startsWith('FIC-CUST-')) && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
-    if (c.customerId && (String(c.customerId).startsWith('FIC-CUS-') || String(c.customerId).startsWith('FIC-CUST-')) && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
-    if (c.registrationId && (String(c.registrationId).startsWith('FIC-CUS-') || String(c.registrationId).startsWith('FIC-CUST-')) && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
+    if (isCanonicalCustId(c.customerDisplayId)) return String(c.customerDisplayId);
+    if (isCanonicalCustId(c.customerId)) return String(c.customerId);
+    if (isCanonicalCustId(c.registrationId)) return String(c.registrationId);
+    if (isCanonicalCustId(c.memberId)) return String(c.memberId);
     if (c.registrationId && String(c.registrationId).startsWith('REG-')) return String(c.registrationId);
-    if (c.memberId && (String(c.memberId).startsWith('FIC-CUS-') || String(c.memberId).startsWith('FIC-CUST-')) && String(c.memberId) !== 'FIC-CUST-100001') return String(c.memberId);
 
     // Check against customers list
     const list = Array.isArray(customersList) ? customersList : [];
@@ -85,20 +87,13 @@ const formatCustomerId = (c, customersList = null) => {
       });
       if (match) {
         const mId = match.customerId || match.customerDisplayId || match.registrationId || match.userRegistrationId || match.memberId || match.id;
-        if (mId && String(mId) !== 'FIC-CUST-100001') return String(mId);
+        if (isCanonicalCustId(mId)) return String(mId);
       }
     }
-
-    // Direct fallback to any identifier on the object other than the placeholder
-    if (c.registrationId && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
-    if (c.customerDisplayId && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
-    if (c.customerId && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
-    if (c.memberId && String(c.memberId) !== 'FIC-CUST-100001' && !c.memberId.includes('@')) return String(c.memberId);
-    if (c.id && String(c.id) !== 'FIC-CUST-100001') return String(c.id);
   }
 
   const rawId = String(c).trim();
-  if ((rawId.startsWith('FIC-CUS-') || rawId.startsWith('FIC-CUST-')) && rawId !== 'FIC-CUST-100001') return rawId;
+  if (isCanonicalCustId(rawId)) return rawId;
   if (rawId.startsWith('REG-')) return rawId;
   return 'N/A';
 };
@@ -175,6 +170,150 @@ const getProductMainCategory = (itemCategory, vType) => {
     return 'Services';
   }
   return '';
+};
+
+const isServiceOrBookingItem = (item, currentVendorType = '', activeBiz = null) => {
+  if (!item) return false;
+  const vType = String(item.vendorType || activeBiz?.vendorType || currentVendorType || '').toLowerCase();
+  const cat = String(item.category || item.subCategory || '').toLowerCase();
+  const subcat = String(item.subcategory || '').toLowerCase();
+  const mainCat = String(item.mainCategory || item.subNavbarCategory || '').toLowerCase();
+  const name = String(item.name || '').toLowerCase();
+
+  if (
+    vType.includes('service') ||
+    vType.includes('hotel') ||
+    vType.includes('stay') ||
+    vType.includes('travel') ||
+    vType.includes('doctor') ||
+    vType.includes('hospital') ||
+    vType.includes('job') ||
+    vType.includes('education')
+  ) {
+    return true;
+  }
+
+  if (['services', 'service', 'stay', 'travel', 'jobs', 'education'].includes(mainCat)) {
+    return true;
+  }
+
+  const serviceCategories = [
+    'services', 'service', 'stay', 'travel', 'it & device support', 'ac service',
+    'laptop repairs', 'cctv installation', 'pc repairs', 'full clean', 'cleaning',
+    'electrician', 'plumber', 'hospital', 'technician', 'healthcare', 'appointment',
+    'stay booking', 'bus booking', 'tour packages', 'taxi service', 'hotel', 'hotels', 'resort', 'resorts',
+    'room', 'rooms', 'homestay', 'pg', 'consultation'
+  ];
+  if (serviceCategories.includes(cat) || serviceCategories.includes(subcat)) {
+    return true;
+  }
+
+  const resolvedMainCat = getProductMainCategory(item.category, vType);
+  if (['Services', 'Stay', 'Travel', 'Jobs', 'Education'].includes(resolvedMainCat)) {
+    return true;
+  }
+
+  if (
+    cat.includes('service') || cat.includes('repair') || cat.includes('support') ||
+    cat.includes('booking') || cat.includes('room') || cat.includes('hotel') ||
+    cat.includes('travel') || cat.includes('trip') || cat.includes('tour') ||
+    name.includes('service') || name.includes('repair') || name.includes('booking')
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
+const getEffectiveItemStatus = (item, currentVendorType = '', activeBiz = null) => {
+  const isService = isServiceOrBookingItem(item, currentVendorType, activeBiz);
+  const rawStatus = String(item?.status || '').trim();
+  const lowerStatus = rawStatus.toLowerCase();
+
+  const isUnavailableOrOutOfStock = isService
+    ? (
+        lowerStatus === 'unavailable' ||
+        lowerStatus === 'closed' ||
+        lowerStatus === 'out of stock' ||
+        lowerStatus === 'out of service' ||
+        (item.bookingLimit !== undefined && Number(item.bookingLimit) > 0 && Number(item.bookingsCount || 0) >= Number(item.bookingLimit))
+      )
+    : (
+        lowerStatus === 'out of stock' ||
+        lowerStatus === 'unavailable' ||
+        lowerStatus === 'closed' ||
+        lowerStatus.includes('out') ||
+        (item.stock !== undefined && Number(item.stock) <= 0)
+      );
+
+  if (isUnavailableOrOutOfStock) {
+    return {
+      isOutOfStock: true,
+      isService,
+      statusLabel: isService ? 'Unavailable' : 'Out of Stock',
+      ribbonLabel: isService ? 'UNAVAILABLE' : 'OUT OF STOCK'
+    };
+  }
+
+  return {
+    isOutOfStock: false,
+    isService,
+    statusLabel: rawStatus || 'Available',
+    ribbonLabel: ''
+  };
+};
+
+const CatalogCardImage = ({ item, isOutOfStock, isService, mainCat, vendorType }) => {
+  const [imgError, setImgError] = useState(false);
+  const rawUrl = item.imageUrl || item.image || item.img || '';
+  const formattedUrl = rawUrl ? formatImageUrl(rawUrl) : '';
+
+  if (!formattedUrl || imgError) {
+    const getCategoryDetails = () => {
+      const cat = String(item.category || item.subcategory || mainCat || vendorType || '').toLowerCase();
+      if (cat.includes('stay') || cat.includes('hotel') || cat.includes('room') || cat.includes('resort')) {
+        return { icon: Hotel, label: 'Stay / Room', gradient: 'from-amber-500/10 to-orange-500/10 dark:from-amber-500/20 dark:to-orange-500/20 text-amber-600 dark:text-amber-400' };
+      }
+      if (cat.includes('service') || cat.includes('repair') || cat.includes('support') || cat.includes('cctv') || isService) {
+        return { icon: Layers, label: item.category || 'Service', gradient: 'from-blue-500/10 to-indigo-500/10 dark:from-blue-500/20 dark:to-indigo-500/20 text-blue-600 dark:text-blue-400' };
+      }
+      if (cat.includes('travel') || cat.includes('tour') || cat.includes('bus') || cat.includes('trip')) {
+        return { icon: Globe, label: 'Travel Route', gradient: 'from-sky-500/10 to-cyan-500/10 dark:from-sky-500/20 dark:to-cyan-500/20 text-sky-600 dark:text-sky-400' };
+      }
+      if (cat.includes('food') || cat.includes('dish') || cat.includes('restaurant')) {
+        return { icon: Utensils, label: 'Food / Menu', gradient: 'from-emerald-500/10 to-teal-500/10 dark:from-emerald-500/20 dark:to-teal-500/20 text-emerald-600 dark:text-emerald-400' };
+      }
+      if (cat.includes('job')) {
+        return { icon: Briefcase, label: 'Job Opening', gradient: 'from-purple-500/10 to-pink-500/10 dark:from-purple-500/20 dark:to-pink-500/20 text-purple-600 dark:text-purple-400' };
+      }
+      return { icon: ShoppingBag, label: item.category || 'Product', gradient: 'from-slate-500/10 to-slate-600/10 dark:from-slate-500/20 dark:to-slate-600/20 text-slate-600 dark:text-slate-400' };
+    };
+
+    const details = getCategoryDetails();
+    const IconComp = details.icon;
+
+    return (
+      <div className={`w-full h-full bg-gradient-to-br ${details.gradient} bg-slate-100 dark:bg-slate-900 flex flex-col items-center justify-center p-3 select-none transition-transform duration-500 group-hover:scale-105`}>
+        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/90 dark:bg-slate-800/90 shadow-sm flex items-center justify-center mb-1.5 border border-slate-200/50 dark:border-slate-700/50">
+          <IconComp size={22} className={details.text || 'text-primary-600'} />
+        </div>
+        <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate max-w-[85%] text-center">
+          {details.label}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={formattedUrl}
+      alt=""
+      onError={() => setImgError(true)}
+      className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
+        isOutOfStock ? 'grayscale opacity-60' : ''
+      }`}
+    />
+  );
 };
 
 const getFallbackImageUrl = (item, vendorType) => {
@@ -1359,6 +1498,12 @@ const VendorDashboard = () => {
   const [addingBizLoading, setAddingBizLoading] = useState(false);
   const [selectedBusinessForModal, setSelectedBusinessForModal] = useState(null);
   const [isBusinessDetailsModalOpen, setIsBusinessDetailsModalOpen] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const isProfileDirtyRef = useRef(false);
+  const prevActiveBusinessIdRef = useRef(activeBusinessId);
+
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -1379,6 +1524,7 @@ const VendorDashboard = () => {
     coPartnerName: user?.coPartnerName || '',
     gstStatus: user?.gstStatus || 'Non-GST Declared',
     panNo: user?.panNo || '',
+    aadhaarNo: user?.aadhaarNo || '',
     companyRegNo: user?.companyRegNo || '',
     gstNumber: user?.gstNumber || '',
     msmeStatus: user?.msmeStatus || 'Non-MSME',
@@ -1393,8 +1539,17 @@ const VendorDashboard = () => {
     swiftCode: user?.swiftCode || ''
   });
 
+  const updateProfileField = (field, value) => {
+    isProfileDirtyRef.current = true;
+    setProfileForm(prev => ({ ...prev, [field]: value }));
+  };
+
   useEffect(() => {
-    if (user) {
+    if (activeBusinessId !== prevActiveBusinessIdRef.current) {
+      isProfileDirtyRef.current = false;
+      prevActiveBusinessIdRef.current = activeBusinessId;
+    }
+    if (user && !isProfileDirtyRef.current) {
       const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(activeBusinessId || ''));
       setProfileForm({
         name: activeBiz?.contactPerson || activeBiz?.name || user.name || '',
@@ -1416,6 +1571,7 @@ const VendorDashboard = () => {
         coPartnerName: activeBiz?.coPartnerName || user.coPartnerName || '',
         gstStatus: activeBiz?.gstStatus || user.gstStatus || 'Non-GST Declared',
         panNo: activeBiz?.panNo || user.panNo || '',
+        aadhaarNo: activeBiz?.aadhaarNo || user.aadhaarNo || '',
         companyRegNo: activeBiz?.companyRegNo || user.companyRegNo || '',
         gstNumber: activeBiz?.gstNumber || user.gstNumber || '',
         msmeStatus: activeBiz?.msmeStatus || user.msmeStatus || 'Non-MSME',
@@ -1709,17 +1865,27 @@ const VendorDashboard = () => {
   const [isCustomerDetailsModalOpen, setIsCustomerDetailsModalOpen] = useState(false);
   const [customerPurchases, setCustomerPurchases] = useState([]);
   const [customerPurchasesLoading, setCustomerPurchasesLoading] = useState(false);
+  const [customerPurchasesError, setCustomerPurchasesError] = useState(null);
 
   useEffect(() => {
     if (!isCustomerDetailsModalOpen || !selectedCustomerForDetails) {
       setCustomerPurchases([]);
+      setCustomerPurchasesError(null);
       return;
     }
     const fetchPurchases = async () => {
       setCustomerPurchasesLoading(true);
+      setCustomerPurchasesError(null);
       try {
         const custId = selectedCustomerForDetails.customerId || selectedCustomerForDetails.registrationId || selectedCustomerForDetails._id || selectedCustomerForDetails.id || selectedCustomerForDetails.email || selectedCustomerForDetails.name;
-        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers/${encodeURIComponent(custId)}/purchases`, getAxiosConfig());
+        const params = new URLSearchParams();
+        if (selectedCustomerForDetails.email) params.append('email', selectedCustomerForDetails.email);
+        if (selectedCustomerForDetails.name) params.append('name', selectedCustomerForDetails.name);
+        const phone = selectedCustomerForDetails.phone || selectedCustomerForDetails.mobileNumber;
+        if (phone) params.append('phone', phone);
+
+        const queryStr = params.toString() ? `?${params.toString()}` : '';
+        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers/${encodeURIComponent(custId)}/purchases${queryStr}`, getAxiosConfig());
         if (res.data && res.data.success) {
           setCustomerPurchases(res.data.data || []);
         } else {
@@ -1727,13 +1893,14 @@ const VendorDashboard = () => {
         }
       } catch (err) {
         console.error('Failed to load customer purchases:', err);
+        setCustomerPurchasesError(err.response?.data?.message || 'Failed to retrieve transaction records from server');
         setCustomerPurchases([]);
       } finally {
         setCustomerPurchasesLoading(false);
       }
     };
     fetchPurchases();
-  }, [isCustomerDetailsModalOpen, selectedCustomerForDetails?._id, selectedCustomerForDetails?.customerId]);
+  }, [isCustomerDetailsModalOpen, selectedCustomerForDetails?._id, selectedCustomerForDetails?.customerId, selectedCustomerForDetails?.email, selectedCustomerForDetails?.name]);
 
   const getCustomerDisplayId = (order) => {
     if (!order) return 'N/A';
@@ -1906,7 +2073,19 @@ const VendorDashboard = () => {
       const trimmed = val.trim();
       if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
       if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.substring(0, 10);
-      const d = new Date(trimmed);
+      
+      // Support DD-MM-YYYY or DD/MM/YYYY
+      const dmy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      if (dmy) {
+        const d = String(dmy[1]).padStart(2, '0');
+        const m = String(dmy[2]).padStart(2, '0');
+        const y = dmy[3];
+        return `${y}-${m}-${d}`;
+      }
+
+      // Support "Thu, 15 Oct 2026" or "15 Oct 2026"
+      const cleanDateStr = trimmed.replace(/^[A-Za-z]+,\s*/, '').trim();
+      const d = new Date(cleanDateStr);
       if (!isNaN(d.getTime())) {
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -1967,52 +2146,78 @@ const VendorDashboard = () => {
     return getRecordCategory(b) === CATEGORY_SERVICES;
   };
 
+  const formatStayDisplayDate = (val) => {
+    if (!val || val === 'Not provided' || val === 'N/A') return 'Not provided';
+    const cleanStr = String(val).replace(/^[A-Za-z]+,\s*/, '').trim();
+    if (/^\d{1,2}\s+[A-Za-z]{3}\s+\d{4}$/.test(cleanStr)) {
+      return cleanStr;
+    }
+    let d = null;
+    if (/^\d{4}-\d{2}-\d{2}/.test(cleanStr)) {
+      const [y, m, day] = cleanStr.substring(0, 10).split('-').map(Number);
+      d = new Date(y, m - 1, day);
+    } else {
+      d = new Date(cleanStr);
+    }
+    if (!d || isNaN(d.getTime())) return cleanStr || String(val);
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
   const resolveStaySchedule = (b) => {
     if (!b) return { checkInDate: 'Not provided', checkInTime: 'Not provided', checkOutDate: 'Not provided', checkOutTime: 'Not provided' };
     
     const firstItem = (b.items && b.items[0]) || {};
     const ss = b.staySchedule || {};
+    const rd = b.roomDetails || {};
+    const dt = b.dates || {};
 
-    const rawCheckInDate = b.checkInDate || b.check_in_date || b.checkinDate || ss.checkInDate || ss.scheduledCheckInDate || firstItem.checkInDate || firstItem.check_in_date || b.appointmentDate;
-    let checkInDate = rawCheckInDate || 'Not provided';
-    let checkInTime = b.checkInTime || b.check_in_time || b.checkinTime || ss.checkInTime || ss.scheduledCheckInTime || firstItem.checkInTime || '';
+    const rawCheckInDate = b.checkInDate || b.check_in_date || b.checkinDate || ss.checkInDate || ss.scheduledCheckInDate || rd.checkInDate || dt.checkIn || firstItem.checkInDate || firstItem.check_in_date || b.appointmentDate;
+    let rawCheckInTime = b.checkInTime || b.check_in_time || b.checkinTime || ss.checkInTime || ss.scheduledCheckInTime || rd.checkInTime || firstItem.checkInTime || '';
 
-    let checkOutDate = b.checkOutDate || b.check_out_date || b.checkoutDate || b.departureDate || b.departure_date || b.toDate || b.endDate || ss.checkOutDate || ss.scheduledCheckOutDate || firstItem.checkOutDate || firstItem.check_out_date || firstItem.checkoutDate || firstItem.departureDate || firstItem.toDate || firstItem.endDate || '';
-    let checkOutTime = b.checkOutTime || b.check_out_time || b.checkoutTime || b.departureTime || ss.checkOutTime || ss.scheduledCheckOutTime || firstItem.checkOutTime || '';
+    let rawCheckOutDate = b.checkOutDate || b.check_out_date || b.checkoutDate || b.departureDate || b.departure_date || b.toDate || b.endDate || ss.checkOutDate || ss.scheduledCheckOutDate || rd.checkOutDate || rd.checkoutDate || dt.checkOut || firstItem.checkOutDate || firstItem.check_out_date || firstItem.checkoutDate || firstItem.departureDate || firstItem.toDate || firstItem.endDate || '';
+    let rawCheckOutTime = b.checkOutTime || b.check_out_time || b.checkoutTime || b.departureTime || ss.checkOutTime || ss.scheduledCheckOutTime || rd.checkOutTime || firstItem.checkOutTime || '';
 
-    if ((!checkInTime || !checkOutTime) && b.appointmentTimeSlot && b.appointmentTimeSlot.includes('-')) {
+    if ((!rawCheckInTime || !rawCheckOutTime) && b.appointmentTimeSlot && b.appointmentTimeSlot.includes('-')) {
       const parts = b.appointmentTimeSlot.split('-').map(s => s.trim());
-      if (!checkInTime && parts[0]) checkInTime = parts[0];
-      if (!checkOutTime && parts[1]) checkOutTime = parts[1];
+      if (!rawCheckInTime && parts[0]) rawCheckInTime = parts[0];
+      if (!rawCheckOutTime && parts[1]) rawCheckOutTime = parts[1];
     }
 
-    // Only derive check-out date if completely missing from booking data
-    if (!checkOutDate && checkInDate && checkInDate !== 'Not provided') {
-      const nights = Number(b.nightsCount || b.nights || b.numberOfNights || firstItem.nightsCount || 1);
-      const cleanDateStr = String(checkInDate).replace(/^[A-Za-z]+,\s*/, '').trim();
-      let parsedDate = null;
-      if (/^\d{4}-\d{2}-\d{2}/.test(cleanDateStr)) {
-        const [y, m, d] = cleanDateStr.substring(0, 10).split('-').map(Number);
-        parsedDate = new Date(y, m - 1, d);
-      } else {
-        parsedDate = new Date(cleanDateStr);
-      }
-      if (parsedDate && !isNaN(parsedDate.getTime())) {
-        const outD = new Date(parsedDate);
-        outD.setDate(outD.getDate() + nights);
-        checkOutDate = outD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    // Only derive check-out date if completely missing from booking data AND explicit nights provided
+    if (!rawCheckOutDate && rawCheckInDate && rawCheckInDate !== 'Not provided') {
+      const explicitNights = b.nightsCount || b.nights || b.numberOfNights || firstItem.nightsCount || firstItem.nights;
+      if (explicitNights && Number(explicitNights) > 0) {
+        const nights = Number(explicitNights);
+        const cleanDateStr = String(rawCheckInDate).replace(/^[A-Za-z]+,\s*/, '').trim();
+        let parsedDate = null;
+        if (/^\d{4}-\d{2}-\d{2}/.test(cleanDateStr)) {
+          const [y, m, d] = cleanDateStr.substring(0, 10).split('-').map(Number);
+          parsedDate = new Date(y, m - 1, d);
+        } else {
+          parsedDate = new Date(cleanDateStr);
+        }
+        if (parsedDate && !isNaN(parsedDate.getTime())) {
+          const outD = new Date(parsedDate);
+          outD.setDate(outD.getDate() + nights);
+          rawCheckOutDate = `${outD.getFullYear()}-${String(outD.getMonth() + 1).padStart(2, '0')}-${String(outD.getDate()).padStart(2, '0')}`;
+        }
       }
     }
+
+    const checkInDate = rawCheckInDate ? formatStayDisplayDate(rawCheckInDate) : 'Not provided';
+    const checkOutDate = rawCheckOutDate ? formatStayDisplayDate(rawCheckOutDate) : 'Not provided';
+    const checkInTime = rawCheckInTime || '12:00 PM';
+    const checkOutTime = rawCheckOutTime || '11:00 AM';
 
     return {
-      checkInDate: checkInDate || 'Not provided',
-      checkInTime: checkInTime || 'Not provided',
-      checkOutDate: checkOutDate || 'Not provided',
-      checkOutTime: checkOutTime || 'Not provided',
-      scheduledCheckInDate: ss.scheduledCheckInDate || checkInDate || 'Not provided',
-      scheduledCheckInTime: ss.scheduledCheckInTime || checkInTime || 'Not provided',
-      scheduledCheckOutDate: ss.scheduledCheckOutDate || checkOutDate || 'Not provided',
-      scheduledCheckOutTime: ss.scheduledCheckOutTime || checkOutTime || 'Not provided',
+      checkInDate,
+      checkInTime,
+      checkOutDate,
+      checkOutTime,
+      scheduledCheckInDate: checkInDate,
+      scheduledCheckInTime: checkInTime,
+      scheduledCheckOutDate: checkOutDate,
+      scheduledCheckOutTime: checkOutTime,
       actualCheckIn: ss.actualCheckIn || b.actualCheckIn || null,
       actualCheckInDate: ss.actualCheckInDate || b.actualCheckInDate || null,
       actualCheckInTime: ss.actualCheckInTime || b.actualCheckInTime || null,
@@ -2192,9 +2397,29 @@ const VendorDashboard = () => {
             const custKey = order.memberId || order.customerId || order.memberName || order.candidateEmail || order._id;
             if (custKey) uniqueCustomers.add(String(custKey));
             
+            const rawName = order.memberName || order.customer_name || order.customerName || order.bookingHolder?.name || '';
+            let resolvedCustName = rawName && rawName !== 'Customer' && rawName !== 'Connect Member' ? rawName : '';
+            if (!resolvedCustName && (order.memberId || order.customerId)) {
+              const custKey = String(order.memberId || order.customerId);
+              const found = customers.find(c => c._id === custKey || c.id === custKey || c.customerId === custKey || c.email === custKey);
+              if (found?.name) resolvedCustName = found.name;
+            }
+            if (!resolvedCustName) resolvedCustName = rawName || 'Customer details unavailable';
+
+            const rawCustId = order.customerId || order.customerDisplayId || order.memberId;
+            let resolvedCustId = '';
+            if (rawCustId && !/^[0-9a-fA-F]{24}$/.test(String(rawCustId))) {
+              resolvedCustId = String(rawCustId);
+            } else {
+              const found = customers.find(c => c.name === resolvedCustName || (order.customer_email && c.email === order.customer_email));
+              if (found) resolvedCustId = formatCustomerId(found);
+            }
+
             itemOrders.push({
               orderId: order._id,
-              memberName: order.memberName || order.customer_name || 'Customer',
+              memberName: resolvedCustName,
+              customerName: resolvedCustName,
+              customerId: resolvedCustId,
               quantity: qty,
               amount: price > 0 ? (price * qty) : Number(order.finalAmount || order.totalAmount || 0),
               date: formatOrderDate(order),
@@ -2230,7 +2455,15 @@ const VendorDashboard = () => {
     try {
       const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/products/${item._id}/sales-insights`, getAxiosConfig());
       if (res.data?.success && res.data?.data) {
-        setSalesInsightsData(res.data.data);
+        const enrichedData = {
+          ...res.data.data,
+          recentCustomers: (res.data.data.recentCustomers || []).map(c => ({
+            ...c,
+            customerName: c.customerName || c.memberName || 'Customer details unavailable',
+            memberName: c.customerName || c.memberName || 'Customer details unavailable'
+          }))
+        };
+        setSalesInsightsData(enrichedData);
       } else {
         // Fallback gracefully to locally calculated sales data
         const localData = getItemSalesData(item._id, item);
@@ -2240,11 +2473,13 @@ const VendorDashboard = () => {
           totalSold: localData.count,
           totalRevenue: localData.revenue,
           recentCustomers: localData.orders.map(o => ({
-            customerName: o.memberName || 'Customer',
-            customerId: o.orderId || 'N/A',
+            customerName: o.customerName || o.memberName || 'Customer details unavailable',
+            memberName: o.customerName || o.memberName || 'Customer details unavailable',
+            customerId: o.customerId || '',
             quantity: o.quantity || 1,
             amount: o.amount || 0,
-            date: o.date
+            date: o.date,
+            status: o.status || 'Confirmed'
           }))
         });
       }
@@ -2258,11 +2493,13 @@ const VendorDashboard = () => {
         totalSold: localData.count,
         totalRevenue: localData.revenue,
         recentCustomers: localData.orders.map(o => ({
-          customerName: o.memberName || 'Customer',
-          customerId: o.orderId || 'N/A',
+          customerName: o.customerName || o.memberName || 'Customer details unavailable',
+          memberName: o.customerName || o.memberName || 'Customer details unavailable',
+          customerId: o.customerId || '',
           quantity: o.quantity || 1,
           amount: o.amount || 0,
-          date: o.date
+          date: o.date,
+          status: o.status || 'Confirmed'
         }))
       });
     } finally {
@@ -2729,9 +2966,10 @@ const VendorDashboard = () => {
               });
             }
           } else {
-            const [analyticsRes, ordersRes, productsRes, customersRes] = await Promise.allSettled([
+            const [analyticsRes, ordersRes, bookingsRes, productsRes, customersRes] = await Promise.allSettled([
               axios.get(`${getVendorBackendUrl()}/api/vendor/analytics`, getAxiosConfig()),
               axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig()),
               axios.get(`${getVendorBackendUrl()}/api/vendor/products`, getAxiosConfig()),
               axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig())
             ]);
@@ -2740,6 +2978,9 @@ const VendorDashboard = () => {
             }
             if (ordersRes.status === 'fulfilled' && ordersRes.value.data.success) {
               setOrders(ordersRes.value.data.data);
+            }
+            if (bookingsRes.status === 'fulfilled' && bookingsRes.value.data.success) {
+              setBookings(bookingsRes.value.data.data);
             }
             if (productsRes.status === 'fulfilled' && productsRes.value.data.success) {
               setCatalog(productsRes.value.data.data);
@@ -3147,7 +3388,7 @@ const VendorDashboard = () => {
         nameLabel: 'Dish Name',
         priceLabel: 'Price (₹)',
         imageLabel: 'Dish Image / Photo',
-        catalogStatuses: ['Available', 'Unavailable'],
+        catalogStatuses: ['Available', 'Out of Stock'],
         orderStatuses: ['Pending', 'Accepted', 'Out for Delivery', 'Delivered', 'Completed', 'Cancelled'],
         customersName: 'Customers',
         customersSub: 'Customers who ordered food from menu items',
@@ -3164,7 +3405,7 @@ const VendorDashboard = () => {
         nameLabel: 'Medicine Name',
         priceLabel: 'Price (₹)',
         imageLabel: 'Medicine Image / Photo',
-        catalogStatuses: ['Available', 'Unavailable'],
+        catalogStatuses: ['Available', 'Out of Stock'],
         orderStatuses: ['Pending', 'Accepted', 'Out for Delivery', 'Delivered', 'Cancelled'],
         customersName: 'Customers',
         customersSub: 'Customers who purchased medicines',
@@ -3215,7 +3456,7 @@ const VendorDashboard = () => {
         nameLabel: 'Product Name',
         priceLabel: 'Price (₹)',
         imageLabel: 'Product Image / Photo',
-        catalogStatuses: ['Available', 'Unavailable'],
+        catalogStatuses: ['Available', 'Out of Stock'],
         orderStatuses: ['Pending', 'Accepted', 'Out for Delivery', 'Delivered', 'Cancelled'],
         customersName: 'Customers',
         customersSub: 'Customers who purchased grocery products',
@@ -3250,7 +3491,7 @@ const VendorDashboard = () => {
         nameLabel: 'Product Name',
         priceLabel: 'Price (₹)',
         imageLabel: 'Product Image / Photo',
-        catalogStatuses: ['Available', 'Unavailable'],
+        catalogStatuses: ['Available', 'Out of Stock'],
         orderStatuses: ['Pending', 'Accepted', 'Out for Delivery', 'Delivered', 'Cancelled'],
         customersName: 'Customers',
         customersSub: 'Customers who purchased products from catalog',
@@ -3335,6 +3576,18 @@ const VendorDashboard = () => {
       }
     }
 
+    const isService = isServiceOrBookingItem(item, vendorType, activeBiz);
+    let editItemStatus = item.status || terms.catalogStatuses[0];
+    if (isService) {
+      if (editItemStatus === 'Out of Stock' || editItemStatus.toLowerCase().includes('out')) {
+        editItemStatus = 'Unavailable';
+      }
+    } else {
+      if (editItemStatus === 'Unavailable' || editItemStatus === 'UNAVAILABLE') {
+        editItemStatus = 'Out of Stock';
+      }
+    }
+
     setItemForm({
       name: item.name || '',
       description: item.description || '',
@@ -3360,7 +3613,7 @@ const VendorDashboard = () => {
           ? item.images
           : (item.imageUrl || item.image || item.img ? [item.imageUrl || item.image || item.img] : []),
       foodType: item.foodType || 'Veg',
-      status: item.status || terms.catalogStatuses[0],
+      status: editItemStatus,
       cardTypes: item.cardTypes || ['Silver', 'Gold', 'Diamond'],
       jobType: item.jobType || 'Full-time',
       jobLocation: item.jobLocation || '',
@@ -3900,44 +4153,87 @@ const VendorDashboard = () => {
     e.preventDefault();
     setError('');
     setMessage('');
+    setProfileError('');
+    setProfileMessage('');
+
+    if (!profileForm.businessName || !profileForm.businessName.trim()) {
+      setProfileError('Business Name is required.');
+      return;
+    }
+    if (!profileForm.name || !profileForm.name.trim()) {
+      setProfileError('Owner / Contact Person Name is required.');
+      return;
+    }
+
+    let cleanMobile = profileForm.mobileNumber ? String(profileForm.mobileNumber).replace(/\D/g, '') : '';
+    if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) {
+      cleanMobile = cleanMobile.slice(-10);
+    }
+    cleanMobile = cleanMobile.slice(0, 10);
+    if (profileForm.mobileNumber && cleanMobile.length < 10) {
+      setProfileError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    let cleanTel = profileForm.telephone ? String(profileForm.telephone).replace(/\D/g, '') : '';
+    if (cleanTel.length > 10 && cleanTel.startsWith('91')) cleanTel = cleanTel.slice(-10);
+    cleanTel = cleanTel.slice(0, 10);
+
+    let cleanAlt = profileForm.alternateNumber ? String(profileForm.alternateNumber).replace(/\D/g, '') : '';
+    if (cleanAlt.length > 10 && cleanAlt.startsWith('91')) cleanAlt = cleanAlt.slice(-10);
+    cleanAlt = cleanAlt.slice(0, 10);
+
+    const cleanPostal = profileForm.postalCode ? String(profileForm.postalCode).replace(/\D/g, '').slice(0, 6) : '';
+    const cleanPan = profileForm.panNo ? String(profileForm.panNo).toUpperCase().replace(/[^A-Z0-9]/g, '').trim() : '';
+    const cleanAadhaar = profileForm.aadhaarNo ? String(profileForm.aadhaarNo).replace(/\D/g, '').slice(0, 12) : '';
+
+    setIsSavingProfile(true);
     try {
-      let cleanMobile = profileForm.mobileNumber ? String(profileForm.mobileNumber).replace(/\D/g, '') : '';
-      if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) {
-        cleanMobile = cleanMobile.slice(-10);
-      }
-      cleanMobile = cleanMobile.slice(0, 10);
-
-      const cleanPostal = profileForm.postalCode ? String(profileForm.postalCode).replace(/\D/g, '').slice(0, 6) : '';
-      const cleanPan = profileForm.panNo ? String(profileForm.panNo).toUpperCase().replace(/[^A-Z0-9]/g, '').trim() : '';
-      const cleanAadhaar = profileForm.aadhaarNo ? String(profileForm.aadhaarNo).replace(/\D/g, '').slice(0, 12) : '';
-
       const sanitizedProfileForm = {
         ...profileForm,
-        ...(cleanMobile ? { mobileNumber: cleanMobile } : {}),
-        ...(cleanPostal ? { postalCode: cleanPostal } : {}),
-        ...(cleanPan ? { panNo: cleanPan } : {}),
-        ...(cleanAadhaar ? { aadhaarNo: cleanAadhaar } : {}),
+        businessName: profileForm.businessName.trim(),
+        name: profileForm.name.trim(),
+        mobileNumber: cleanMobile,
+        telephone: cleanTel,
+        alternateNumber: cleanAlt,
+        postalCode: cleanPostal,
+        panNo: cleanPan,
+        aadhaarNo: cleanAadhaar,
         activeBusinessId
       };
 
       const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/profile`, sanitizedProfileForm, getAxiosConfig());
-      if (res.data.success) {
-        setMessage('Business profile updated successfully!');
+      if (res.data && res.data.success) {
+        const successMsg = res.data.message || 'Business profile updated successfully!';
+        setMessage(successMsg);
+        setProfileMessage(successMsg);
+        isProfileDirtyRef.current = false;
         const updatedUserData = res.data.data || res.data.user;
         if (updatedUserData) {
+          localStorage.setItem('vendor_user', JSON.stringify(updatedUserData));
           dispatch(updateUser(updatedUserData));
         }
         try {
           const freshRes = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`, getAxiosConfig());
           if (freshRes.data.success && freshRes.data.user) {
+            localStorage.setItem('vendor_user', JSON.stringify(freshRes.data.user));
             dispatch(updateUser(freshRes.data.user));
           }
         } catch (fetchErr) {
           console.warn('Profile refetch warning:', fetchErr);
         }
+      } else {
+        const failMsg = res.data?.message || 'Profile update failed';
+        setError(failMsg);
+        setProfileError(failMsg);
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Profile update failed');
+      console.error('Update profile error:', err);
+      const errMsg = err.response?.data?.message || err.message || 'Profile update failed';
+      setError(errMsg);
+      setProfileError(errMsg);
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
@@ -4834,10 +5130,67 @@ const VendorDashboard = () => {
         )}
 
         {activeTab === 'dashboard' && user?.role === 'Vendor' && (() => {
+          const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
+          const isTravelBiz = vendorType.startsWith('Travel') || terms.catalogName === 'Travel Routes' || terms.catalogItem === 'Travel Route';
+          const isServicesBiz = /service|hospital|technician|clinic/i.test(vendorType) || /service/i.test(terms.catalogName || '') || terms.catalogName === 'Doctors' || terms.catalogItem === 'Doctor' || terms.catalogItem === 'Service';
+          const isStayBiz = /stay|hotel/i.test(vendorType) || terms.catalogName === 'Rooms' || terms.catalogItem === 'Room';
+          const isFoodBiz = /food|restaurant/i.test(vendorType) || terms.catalogName === 'Menu' || terms.catalogItem === 'Dish';
+          const isDailyNeedsBiz = /daily needs|grocery|pharmacy/i.test(vendorType) || terms.catalogName === 'Medicines';
+          const isProductBiz = !isTravelBiz && !isServicesBiz && !isStayBiz && !isFoodBiz && !isDailyNeedsBiz;
+
+          // Merge both orders and bookings, deduplicated by ID
+          const combinedRecords = [
+            ...(Array.isArray(orders) ? orders : []),
+            ...(Array.isArray(bookings) ? bookings : [])
+          ];
+          const recordMap = new Map();
+          combinedRecords.forEach(r => {
+            if (!r) return;
+            const rid = String(r._id || r.id || r.order_number || '');
+            if (rid && !recordMap.has(rid)) {
+              recordMap.set(rid, r);
+            }
+          });
+          const allVendorRecords = Array.from(recordMap.values());
+
+          // Filter by active business and category context
+          const currentBizRecords = allVendorRecords.filter(o => {
+            const matchesBusiness = !savedActiveId ||
+              String(o.vendorId) === String(savedActiveId) ||
+              String(o.vendor_id) === String(savedActiveId) ||
+              String(o.vendorId) === String(user?._id) ||
+              String(o.vendor_id) === String(user?._id) ||
+              String(o.vendorId) === String(user?.registrationId) ||
+              (user?.businesses || []).some(b => String(b._id || b.id) === String(o.vendorId || o.vendor_id));
+
+            if (!matchesBusiness) return false;
+
+            const recCat = getRecordCategory(o);
+            const oType = String(o.type || '').toLowerCase();
+            const oCat = String(o.category || '').toLowerCase();
+
+            const isServiceRecord = isServicesBooking(o) || recCat === CATEGORY_SERVICES || oType === 'services' || oType === 'service' || oType === 'appointment' || oCat === 'services' || oCat === 'service' || Boolean(o.doctorName || o.serviceName);
+            const isTravelRecord = isTravelBooking(o) || recCat === CATEGORY_TRAVEL || oType === 'travel' || oCat === 'travel' || Boolean(o.travelDate || o.journeyDate);
+            const isStayRecord = isStayBooking(o) || recCat === CATEGORY_STAY || oType === 'stay' || oType === 'hotel' || oCat === 'stay' || oCat === 'hotel' || Boolean(o.checkInDate || o.roomNumber);
+            const isFoodRecord = recCat === CATEGORY_FOOD || oType === 'food' || oType === 'restaurant' || oCat === 'food' || oCat === 'restaurant' || Boolean(o.tableNumber);
+
+            if (isTravelBiz) return isTravelRecord;
+            if (isServicesBiz) return isServiceRecord;
+            if (isStayBiz) return isStayRecord;
+            if (isFoodBiz) return isFoodRecord;
+            if (isDailyNeedsBiz) {
+              return !isTravelRecord && !isServiceRecord && !isStayRecord && (recCat === CATEGORY_DAILY_NEEDS || oType === 'daily needs' || oCat === 'daily needs' || oType === 'products' || oType === 'order');
+            }
+            if (isProductBiz) {
+              return !isTravelRecord && !isServiceRecord && !isStayRecord;
+            }
+            return true;
+          });
+
           // Client-side calculations for dashboard
-          const completedOrders = orders.filter(o => ['Completed', 'Delivered', 'Checked Out', 'Hired', 'Enrolled'].includes(o.status));
-          const pendingOrders = orders.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'].includes(o.status));
-          const cancelledOrders = orders.filter(o => ['Cancelled', 'Rejected'].includes(o.status));
+          const completedOrders = currentBizRecords.filter(o => ['Completed', 'Delivered', 'Checked Out', 'Hired', 'Enrolled'].includes(o.status));
+          const pendingOrders = currentBizRecords.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'].includes(o.status));
+          const cancelledOrders = currentBizRecords.filter(o => ['Cancelled', 'Rejected'].includes(o.status));
 
           // Orders Trend (last 7 calendar days)
           const getOrdersTrendData = () => {
@@ -4848,8 +5201,9 @@ const VendorDashboard = () => {
               const key = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
               map[key] = 0;
             }
-            orders.forEach(o => {
-              const key = new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            currentBizRecords.forEach(o => {
+              const dateVal = o.appointmentDate || o.checkInDate || o.travelDate || o.createdAt || o.created_at || o.orderDate;
+              const key = new Date(dateVal).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
               if (map[key] !== undefined) {
                 map[key] += 1;
               }
@@ -4861,20 +5215,39 @@ const VendorDashboard = () => {
           // Top Selling Items (max 5)
           const getTopSellingData = () => {
             const itemMap = {};
-            const isTravelBiz = vendorType.startsWith('Travel') || terms.catalogName === 'Travel Routes';
-            orders.forEach(o => {
+            currentBizRecords.forEach(o => {
               if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
-                if (isTravelBiz && !(isTravelBooking(o) || o.type === 'Travel' || o.category === 'Travel')) return;
-                const itemList = (o.items && o.items.length > 0) ? o.items : (o.product_details ? [{ name: o.product_details, productId: o.productId, quantity: 1 }] : []);
-                itemList.forEach(item => {
+                const itemList = (o.items && Array.isArray(o.items) && o.items.length > 0) ? o.items : [];
+                if (itemList.length > 0) {
+                  itemList.forEach(item => {
+                    const catMatch = catalog.find(c => 
+                      (item.productId && String(c._id) === String(item.productId)) ||
+                      (item.id && String(c._id) === String(item.id)) ||
+                      (item.name && c.name && c.name.toLowerCase() === item.name.toLowerCase())
+                    );
+                    const name = catMatch ? catMatch.name : (item.name || o.serviceName || (o.doctorName ? `Dr. ${o.doctorName}` : null) || o.product_details || o.itemName || 'Item');
+                    if (name && name !== 'Unknown Item') {
+                      itemMap[name] = (itemMap[name] || 0) + (Number(item.quantity) || 1);
+                    }
+                  });
+                } else {
+                  const singleName = o.serviceName ||
+                    (o.doctorName ? `Dr. ${o.doctorName}` : null) ||
+                    (o.roomNumber ? `Room ${o.roomNumber}` : null) ||
+                    o.product_details ||
+                    o.itemName ||
+                    o.name ||
+                    o.title;
+
                   const catMatch = catalog.find(c => 
-                    (item.productId && String(c._id) === String(item.productId)) ||
-                    (item.id && String(c._id) === String(item.id)) ||
-                    c.name === item.name
+                    (o.productId && String(c._id) === String(o.productId)) ||
+                    (singleName && c.name && c.name.toLowerCase() === singleName.toLowerCase())
                   );
-                  const name = catMatch ? catMatch.name : (item.name || o.product_details || 'Unknown Item');
-                  itemMap[name] = (itemMap[name] || 0) + (item.quantity || 1);
-                });
+                  const resolvedName = catMatch ? catMatch.name : (singleName || (isServicesBiz ? 'General Service' : isStayBiz ? 'Room Booking' : 'Order Item'));
+                  if (resolvedName) {
+                    itemMap[resolvedName] = (itemMap[resolvedName] || 0) + 1;
+                  }
+                }
               }
             });
             return Object.keys(itemMap)
@@ -4921,7 +5294,7 @@ const VendorDashboard = () => {
           // Revenue by Card Tier (Silver, Gold, Diamond)
           const getRevenueByCardTierData = () => {
             const map = { Silver: 0, Gold: 0, Diamond: 0 };
-            orders.forEach(o => {
+            currentBizRecords.forEach(o => {
               if (o.status !== 'Cancelled') {
                 const tier = getCardTypeForMember(o.memberId);
                 map[tier] += o.finalAmount || 0;
@@ -4936,7 +5309,7 @@ const VendorDashboard = () => {
           const expiredMemberships = Math.max(0, totalMembersCount - activeMemberships);
           const newMembersCount = customers.filter(c => new Date(c.createdAt) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length;
 
-          const recentOrdersList = [...orders]
+          const recentOrdersList = [...currentBizRecords]
             .sort((a, b) => new Date(b.createdAt || b.created_at || b.orderDate || b.date || 0) - new Date(a.createdAt || a.created_at || a.orderDate || a.date || 0))
             .slice(0, 5);
 
@@ -5228,7 +5601,29 @@ const VendorDashboard = () => {
                               <td className="px-6 py-4 text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
                                 #{String(order.order_number || order.orderNumber || order.id || order._id || 'N/A').replace(/^#+/, '')}
                               </td>
-                              <td className="px-6 py-4 text-xs font-semibold text-slate-800 dark:text-slate-200">{order.memberName}</td>
+                              <td 
+                                className="px-6 py-4 text-xs font-semibold text-slate-800 dark:text-slate-200"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const matchedCust = customers.find(c => 
+                                    (order.memberId && (c.id === order.memberId || c._id === order.memberId || c.customerId === order.memberId)) ||
+                                    (order.customer_email && c.email === order.customer_email) ||
+                                    (order.memberName && c.name && c.name.toLowerCase() === order.memberName.toLowerCase())
+                                  ) || {
+                                    name: order.memberName || order.customer_name || 'Customer',
+                                    email: order.customer_email || order.candidateEmail || '',
+                                    phone: order.customer_phone || order.phone || '',
+                                    customerId: order.customerId || order.customerDisplayId || order.memberId || '',
+                                    _id: order.memberId || order.customerId || order._id
+                                  };
+                                  setSelectedCustomerForDetails(matchedCust);
+                                  setIsCustomerDetailsModalOpen(true);
+                                }}
+                              >
+                                <span className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline cursor-pointer">
+                                  {order.memberName || 'Customer'}
+                                </span>
+                              </td>
                               <td className="px-6 py-4 text-xs font-extrabold text-indigo-600 dark:text-indigo-455">₹{order.finalAmount || order.totalAmount}</td>
                               <td className="px-6 py-4">
                                 <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold border ${
@@ -5642,7 +6037,22 @@ const VendorDashboard = () => {
                         const itemMainCat = getProductMainCategory(item.category, item.vendorType || activeBiz?.vendorType || vendorType);
                         const matchesMainCategory = !activeCatType || activeCatType === 'All' || itemMainCat.toLowerCase() === activeCatType.toLowerCase();
                         const matchesCategory = catalogCategoryFilter === 'All' || item.category === catalogCategoryFilter;
-                        const matchesStatus = catalogStatusFilter === 'All' || item.status === catalogStatusFilter;
+                        
+                        const isService = isServiceOrBookingItem(item, vendorType, activeBiz);
+                        const effective = getEffectiveItemStatus(item, vendorType, activeBiz);
+                        let matchesStatus = true;
+                        if (catalogStatusFilter !== 'All') {
+                          if (catalogStatusFilter === 'Available') {
+                            matchesStatus = !effective.isOutOfStock;
+                          } else if (catalogStatusFilter === 'Unavailable') {
+                            matchesStatus = effective.isOutOfStock && isService;
+                          } else if (catalogStatusFilter === 'Out of Stock') {
+                            matchesStatus = effective.isOutOfStock && !isService;
+                          } else {
+                            matchesStatus = item.status === catalogStatusFilter || effective.statusLabel === catalogStatusFilter;
+                          }
+                        }
+
                         const matchesFoodType = catalogFoodTypeFilter === 'All' || item.foodType === catalogFoodTypeFilter;
                         const matchesSearch = !catalogSearchQuery || item.name.toLowerCase().includes(catalogSearchQuery.toLowerCase()) || 
                                               (item.description && item.description.toLowerCase().includes(catalogSearchQuery.toLowerCase()));
@@ -5683,203 +6093,211 @@ const VendorDashboard = () => {
                         );
                       }
 
-                        return (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-4">
-                            {sortedCatalog.map(item => {
-                              const mainCat = getProductMainCategory(item.category, vendorType);
-                              const isServiceOffering = ['Services', 'Stay', 'Travel'].includes(mainCat) || ['Services', 'Stay', 'Travel', 'Service', 'Appointment', 'Stay Booking'].includes(item.category);
-                              const isOutOfStock = isServiceOffering
-                                ? (item.status === 'Unavailable' || item.status === 'Closed' || (item.bookingLimit !== undefined && Number(item.bookingLimit) > 0 && Number(item.bookingsCount || 0) >= Number(item.bookingLimit)))
-                                : ((item.status && (
-                                    item.status.toLowerCase().includes('out') ||
-                                    item.status.toLowerCase().includes('un') ||
-                                    item.status.toLowerCase().includes('closed')
-                                  )) || (item.stock !== undefined && Number(item.stock) <= 0));
+                      return (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-4">
+                          {sortedCatalog.map(item => {
+                            const isService = isServiceOrBookingItem(item, vendorType, activeBiz);
+                            const effective = getEffectiveItemStatus(item, vendorType, activeBiz);
+                            const isItemOutOfStock = effective.isOutOfStock;
+                            const statusDisplay = effective.statusLabel;
+                            const ribbonLabel = effective.ribbonLabel;
+                            const mainCat = getProductMainCategory(item.category, item.vendorType || activeBiz?.vendorType || vendorType);
 
-                              return (
-                                <div 
-                                  key={item._id} 
-                                  onClick={(e) => {
-                                    if (e.target.closest('button')) return;
-                                    handleOpenSalesDetails(item);
-                                  }}
-                                  className={`glass-card rounded-xl sm:rounded-2xl p-2.5 sm:p-3 flex flex-col justify-between h-full hover-card cursor-pointer transition-all border border-slate-200/60 dark:border-slate-800/80 shadow-sm ${
-                                    isOutOfStock ? 'bg-slate-50/80 dark:bg-slate-900/40 border-slate-200/80 opacity-90' : ''
-                                  }`}
-                                >
-                                  <div>
-                                    <div className="mb-2 rounded-lg sm:rounded-xl overflow-hidden aspect-[16/10] bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
-                                      {isOutOfStock && (
-                                        <div className="absolute top-3 -left-9 -rotate-45 bg-[#4a5568]/90 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-widest py-0.5 sm:py-1 px-8 shadow-md z-10 pointer-events-none text-center min-w-[130px]">
-                                          {item.status && item.status.toLowerCase().includes('service') ? 'OUT OF SERVICE' : 'OUT OF STOCK'}
-                                        </div>
-                                      )}
-                                      {item.imageUrl ? (
-                                        <img
-                                          src={formatImageUrl(item.imageUrl)}
-                                          alt={item.name}
-                                          className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
-                                            isOutOfStock ? 'grayscale opacity-50' : ''
-                                          }`}
-                                        />
-                                      ) : (
-                                        <div className="w-full h-full bg-slate-100 dark:bg-slate-900 flex flex-col items-center justify-center text-slate-300 dark:text-slate-700">
-                                          <ImageIcon size={24} strokeWidth={1.5} className="sm:w-8 sm:h-8" />
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="flex justify-between items-start mb-1.5 gap-1.5">
-                                      <div className="flex items-center gap-1 text-left">
-                                        <span className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-[8px] sm:text-[9px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full uppercase flex items-center gap-1">
-                                          <span>{item.category}</span>
-                                        </span>
-                                        {vendorType.startsWith('Restaurant') && item.foodType && (
-                                          <div 
-                                            className={`w-3 h-3 sm:w-3.5 sm:h-3.5 border flex items-center justify-center p-0.5 rounded shrink-0 ${
-                                              item.foodType === 'Veg' ? 'border-emerald-600' : 'border-red-600'
-                                            }`}
-                                            title={item.foodType}
-                                          >
-                                            <div className={`w-1 h-1 rounded-full ${item.foodType === 'Veg' ? 'bg-emerald-600' : 'bg-red-600'}`} />
-                                          </div>
-                                        )}
+                            return (
+                              <div 
+                                key={item._id} 
+                                onClick={(e) => {
+                                  if (e.target.closest('button')) return;
+                                  handleOpenSalesDetails(item);
+                                }}
+                                className={`glass-card rounded-xl sm:rounded-2xl p-2.5 sm:p-3 flex flex-col justify-between h-full min-h-[350px] hover-card cursor-pointer transition-all border border-slate-200/60 dark:border-slate-800/80 shadow-sm ${
+                                  isItemOutOfStock ? 'bg-slate-50/80 dark:bg-slate-900/40 border-slate-200/80 opacity-90' : ''
+                                }`}
+                              >
+                                <div>
+                                  {/* Standardized Aspect Ratio Image Container with Fallback */}
+                                  <div className="mb-2 rounded-lg sm:rounded-xl overflow-hidden aspect-[16/10] bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-center relative group">
+                                    {isItemOutOfStock && ribbonLabel && (
+                                      <div className="absolute top-3.5 -left-10 -rotate-45 bg-slate-900/90 dark:bg-slate-950/95 backdrop-blur-sm text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-widest py-0.5 sm:py-1 px-9 shadow-md z-10 pointer-events-none text-center min-w-[140px] border-b border-white/10">
+                                        {ribbonLabel}
                                       </div>
-                                      {(() => {
-                                        const mainCat = getProductMainCategory(item.category, vendorType);
-                                        if (mainCat === 'Jobs') {
-                                          return (
-                                            <div className="flex flex-col items-end text-right">
-                                              <span className="text-xs sm:text-sm font-bold text-[#0B3C7B] dark:text-[#faed26] leading-none">Salary: ₹{item.price}</span>
-                                            </div>
-                                          );
-                                        }
-                                        return (
-                                          <div className="flex flex-col items-end text-right">
-                                            {item.originalPrice && Number(item.originalPrice) > Number(item.price) ? (
-                                              <>
-                                                <span className="text-[9px] sm:text-[10px] line-through text-slate-400 dark:text-slate-500">₹{item.originalPrice}</span>
-                                                <span className={`text-xs sm:text-sm font-black leading-none ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-emerald-600 dark:text-emerald-450'}`}>
-                                                  ₹{item.price}
-                                                  <span className="text-[7px] sm:text-[8px] font-extrabold ml-0.5 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-450 px-1 py-0.5 rounded align-middle">
-                                                    {Math.round(((Number(item.originalPrice) - Number(item.price)) / Number(item.originalPrice)) * 100)}% OFF
-                                                  </span>
-                                                </span>
-                                              </>
-                                            ) : (
-                                              <span className={`text-xs sm:text-sm font-bold leading-none ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>₹{item.price}</span>
-                                            )}
-                                          </div>
-                                        );
-                                      })()}
-                                    </div>
-                                    <h3 className={`text-xs sm:text-sm font-bold text-left leading-tight sm:leading-snug break-words mt-0.5 line-clamp-1 ${isOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`} title={item.name}>{item.name}</h3>
-                                    
-                                    {/* Item Rating */}
-                                    {(() => {
-                                      const { rating, reviews } = getItemRating(item, orders);
-                                      return (
-                                        <div className="flex items-center gap-0.5 sm:gap-1 mt-0.5 mb-1 text-left">
-                                          <div className={`flex ${isOutOfStock ? 'text-slate-300 dark:text-slate-600' : 'text-amber-500'}`}>
-                                            {[...Array(5)].map((_, i) => (
-                                              <span key={i} className="text-[9px] sm:text-[10px]">
-                                                {i < Math.floor(rating) ? '★' : '☆'}
-                                              </span>
-                                            ))}
-                                          </div>
-                                          <span className="text-[9px] sm:text-[10px] font-extrabold text-slate-700 dark:text-slate-350">{rating}</span>
-                                          <span className="text-[8px] sm:text-[9px] font-medium text-slate-400 dark:text-slate-500">({reviews})</span>
-                                        </div>
-                                      );
-                                    })()}
-                                    {item.description && (
-                                      <p className="text-slate-600 dark:text-slate-400 text-[10px] sm:text-xs mt-0.5 text-left leading-tight line-clamp-2 break-words">{item.description}</p>
                                     )}
-                                    
-                                    {/* Compact metadata fields grid */}
-                                    {(() => {
-                                      const mainCat = getProductMainCategory(item.category, vendorType);
-                                      const shouldShowStock = ['Products', 'Daily Needs', 'Jobs', 'Education'].includes(mainCat);
-                                      const salesInfo = getItemSalesData(item._id, item);
-                                      const salesCount = salesInfo.count;
-                                      const customersCount = salesInfo.customersCount;
-                                      const isServiceOffering = ['Services', 'Stay', 'Travel'].includes(mainCat) || ['Services', 'Stay', 'Travel', 'Service', 'Appointment', 'Stay Booking'].includes(item.category);
-                                      const isItemOutOfStock = isServiceOffering
-                                        ? (item.status === 'Unavailable' || item.status === 'Closed' || (item.bookingLimit !== undefined && Number(item.bookingLimit) > 0 && Number(item.bookingsCount || 0) >= Number(item.bookingLimit)))
-                                        : (shouldShowStock
-                                            ? (Number(item.stock) <= 0 || item.status === 'Unavailable' || item.status === 'Out of Stock')
-                                            : (item.status === 'Unavailable' || item.status === 'Out of Stock'));
-                                      const currentStatus = isItemOutOfStock ? (shouldShowStock ? 'Out of Stock' : (item.status || 'Unavailable')) : (item.status || 'Available');
+                                    <CatalogCardImage
+                                      item={item}
+                                      isOutOfStock={isItemOutOfStock}
+                                      isService={isService}
+                                      mainCat={mainCat}
+                                      vendorType={vendorType}
+                                    />
+                                  </div>
 
-                                      return (
-                                        <div className={`mt-2 grid gap-1 text-[9px] sm:text-[10px] bg-slate-50 dark:bg-slate-900/60 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-slate-200/50 dark:border-slate-800/50 ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                                          <div className="text-center">
-                                            <span className="block text-[7px] sm:text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
-                                            <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{currentStatus}</span>
-                                          </div>
-                                          {shouldShowStock && item.stock !== undefined && (
-                                            <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                              <span className="block text-[7px] sm:text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'vacant' : 'Stock'}</span>
-                                              <span className={`font-bold ${isItemOutOfStock ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
-                                            </div>
-                                          )}
-                                          <div className="text-center border-l border-slate-200 dark:border-slate-800">
-                                            <span className="block text-[7px] sm:text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'applied' : ['Services', 'Stay', 'Travel'].includes(mainCat) ? 'Booking' : 'Customers'}</span>
-                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{['Services', 'Stay', 'Travel'].includes(mainCat) ? salesCount : customersCount}</span>
-                                          </div>
+                                  {/* Category Pill and Price Row with fixed 34px height for row-wide alignment */}
+                                  <div className="flex justify-between items-start mb-2 gap-2 h-[34px]">
+                                    <div className="flex items-center gap-1 text-left min-w-0 max-w-[55%]">
+                                      <span 
+                                        className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-[8.5px] sm:text-[9.5px] font-bold px-2 py-0.5 rounded-full uppercase truncate block max-w-full"
+                                        title={item.category}
+                                      >
+                                        {item.category}
+                                      </span>
+                                      {vendorType.startsWith('Restaurant') && item.foodType && (
+                                        <div 
+                                          className={`w-3.5 h-3.5 border flex items-center justify-center p-0.5 rounded shrink-0 ${
+                                            item.foodType === 'Veg' ? 'border-emerald-600' : 'border-red-600'
+                                          }`}
+                                          title={item.foodType}
+                                        >
+                                          <div className={`w-1.5 h-1.5 rounded-full ${item.foodType === 'Veg' ? 'bg-emerald-600' : 'bg-red-600'}`} />
                                         </div>
-                                      );
-                                    })()}
-                                    {/* BUG 7: Job Posting Date + Deadline for Vendor */}
+                                      )}
+                                    </div>
+
                                     {(() => {
-                                      const mc = getProductMainCategory(item.category, vendorType);
-                                      if (mc === 'Jobs') {
-                                        const fmtD = (d) => { try { const dt = new Date(d); return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return d; } };
+                                      if (mainCat === 'Jobs') {
                                         return (
-                                          <div className="mt-1.5 grid grid-cols-2 gap-1 text-[9px] sm:text-[10px] bg-indigo-50/60 dark:bg-indigo-950/30 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-indigo-200/30 dark:border-indigo-800/30">
-                                            <div className="text-center">
-                                              <span className="block text-[7px] sm:text-[8px] font-semibold text-indigo-400 dark:text-indigo-500 uppercase tracking-wider mb-0.5">Posted</span>
-                                              <span className="font-bold text-indigo-700 dark:text-indigo-300">{item.createdAt ? fmtD(item.createdAt) : 'N/A'}</span>
-                                            </div>
-                                            <div className="text-center border-l border-indigo-200 dark:border-indigo-800">
-                                              <span className="block text-[7px] sm:text-[8px] font-semibold text-indigo-400 dark:text-indigo-500 uppercase tracking-wider mb-0.5">Deadline</span>
-                                              <span className="font-bold text-indigo-700 dark:text-indigo-300">{item.deadline ? fmtD(item.deadline) : 'N/A'}</span>
-                                            </div>
+                                          <div className="flex flex-col items-end text-right shrink-0 h-[34px] justify-center">
+                                            <span className="text-[9px] text-slate-400 uppercase font-semibold leading-none mb-0.5">Salary</span>
+                                            <span className="text-xs sm:text-sm font-bold text-[#0B3C7B] dark:text-[#faed26] leading-none">₹{item.price}</span>
                                           </div>
                                         );
                                       }
-                                      return null;
+                                      const hasDiscount = item.originalPrice && Number(item.originalPrice) > Number(item.price);
+                                      const discountPct = hasDiscount ? Math.round(((Number(item.originalPrice) - Number(item.price)) / Number(item.originalPrice)) * 100) : 0;
+
+                                      return (
+                                        <div className="flex flex-col items-end text-right shrink-0 min-w-[70px] h-[34px] justify-center">
+                                          {hasDiscount ? (
+                                            <>
+                                              <span className="text-[9px] sm:text-[10px] line-through text-slate-400 dark:text-slate-500 leading-none">
+                                                ₹{item.originalPrice}
+                                              </span>
+                                              <div className="flex items-center gap-1 mt-0.5 leading-none">
+                                                <span className={`text-xs sm:text-sm font-black leading-none ${isItemOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-emerald-600 dark:text-emerald-450'}`}>
+                                                  ₹{item.price}
+                                                </span>
+                                                <span className="inline-block whitespace-nowrap text-[7.5px] sm:text-[8px] font-extrabold bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 px-1 py-0.5 rounded leading-none">
+                                                  {discountPct}% OFF
+                                                </span>
+                                              </div>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <span className="text-[9px] sm:text-[10px] invisible leading-none select-none">₹0</span>
+                                              <span className={`text-xs sm:text-sm font-bold leading-none mt-0.5 ${isItemOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`}>
+                                                ₹{item.price}
+                                              </span>
+                                            </>
+                                          )}
+                                        </div>
+                                      );
                                     })()}
                                   </div>
 
-                                  <div className="flex justify-end items-center gap-1.5 sm:gap-2 mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/60">
-                                    <button
-                                      onClick={() => handleOpenEditItem(item)}
-                                      className={`p-1.5 sm:p-2 rounded-md sm:rounded-lg border transition-colors ${
-                                        isOutOfStock 
-                                          ? 'bg-slate-100/50 dark:bg-slate-800/30 text-slate-300 dark:text-slate-600 border-slate-200/50 dark:border-slate-800/30' 
-                                          : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700/50'
-                                      }`}
-                                      title="Edit Item"
-                                    >
-                                      <Edit2 size={12} className="sm:w-3.5 sm:h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteItem(item._id)}
-                                      className={`p-1.5 sm:p-2 rounded-md sm:rounded-lg border transition-colors ${
-                                        isOutOfStock 
-                                          ? 'bg-red-50/40 dark:bg-red-950/10 text-red-300 dark:text-red-800/50 border-red-100 dark:border-red-950/20' 
-                                          : 'bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/30'
-                                      }`}
-                                      title="Delete Item"
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  </div>
+                                  {/* Title: 1 line truncated */}
+                                  <h3 
+                                    className={`text-xs sm:text-sm font-bold text-left leading-snug truncate h-5 mt-0.5 ${
+                                      isItemOutOfStock ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'
+                                    }`} 
+                                    title={item.name}
+                                  >
+                                    {item.name}
+                                  </h3>
+
+                                  {/* Item Rating: fixed height */}
+                                  {(() => {
+                                    const { rating, reviews } = getItemRating(item, orders);
+                                    return (
+                                      <div className="flex items-center gap-1 h-4 mt-0.5 mb-1 text-left">
+                                        <div className={`flex ${isItemOutOfStock ? 'text-slate-300 dark:text-slate-600' : 'text-amber-500'}`}>
+                                          {[...Array(5)].map((_, i) => (
+                                            <span key={i} className="text-[9px] sm:text-[10px]">
+                                              {i < Math.floor(rating) ? '★' : '☆'}
+                                            </span>
+                                          ))}
+                                        </div>
+                                        <span className="text-[9px] sm:text-[10px] font-extrabold text-slate-700 dark:text-slate-350">{rating}</span>
+                                        <span className="text-[8px] sm:text-[9px] font-medium text-slate-400 dark:text-slate-500">({reviews})</span>
+                                      </div>
+                                    );
+                                  })()}
+
+                                  {/* Description: fixed 2 lines height */}
+                                  <p className="text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs text-left leading-snug line-clamp-2 h-7 sm:h-8 overflow-hidden break-words mt-0.5">
+                                    {item.description || ''}
+                                  </p>
+
+                                  {/* Metadata fields grid */}
+                                  {(() => {
+                                    const shouldShowStock = !isService && ['Products', 'Daily Needs', 'Food', 'Jobs', 'Education'].includes(mainCat);
+                                    const salesInfo = getItemSalesData(item._id, item);
+                                    const salesCount = salesInfo.count;
+                                    const customersCount = salesInfo.customersCount;
+
+                                    return (
+                                      <div className={`mt-2.5 grid gap-1 text-[9px] sm:text-[10px] bg-slate-50 dark:bg-slate-900/60 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-slate-200/50 dark:border-slate-800/50 min-h-[46px] items-center ${shouldShowStock ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                        <div className="text-center">
+                                          <span className="block text-[7px] sm:text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Status</span>
+                                          <span className={`font-bold ${isItemOutOfStock ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                            {statusDisplay}
+                                          </span>
+                                        </div>
+                                        {shouldShowStock && item.stock !== undefined && (
+                                          <div className="text-center border-l border-slate-200 dark:border-slate-800">
+                                            <span className="block text-[7px] sm:text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'Vacant' : 'Stock'}</span>
+                                            <span className={`font-bold ${isItemOutOfStock ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.stock} {mainCat === 'Jobs' ? '' : (item.unit || 'count')}</span>
+                                          </div>
+                                        )}
+                                        <div className="text-center border-l border-slate-200 dark:border-slate-800">
+                                          <span className="block text-[7px] sm:text-[8px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">{mainCat === 'Jobs' ? 'Applied' : isService ? 'Bookings' : 'Customers'}</span>
+                                          <span className="font-bold text-emerald-600 dark:text-emerald-400">{isService ? salesCount : customersCount}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+
+                                  {/* Job Posting Date + Deadline */}
+                                  {(() => {
+                                    if (mainCat === 'Jobs') {
+                                      const fmtD = (d) => { try { const dt = new Date(d); return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return d; } };
+                                      return (
+                                        <div className="mt-1.5 grid grid-cols-2 gap-1 text-[9px] sm:text-[10px] bg-indigo-50/60 dark:bg-indigo-950/30 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-indigo-200/30 dark:border-indigo-800/30">
+                                          <div className="text-center">
+                                            <span className="block text-[7px] sm:text-[8px] font-semibold text-indigo-400 dark:text-indigo-500 uppercase tracking-wider mb-0.5">Posted</span>
+                                            <span className="font-bold text-indigo-700 dark:text-indigo-300">{item.createdAt ? fmtD(item.createdAt) : 'N/A'}</span>
+                                          </div>
+                                          <div className="text-center border-l border-indigo-200 dark:border-indigo-800">
+                                            <span className="block text-[7px] sm:text-[8px] font-semibold text-indigo-400 dark:text-indigo-500 uppercase tracking-wider mb-0.5">Deadline</span>
+                                            <span className="font-bold text-indigo-700 dark:text-indigo-300">{item.deadline ? fmtD(item.deadline) : 'N/A'}</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        );
+
+                                {/* Action Buttons: Pinned to bottom with mt-auto */}
+                                <div className="flex justify-end items-center gap-1.5 sm:gap-2 mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800/60">
+                                  <button
+                                    onClick={() => handleOpenEditItem(item)}
+                                    className="p-1.5 sm:p-2 rounded-md sm:rounded-lg border transition-colors bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700/50 shadow-sm"
+                                    title="Edit Item"
+                                  >
+                                    <Edit2 size={13} className="sm:w-3.5 sm:h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteItem(item._id)}
+                                    className="p-1.5 sm:p-2 rounded-md sm:rounded-lg border transition-colors bg-rose-50 dark:bg-rose-950/20 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/30 shadow-sm"
+                                    title="Delete Item"
+                                  >
+                                    <Trash2 size={13} className="sm:w-3.5 sm:h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
                       })()}
                     </div>
                 </div>
@@ -6351,18 +6769,21 @@ const VendorDashboard = () => {
                                     </span>
                                   </div>
                                   <div className="pt-1">
-                                    <select
-                                      value={order.status}
-                                      disabled={isUpdating}
-                                      onChange={(e) => handleUpdateOrderStatus(order._id || order.id || order.order_number, e.target.value)}
-                                      className={`bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:border-primary-500 font-semibold ${
-                                        isUpdating ? 'opacity-50 cursor-not-allowed' : ''
-                                      }`}
-                                    >
-                                      {['Order Received', 'Pending', 'Confirmed', 'Preparing', 'Ready', 'Out for Delivery', 'Delivered', 'Cancelled'].map(st => (
-                                        <option key={st} value={st}>{st}</option>
-                                      ))}
-                                    </select>
+                                    <div className="relative inline-flex items-center">
+                                      <select
+                                        value={order.status}
+                                        disabled={isUpdating}
+                                        onChange={(e) => handleUpdateOrderStatus(order._id || order.id || order.order_number, e.target.value)}
+                                        className={`appearance-none bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] pl-2.5 pr-6 py-1 focus:outline-none focus:border-primary-500 font-semibold cursor-pointer ${
+                                          isUpdating ? 'opacity-50 cursor-not-allowed' : ''
+                                        }`}
+                                      >
+                                        {['Order Received', 'Pending', 'Confirmed', 'Preparing', 'Ready', 'Out for Delivery', 'Delivered', 'Cancelled'].map(st => (
+                                          <option key={st} value={st}>{st}</option>
+                                        ))}
+                                      </select>
+                                      <ChevronDown size={12} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    </div>
                                   </div>
                                 </div>
                               </td>
@@ -6564,37 +6985,57 @@ const VendorDashboard = () => {
 
                           let matchesTime = true;
                           if (bookingTimeFilter !== 'All') {
-                            const rawDateStr = b.appointmentDate || b.checkInDate || b.bookingDate || b.createdAt || b.created_at;
-                            if (!rawDateStr) {
-                              matchesTime = false;
-                            } else {
-                              const bDate = new Date(rawDateStr);
-                              if (isNaN(bDate.getTime())) {
-                                matchesTime = false;
-                              } else {
-                                const bTime = bDate.getTime();
-                                const now = new Date();
-                                const nowTime = now.getTime();
+                            const now = new Date();
+                            const todayYMD = parseDateToYMD(now);
 
-                                if (bookingTimeFilter === 'Today') {
-                                  matchesTime = bDate.toDateString() === now.toDateString();
-                                } else if (bookingTimeFilter === 'Yesterday') {
-                                  const y = new Date();
-                                  y.setDate(y.getDate() - 1);
-                                  matchesTime = bDate.toDateString() === y.toDateString();
-                                } else if (bookingTimeFilter === 'LastWeek') {
-                                  matchesTime = (nowTime - bTime) <= 7 * 24 * 60 * 60 * 1000;
-                                } else if (bookingTimeFilter === 'LastMonth') {
-                                  const curMonth = now.getMonth();
-                                  const targetMonth = curMonth === 0 ? 11 : curMonth - 1;
-                                  const targetYear = curMonth === 0 ? now.getFullYear() - 1 : now.getFullYear();
-                                  matchesTime = bDate.getFullYear() === targetYear && bDate.getMonth() === targetMonth;
-                                } else if (bookingTimeFilter === 'Last30Days') {
-                                  matchesTime = (nowTime - bTime) <= 30 * 24 * 60 * 60 * 1000;
-                                } else if (bookingTimeFilter === 'LastYear') {
-                                  matchesTime = bDate.getFullYear() === now.getFullYear() - 1;
-                                }
+                            if (bookingTimeFilter === 'Today') {
+                              if (isStayBooking(b)) {
+                                const sched = resolveStaySchedule(b);
+                                const inYMD = parseDateToYMD(b.checkInDate) || parseDateToYMD(sched.checkInDate);
+                                const outYMD = parseDateToYMD(b.checkOutDate) || parseDateToYMD(sched.checkOutDate);
+                                matchesTime = (inYMD && inYMD === todayYMD) || (inYMD && outYMD && todayYMD >= inYMD && todayYMD <= outYMD);
+                              } else if (isTravelBooking(b)) {
+                                const travelYMD = parseDateToYMD(b.travelDate) || parseDateToYMD(b.journeyDate) || parseDateToYMD(b.departureDate);
+                                matchesTime = travelYMD === todayYMD;
+                              } else {
+                                const apptYMD = parseDateToYMD(b.appointmentDate) || parseDateToYMD(b.serviceDate) || parseDateToYMD(b.date) || parseDateToYMD(b.createdAt);
+                                matchesTime = apptYMD === todayYMD;
                               }
+                            } else if (bookingTimeFilter === 'Yesterday') {
+                              const y = new Date();
+                              y.setDate(y.getDate() - 1);
+                              const yestYMD = parseDateToYMD(y);
+                              if (isStayBooking(b)) {
+                                const sched = resolveStaySchedule(b);
+                                const inYMD = parseDateToYMD(b.checkInDate) || parseDateToYMD(sched.checkInDate);
+                                const outYMD = parseDateToYMD(b.checkOutDate) || parseDateToYMD(sched.checkOutDate);
+                                matchesTime = (inYMD && inYMD === yestYMD) || (inYMD && outYMD && yestYMD >= inYMD && yestYMD <= outYMD);
+                              } else if (isTravelBooking(b)) {
+                                const travelYMD = parseDateToYMD(b.travelDate) || parseDateToYMD(b.journeyDate);
+                                matchesTime = travelYMD === yestYMD;
+                              } else {
+                                const apptYMD = parseDateToYMD(b.appointmentDate) || parseDateToYMD(b.serviceDate) || parseDateToYMD(b.createdAt);
+                                matchesTime = apptYMD === yestYMD;
+                              }
+                            } else if (bookingTimeFilter === 'LastWeek') {
+                              const rawDateStr = b.appointmentDate || b.checkInDate || b.bookingDate || b.createdAt || b.created_at;
+                              const bDate = new Date(rawDateStr);
+                              matchesTime = !isNaN(bDate.getTime()) && (now.getTime() - bDate.getTime()) <= 7 * 24 * 60 * 60 * 1000;
+                            } else if (bookingTimeFilter === 'LastMonth') {
+                              const rawDateStr = b.appointmentDate || b.checkInDate || b.bookingDate || b.createdAt || b.created_at;
+                              const bDate = new Date(rawDateStr);
+                              const curMonth = now.getMonth();
+                              const targetMonth = curMonth === 0 ? 11 : curMonth - 1;
+                              const targetYear = curMonth === 0 ? now.getFullYear() - 1 : now.getFullYear();
+                              matchesTime = !isNaN(bDate.getTime()) && bDate.getFullYear() === targetYear && bDate.getMonth() === targetMonth;
+                            } else if (bookingTimeFilter === 'Last30Days') {
+                              const rawDateStr = b.appointmentDate || b.checkInDate || b.bookingDate || b.createdAt || b.created_at;
+                              const bDate = new Date(rawDateStr);
+                              matchesTime = !isNaN(bDate.getTime()) && (now.getTime() - bDate.getTime()) <= 30 * 24 * 60 * 60 * 1000;
+                            } else if (bookingTimeFilter === 'LastYear') {
+                              const rawDateStr = b.appointmentDate || b.checkInDate || b.bookingDate || b.createdAt || b.created_at;
+                              const bDate = new Date(rawDateStr);
+                              matchesTime = !isNaN(bDate.getTime()) && bDate.getFullYear() === now.getFullYear() - 1;
                             }
                           }
 
@@ -6860,22 +7301,22 @@ const VendorDashboard = () => {
                                     </td>
 
                                     {/* Amount & Status */}
-                                    <td className="px-6 py-4 text-xs">
-                                      <div className="font-semibold text-slate-850 dark:text-slate-350">₹{b.finalAmount || b.amount || 0}</div>
-                                      <div className="mt-1">
+                                    <td className="px-6 py-4 text-xs whitespace-nowrap min-w-[130px]">
+                                      <div className="font-extrabold text-sm text-slate-900 dark:text-white">₹{(b.finalAmount || b.amount || 0).toLocaleString()}</div>
+                                      <div className="mt-1.5 flex items-center">
                                         {(() => {
                                           let displayStatus = b.status || 'Pending';
-                                          if (isStayBooking(b) && (displayStatus === 'Order Received' || displayStatus === 'Accepted')) {
+                                          if ((isStayBooking(b) || isServicesBooking(b)) && (displayStatus === 'Order Received' || displayStatus === 'Accepted')) {
                                             displayStatus = b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending';
                                           }
                                           return (
-                                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                                              displayStatus === 'Completed' || displayStatus === 'Delivered' || displayStatus === 'Checked Out' ? 'bg-emerald-100/80 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200/30' :
-                                              displayStatus === 'Checked In' ? 'bg-purple-100/80 dark:bg-purple-950/80 text-purple-700 dark:text-purple-400 border border-purple-200/30' :
-                                              displayStatus === 'Confirmed' ? 'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30' :
-                                              displayStatus === 'Pending' ? 'bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/30' :
-                                              displayStatus === 'Cancelled' || displayStatus === 'Rejected' ? 'bg-red-100/80 dark:bg-red-950/80 text-red-700 dark:text-red-400 border border-red-200/30' :
-                                              'bg-blue-100/80 dark:bg-blue-950/80 text-blue-700 dark:text-blue-400 border border-blue-200/30'
+                                            <span className={`inline-flex items-center text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
+                                              displayStatus === 'Completed' || displayStatus === 'Delivered' || displayStatus === 'Checked Out' ? 'bg-emerald-100/90 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300/40' :
+                                              displayStatus === 'Checked In' || displayStatus === 'Boarded' ? 'bg-purple-100/90 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 border border-purple-300/40' :
+                                              displayStatus === 'Confirmed' ? 'bg-blue-100/90 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-300/40' :
+                                              displayStatus === 'Pending' ? 'bg-amber-100/90 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300/40' :
+                                              displayStatus === 'Cancelled' || displayStatus === 'Rejected' ? 'bg-red-100/90 dark:bg-red-950/80 text-red-800 dark:text-red-300 border border-red-300/40' :
+                                              'bg-blue-100/90 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-300/40'
                                             }`}>
                                               {displayStatus}
                                             </span>
@@ -6887,20 +7328,31 @@ const VendorDashboard = () => {
                                     {/* Actions & View Details */}
                                     <td className="px-6 py-4 text-right">
                                       <div className="flex flex-col items-end gap-2">
-                                        <select
-                                          value={isStayBooking(b) && (b.status === 'Order Received' || b.status === 'Accepted') ? (b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending') : b.status}
-                                          disabled={updatingStatusIds.has(String(b._id || b.id || b.order_number))}
-                                          onChange={(e) => handleUpdateOrderStatus(b._id || b.id || b.order_number, e.target.value)}
-                                          className={`bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs px-2.5 py-1.5 w-36 focus:outline-none focus:border-primary-500 font-semibold ${updatingStatusIds.has(String(b._id || b.id || b.order_number)) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                        >
-                                          {isStayBooking(b)
-                                            ? ['Pending', 'Confirmed', 'Checked In', 'Checked Out', 'Completed', 'Cancelled'].map(status => (
-                                                <option key={status} value={status}>{status}</option>
-                                              ))
-                                            : ['Pending', 'Confirmed', 'Accepted', 'Completed', 'Cancelled'].map(status => (
-                                                <option key={status} value={status}>{status}</option>
-                                              ))}
-                                        </select>
+                                        <div className="relative inline-flex items-center w-36">
+                                          <select
+                                            value={(isStayBooking(b) || isServicesBooking(b)) && (b.status === 'Order Received' || b.status === 'Accepted') ? (b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending') : b.status}
+                                            disabled={updatingStatusIds.has(String(b._id || b.id || b.order_number))}
+                                            onChange={(e) => handleUpdateOrderStatus(b._id || b.id || b.order_number, e.target.value)}
+                                            className={`appearance-none bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs pl-3 pr-8 py-1.5 w-full focus:outline-none focus:border-primary-500 font-semibold cursor-pointer ${updatingStatusIds.has(String(b._id || b.id || b.order_number)) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          >
+                                            {isStayBooking(b)
+                                              ? ['Pending', 'Confirmed', 'Checked In', 'Checked Out', 'Completed', 'Cancelled'].map(status => (
+                                                  <option key={status} value={status}>{status}</option>
+                                                ))
+                                              : isServicesBooking(b)
+                                              ? ['Pending', 'Confirmed', 'Completed', 'Cancelled'].map(status => (
+                                                  <option key={status} value={status}>{status}</option>
+                                                ))
+                                              : isTravelBooking(b)
+                                              ? ['Pending', 'Confirmed', 'Boarded', 'Completed', 'Cancelled'].map(status => (
+                                                  <option key={status} value={status}>{status}</option>
+                                                ))
+                                              : ['Pending', 'Confirmed', 'Accepted', 'Completed', 'Cancelled'].map(status => (
+                                                  <option key={status} value={status}>{status}</option>
+                                                ))}
+                                          </select>
+                                          <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        </div>
 
                                         <button
                                           onClick={async () => {
@@ -7040,7 +7492,7 @@ const VendorDashboard = () => {
                           <p className="text-slate-500 text-xs font-semibold mt-1">Bookings & Reservations scheduled for {calendarSelectedDate}</p>
                         </div>
 
-                        <div className="space-y-3.5 max-h-[420px] overflow-y-auto pr-1">
+                        <div className="space-y-3.5 max-h-[500px] overflow-y-auto pr-2.5 custom-scrollbar">
                           {(() => {
                             const uniqueMap = new Map();
                             bookings.forEach(b => {
@@ -7072,32 +7524,77 @@ const VendorDashboard = () => {
                             return dayAppts.map(b => (
                               <div 
                                 key={b._id || b.id || b.order_number} 
-                                onClick={() => setSelectedBookingForDetails(b)}
-                                className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-900 space-y-3.5 shadow-inner cursor-pointer hover:border-slate-300 dark:hover:border-slate-800 transition-all"
+                                onClick={async () => {
+                                  setSelectedBillOrder(b);
+                                  setIsBillModalOpen(true);
+                                  try {
+                                    const orderId = b._id || b.id || b.order_number;
+                                    const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders/${orderId}`, getAxiosConfig());
+                                    if (res.data && (res.data.order || res.data.booking || res.data.data)) {
+                                      setSelectedBillOrder(res.data.order || res.data.booking || res.data.data);
+                                    }
+                                  } catch (err) {}
+                                }}
+                                className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-900 space-y-3 shadow-inner cursor-pointer hover:border-slate-300 dark:hover:border-slate-800 transition-all"
                               >
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <h5 className="font-bold text-sm text-slate-900 dark:text-white">{b.bookingHolder?.name || b.memberName || b.customer_name || 'N/A'}</h5>
-                                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">
+                                <div className="flex justify-between items-start gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <h5 className="font-bold text-sm text-slate-900 dark:text-white truncate">{b.bookingHolder?.name || b.memberName || b.customer_name || 'N/A'}</h5>
+                                    <div className="mt-1">
                                       {isStayBooking(b) ? (() => {
                                         const sched = resolveStaySchedule(b);
-                                        return `🏨 Check-in: ${sched.checkInTime} • Check-out: ${sched.checkOutTime}${b.roomNumber ? ` (Room: ${b.roomNumber})` : ''}`;
+                                        return (
+                                          <div className="space-y-1 text-xs">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                                              <span className="text-[9px] font-extrabold uppercase text-slate-400">Check-in:</span>
+                                              <span className="font-bold text-slate-800 dark:text-slate-200">{sched.checkInDate}</span>
+                                              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">• {sched.checkInTime}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>
+                                              <span className="text-[9px] font-extrabold uppercase text-slate-400">Check-out:</span>
+                                              <span className="font-bold text-slate-800 dark:text-slate-200">{sched.checkOutDate}</span>
+                                              <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">• {sched.checkOutTime}</span>
+                                            </div>
+                                            {b.roomNumber && (
+                                              <div className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">
+                                                Room #{b.roomNumber}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
                                       })() : isTravelBooking(b) ? (() => {
-                                        return `🚌 Departure: ${b.departureTime || b.journeyTime || b.appointmentTimeSlot || 'Standard Slot'}${b.vehicleNumber || b.busNumber || b.seatNumber ? ` (${[b.vehicleNumber, b.seatNumber ? `Seat ${b.seatNumber}` : ''].filter(Boolean).join(' • ')})` : ''}`;
+                                        return (
+                                          <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">
+                                            🚌 Departure: {b.departureTime || b.journeyTime || b.appointmentTimeSlot || 'Standard Slot'}{b.vehicleNumber || b.busNumber || b.seatNumber ? ` (${[b.vehicleNumber, b.seatNumber ? `Seat ${b.seatNumber}` : ''].filter(Boolean).join(' • ')})` : ''}
+                                          </p>
+                                        );
                                       })() : (
-                                        `⌚ Slot: ${b.appointmentTimeSlot || 'Standard Slot'}`
+                                        <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
+                                          ⌚ Slot: {b.appointmentTimeSlot || 'Standard Slot'}
+                                        </p>
                                       )}
-                                    </p>
+                                    </div>
                                   </div>
-                                  <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full ${
-                                    b.status === 'Completed' || b.status === 'Delivered' || b.status === 'Checked Out' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-455' :
-                                    b.status === 'Checked In' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-455' :
-                                    b.status === 'Pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-455' :
-                                    b.status === 'Cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-455' :
-                                    'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-455'
-                                  }`}>
-                                    {b.status}
-                                  </span>
+                                  {(() => {
+                                    let displayStatus = b.status || 'Pending';
+                                    if ((isStayBooking(b) || isServicesBooking(b)) && (displayStatus === 'Order Received' || displayStatus === 'Accepted')) {
+                                      displayStatus = b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending';
+                                    }
+                                    return (
+                                      <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
+                                        displayStatus === 'Completed' || displayStatus === 'Delivered' || displayStatus === 'Checked Out' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-400' :
+                                        displayStatus === 'Checked In' || displayStatus === 'Boarded' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-400' :
+                                        displayStatus === 'Confirmed' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-400' :
+                                        displayStatus === 'Pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-400' :
+                                        displayStatus === 'Cancelled' || displayStatus === 'Rejected' ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-400' :
+                                        'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-400'
+                                      }`}>
+                                        {displayStatus}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                                 
                                 <div className="flex justify-between items-center text-xs pt-2.5 border-t border-slate-200/50 dark:border-slate-900/60">
@@ -7110,27 +7607,34 @@ const VendorDashboard = () => {
                                       <>{b.doctorName ? 'Doctor:' : 'Service:'} <span className="font-semibold text-slate-800 dark:text-slate-200">{b.doctorName || (b.items && b.items[0]?.name) || b.product_details || 'N/A'}</span></>
                                     )}
                                   </div>
-                                  <select
-                                    onClick={(e) => e.stopPropagation()}
-                                    value={isStayBooking(b) && (b.status === 'Order Received' || b.status === 'Accepted') ? (b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending') : b.status}
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      handleUpdateOrderStatus(b._id || b.id, e.target.value);
-                                    }}
-                                    className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:border-primary-500 font-bold"
-                                  >
-                                    {isStayBooking(b)
-                                      ? ['Pending', 'Confirmed', 'Checked In', 'Checked Out', 'Completed', 'Cancelled'].map(status => (
-                                          <option key={status} value={status}>{status}</option>
-                                        ))
-                                      : isTravelBooking(b)
-                                      ? ['Pending', 'Confirmed', 'Boarded', 'Completed', 'Cancelled'].map(status => (
-                                          <option key={status} value={status}>{status}</option>
-                                        ))
-                                      : ['Pending', 'Confirmed', 'Accepted', 'Completed', 'Cancelled'].map(status => (
-                                          <option key={status} value={status}>{status}</option>
-                                        ))}
-                                  </select>
+                                  <div className="relative inline-flex items-center">
+                                    <select
+                                      onClick={(e) => e.stopPropagation()}
+                                      value={(isStayBooking(b) || isServicesBooking(b)) && (b.status === 'Order Received' || b.status === 'Accepted') ? (b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending') : b.status}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        handleUpdateOrderStatus(b._id || b.id || b.order_number, e.target.value);
+                                      }}
+                                      className="appearance-none bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] pl-2 pr-6 py-1 focus:outline-none focus:border-primary-500 font-bold cursor-pointer"
+                                    >
+                                      {isStayBooking(b)
+                                        ? ['Pending', 'Confirmed', 'Checked In', 'Checked Out', 'Completed', 'Cancelled'].map(status => (
+                                            <option key={status} value={status}>{status}</option>
+                                          ))
+                                        : isServicesBooking(b)
+                                        ? ['Pending', 'Confirmed', 'Completed', 'Cancelled'].map(status => (
+                                            <option key={status} value={status}>{status}</option>
+                                          ))
+                                        : isTravelBooking(b)
+                                        ? ['Pending', 'Confirmed', 'Boarded', 'Completed', 'Cancelled'].map(status => (
+                                            <option key={status} value={status}>{status}</option>
+                                          ))
+                                        : ['Pending', 'Confirmed', 'Accepted', 'Completed', 'Cancelled'].map(status => (
+                                            <option key={status} value={status}>{status}</option>
+                                          ))}
+                                    </select>
+                                    <ChevronDown size={12} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                  </div>
                                 </div>
                               </div>
                             ));
@@ -7563,24 +8067,27 @@ const VendorDashboard = () => {
                               {/* Status & Actions */}
                               <td className="px-6 py-4 text-right">
                                 <div className="flex flex-col items-end gap-2">
-                                  <select
-                                    value={(() => {
-                                      const rawStatus = (app.status || 'APPLICATION RECEIVED').toUpperCase();
-                                      if (['APPLICATION RECEIVED', 'PENDING', 'ORDER RECEIVED', 'APPLIED'].includes(rawStatus)) return 'APPLICATION RECEIVED';
-                                      if (['UNDER REVIEW', 'REVIEWING', 'INTERVIEWING', 'IN REVIEW', 'SCREENING'].includes(rawStatus)) return 'UNDER REVIEW';
-                                      if (['SHORTLISTED', 'SHORTLIST'].includes(rawStatus)) return 'SHORTLISTED';
-                                      if (['SELECTED', 'HIRED', 'ACCEPTED', 'APPROVED'].includes(rawStatus)) return 'SELECTED';
-                                      if (['REJECTED', 'DECLINED', 'CANCELLED'].includes(rawStatus)) return 'REJECTED';
-                                      return rawStatus;
-                                    })()}
-                                    disabled={isUpdating}
-                                    onChange={(e) => handleUpdateOrderStatus(app._id || app.id || app.order_number, e.target.value)}
-                                    className={`bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs px-2.5 py-1.5 w-44 focus:outline-none focus:border-primary-500 font-semibold ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                  >
-                                    {['APPLICATION RECEIVED', 'UNDER REVIEW', 'SHORTLISTED', 'SELECTED', 'REJECTED'].map(status => (
-                                      <option key={status} value={status}>{status}</option>
-                                    ))}
-                                  </select>
+                                  <div className="relative inline-flex items-center w-44">
+                                    <select
+                                      value={(() => {
+                                        const rawStatus = (app.status || 'APPLICATION RECEIVED').toUpperCase();
+                                        if (['APPLICATION RECEIVED', 'PENDING', 'ORDER RECEIVED', 'APPLIED'].includes(rawStatus)) return 'APPLICATION RECEIVED';
+                                        if (['UNDER REVIEW', 'REVIEWING', 'INTERVIEWING', 'IN REVIEW', 'SCREENING'].includes(rawStatus)) return 'UNDER REVIEW';
+                                        if (['SHORTLISTED', 'SHORTLIST'].includes(rawStatus)) return 'SHORTLISTED';
+                                        if (['SELECTED', 'HIRED', 'ACCEPTED', 'APPROVED'].includes(rawStatus)) return 'SELECTED';
+                                        if (['REJECTED', 'DECLINED', 'CANCELLED'].includes(rawStatus)) return 'REJECTED';
+                                        return rawStatus;
+                                      })()}
+                                      disabled={isUpdating}
+                                      onChange={(e) => handleUpdateOrderStatus(app._id || app.id || app.order_number, e.target.value)}
+                                      className={`appearance-none bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs pl-3 pr-8 py-1.5 w-full focus:outline-none focus:border-primary-500 font-semibold cursor-pointer ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
+                                      {['APPLICATION RECEIVED', 'UNDER REVIEW', 'SHORTLISTED', 'SELECTED', 'REJECTED'].map(status => (
+                                        <option key={status} value={status}>{status}</option>
+                                      ))}
+                                    </select>
+                                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                  </div>
                                   
                                   <button
                                     type="button"
@@ -7713,6 +8220,7 @@ const VendorDashboard = () => {
                                     <div>
                                       <p className="font-bold text-slate-900 dark:text-white">{c.name}</p>
                                       <p className="text-[10px] text-slate-400 font-mono">ID: {formatCustomerId(c)}</p>
+                                      <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Gender: {c.gender || 'Not provided'}</p>
                                     </div>
                                   </div>
                                 </td>
@@ -7775,6 +8283,7 @@ const VendorDashboard = () => {
                                 <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{c.name}</h3>
                                 <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[170px]" title={c.email}>{c.email}</p>
                                 <p className="text-[10px] text-slate-400 mt-0.5">ID: {formatCustomerId(c)}</p>
+                                <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Gender: {c.gender || 'Not provided'}</p>
                               </div>
                             </div>
 
@@ -8378,6 +8887,19 @@ const VendorDashboard = () => {
                 <p className="text-slate-800 dark:text-slate-200 text-xs mt-1">Update all your business profile and bank account information</p>
               </div>
 
+              {profileMessage && (
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-2 animate-fadeIn">
+                  <CheckCircle2 size={16} className="shrink-0" />
+                  <span>{profileMessage}</span>
+                </div>
+              )}
+              {profileError && (
+                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-2 animate-fadeIn">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{profileError}</span>
+                </div>
+              )}
+
               <form onSubmit={handleSaveProfile} noValidate className="space-y-6">
                 {/* General Info Section */}
                 <div>
@@ -8391,7 +8913,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.businessName}
-                        onChange={e => setProfileForm({ ...profileForm, businessName: e.target.value })}
+                        onChange={e => updateProfileField('businessName', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8403,7 +8925,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.name}
-                        onChange={e => setProfileForm({ ...profileForm, name: e.target.value })}
+                        onChange={e => updateProfileField('name', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8412,7 +8934,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.alternateVendorName}
-                        onChange={e => setProfileForm({ ...profileForm, alternateVendorName: e.target.value })}
+                        onChange={e => updateProfileField('alternateVendorName', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8421,7 +8943,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.coPartnerName}
-                        onChange={e => setProfileForm({ ...profileForm, coPartnerName: e.target.value })}
+                        onChange={e => updateProfileField('coPartnerName', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8430,7 +8952,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.agentName || ''}
-                        onChange={e => setProfileForm({ ...profileForm, agentName: e.target.value })}
+                        onChange={e => updateProfileField('agentName', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8439,7 +8961,7 @@ const VendorDashboard = () => {
                       <input
                         type="email"
                         value={profileForm.email}
-                        onChange={e => setProfileForm({ ...profileForm, email: e.target.value })}
+                        onChange={e => updateProfileField('email', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8449,7 +8971,7 @@ const VendorDashboard = () => {
                         type="text"
                         maxLength={10}
                         value={profileForm.mobileNumber}
-                        onChange={e => setProfileForm({ ...profileForm, mobileNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        onChange={e => updateProfileField('mobileNumber', e.target.value.replace(/\D/g, '').slice(0, 10))}
                         placeholder="10-digit mobile number"
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                       />
@@ -8460,7 +8982,7 @@ const VendorDashboard = () => {
                         type="text"
                         maxLength={10}
                         value={profileForm.telephone}
-                        onChange={e => setProfileForm({ ...profileForm, telephone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        onChange={e => updateProfileField('telephone', e.target.value.replace(/\D/g, '').slice(0, 10))}
                         placeholder="10-digit telephone"
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                       />
@@ -8470,7 +8992,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.fax}
-                        onChange={e => setProfileForm({ ...profileForm, fax: e.target.value })}
+                        onChange={e => updateProfileField('fax', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8480,7 +9002,7 @@ const VendorDashboard = () => {
                         type="text"
                         maxLength={10}
                         value={profileForm.alternateNumber}
-                        onChange={e => setProfileForm({ ...profileForm, alternateNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        onChange={e => updateProfileField('alternateNumber', e.target.value.replace(/\D/g, '').slice(0, 10))}
                         placeholder="10-digit alternate number"
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                       />
@@ -8500,7 +9022,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.address}
-                        onChange={e => setProfileForm({ ...profileForm, address: e.target.value })}
+                        onChange={e => updateProfileField('address', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8509,7 +9031,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.street}
-                        onChange={e => setProfileForm({ ...profileForm, street: e.target.value })}
+                        onChange={e => updateProfileField('street', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8518,7 +9040,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.city}
-                        onChange={e => setProfileForm({ ...profileForm, city: e.target.value })}
+                        onChange={e => updateProfileField('city', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8527,7 +9049,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.state}
-                        onChange={e => setProfileForm({ ...profileForm, state: e.target.value })}
+                        onChange={e => updateProfileField('state', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8536,7 +9058,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.country}
-                        onChange={e => setProfileForm({ ...profileForm, country: e.target.value })}
+                        onChange={e => updateProfileField('country', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8544,9 +9066,10 @@ const VendorDashboard = () => {
                       <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider pl-1">Postal Code</label>
                       <input
                         type="text"
+                        maxLength={6}
                         value={profileForm.postalCode}
-                        onChange={e => setProfileForm({ ...profileForm, postalCode: e.target.value })}
-                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                        onChange={e => updateProfileField('postalCode', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                       />
                     </div>
                     <div className="space-y-1">
@@ -8556,7 +9079,7 @@ const VendorDashboard = () => {
                         maxLength={10}
                         placeholder="e.g. ABCDE1234F"
                         value={profileForm.panNo || ''}
-                        onChange={e => setProfileForm({ ...profileForm, panNo: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) })}
+                        onChange={e => updateProfileField('panNo', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none uppercase font-mono"
                       />
                     </div>
@@ -8567,7 +9090,7 @@ const VendorDashboard = () => {
                         maxLength={12}
                         placeholder="12-digit Aadhaar Number"
                         value={profileForm.aadhaarNo || ''}
-                        onChange={e => setProfileForm({ ...profileForm, aadhaarNo: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+                        onChange={e => updateProfileField('aadhaarNo', e.target.value.replace(/\D/g, '').slice(0, 12))}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none font-mono"
                       />
                     </div>
@@ -8576,7 +9099,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.companyRegNo}
-                        onChange={e => setProfileForm({ ...profileForm, companyRegNo: e.target.value })}
+                        onChange={e => updateProfileField('companyRegNo', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8585,7 +9108,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.businessLicense}
-                        onChange={e => setProfileForm({ ...profileForm, businessLicense: e.target.value })}
+                        onChange={e => updateProfileField('businessLicense', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8601,7 +9124,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.accountHolderName}
-                        onChange={e => setProfileForm({ ...profileForm, accountHolderName: e.target.value })}
+                        onChange={e => updateProfileField('accountHolderName', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8610,7 +9133,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.bankName}
-                        onChange={e => setProfileForm({ ...profileForm, bankName: e.target.value })}
+                        onChange={e => updateProfileField('bankName', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8619,7 +9142,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.bankBranch}
-                        onChange={e => setProfileForm({ ...profileForm, bankBranch: e.target.value })}
+                        onChange={e => updateProfileField('bankBranch', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8628,7 +9151,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.bankStreet}
-                        onChange={e => setProfileForm({ ...profileForm, bankStreet: e.target.value })}
+                        onChange={e => updateProfileField('bankStreet', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8637,7 +9160,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.bankCity}
-                        onChange={e => setProfileForm({ ...profileForm, bankCity: e.target.value })}
+                        onChange={e => updateProfileField('bankCity', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8646,7 +9169,7 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.accountNo}
-                        onChange={e => setProfileForm({ ...profileForm, accountNo: e.target.value })}
+                        onChange={e => updateProfileField('accountNo', e.target.value)}
                         className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
                       />
                     </div>
@@ -8655,8 +9178,8 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.ifscCode}
-                        onChange={e => setProfileForm({ ...profileForm, ifscCode: e.target.value })}
-                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                        onChange={e => updateProfileField('ifscCode', e.target.value.toUpperCase())}
+                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none uppercase font-mono"
                       />
                     </div>
                     <div className="space-y-1">
@@ -8664,8 +9187,8 @@ const VendorDashboard = () => {
                       <input
                         type="text"
                         value={profileForm.swiftCode}
-                        onChange={e => setProfileForm({ ...profileForm, swiftCode: e.target.value })}
-                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+                        onChange={e => updateProfileField('swiftCode', e.target.value.toUpperCase())}
+                        className="w-full glass-input rounded-xl px-4 py-2.5 text-sm focus:outline-none uppercase font-mono"
                       />
                     </div>
                   </div>
@@ -8673,9 +9196,20 @@ const VendorDashboard = () => {
 
                 <button
                   type="submit"
-                  className="w-full bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-primary-600/15"
+                  disabled={isSavingProfile}
+                  className="w-full bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-primary-600/15 flex items-center justify-center gap-2 cursor-pointer text-sm"
                 >
-                  Save Business Profile Info
+                  {isSavingProfile ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Saving Business Profile...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={16} />
+                      Save Business Profile Info
+                    </>
+                  )}
                 </button>
               </form>
             </div>
@@ -12953,36 +13487,39 @@ required
                     No transactions recorded for this item yet.
                   </div>
                 ) : (
-                  <div className="max-h-[200px] overflow-y-auto pr-1 space-y-2">
+                  <div className="max-h-[320px] overflow-y-auto pr-2 space-y-2.5 custom-scrollbar">
                     {ordersList.map((ord, idx) => {
                       const isJobItem = vendorType.startsWith('Job') || selectedSoldItem.category === 'Jobs';
+                      const displayName = ord.memberName || ord.customerName || 'Customer details unavailable';
+                      const displayId = (ord.customerId && ord.customerId !== 'N/A' && ord.customerId !== 'FIC-CUST-100001' && !/^[0-9a-fA-F]{24}$/.test(ord.customerId)) ? ord.customerId : null;
+
                       return (
-                        <div key={idx} className="flex justify-between items-center p-3 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200/50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                          <div>
-                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 flex-wrap">
-                              <span>{ord.memberName || 'Customer'}</span>
-                              {ord.customerId && ord.customerId !== 'N/A' && ord.customerId !== 'FIC-CUST-100001' && (
-                                <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/50 px-1.5 py-0.2 rounded border border-indigo-200/40 dark:border-indigo-800/40">
-                                  {ord.customerId}
+                        <div key={idx} className="flex justify-between items-center p-3.5 bg-white dark:bg-slate-900/60 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors shadow-sm">
+                          <div className="min-w-0 flex-1 pr-3">
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-slate-900 dark:text-white truncate">{displayName}</span>
+                              {displayId && (
+                                <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-200/50 dark:border-indigo-800/50 shrink-0">
+                                  {displayId}
                                 </span>
                               )}
                             </div>
-                            <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                              {ord.date}
-                              {ord.phone && ` • ${ord.phone}`}
-                              {!isJobItem && ` • Qty: ${ord.quantity || 1}`}
+                            <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                              <span>{ord.date}</span>
+                              {ord.phone && <span>• {ord.phone}</span>}
+                              {!isJobItem && <span>• Qty: {ord.quantity || 1}</span>}
                             </div>
                           </div>
                           <div className="text-right shrink-0">
                             {!isJobItem && (
-                              <div className="text-xs font-bold text-slate-850 dark:text-slate-150">₹{(ord.amount || 0).toLocaleString()}</div>
+                              <div className="text-sm font-black text-slate-900 dark:text-white">₹{(ord.amount || 0).toLocaleString()}</div>
                             )}
-                            <span className={`inline-block text-[9px] font-extrabold px-1.5 py-0.5 rounded-full ${!isJobItem ? 'mt-1' : ''} ${
+                            <span className={`inline-block text-[9px] font-extrabold px-2.5 py-0.5 rounded-full ${!isJobItem ? 'mt-1' : ''} ${
                               ord.status === 'Completed' || ord.status === 'Delivered' || ord.status === 'Checked Out' ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/35' :
                               ord.status === 'Pending' ? 'bg-amber-100 dark:bg-yellow-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-yellow-900/35' :
                               'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200/50 dark:border-blue-900/35'
                             }`}>
-                              {ord.status}
+                              {ord.status || 'Completed'}
                             </span>
                           </div>
                         </div>
@@ -13428,13 +13965,13 @@ required
                     <div className="min-w-0 flex flex-col justify-start">
                       <span className="text-[10px] text-slate-400 font-semibold block">Hotel / Property Name</span>
                       <span className="font-bold text-slate-900 dark:text-white break-words mt-0.5">
-                        {selectedBillOrder.property?.name || selectedBillOrder.propertyName || selectedBillOrder.vendorName || user?.businessName || 'Not provided'}
+                        {selectedBillOrder.propertyDetails?.propertyName || selectedBillOrder.propertyName || selectedBillOrder.hotelName || (user?.businesses?.find(b => { const t = (b?.vendorType || b?.category || '').toLowerCase(); return t.includes('stay') || t.includes('hotel'); })?.businessName) || 'Enjoy Hotel'}
                       </span>
                     </div>
                     <div className="min-w-0 flex flex-col justify-start">
                       <span className="text-[10px] text-slate-400 font-semibold block">Property ID</span>
                       <span className="font-mono text-slate-700 dark:text-slate-300 break-all select-all text-[11px] mt-0.5">
-                        {selectedBillOrder.property?.propertyId || selectedBillOrder.propertyId || selectedBillOrder.vendorId || user?.businessId || 'Not provided'}
+                        {(() => { const pid = String(selectedBillOrder.propertyDetails?.propertyId || selectedBillOrder.property?.propertyId || selectedBillOrder.propertyId || '').trim(); return /^\d{13}$/.test(pid) ? pid : 'Not provided'; })()}
                       </span>
                     </div>
                     <div className="min-w-0 flex flex-col justify-start sm:col-span-2 md:col-span-1">
@@ -13458,7 +13995,7 @@ required
                     <div className="min-w-0 flex flex-col justify-start">
                       <span className="text-[10px] text-slate-400 font-semibold block">Rooms & Nights</span>
                       <span className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
-                        {selectedBillOrder.roomsCount || selectedBillOrder.roomCount || selectedBillOrder.numberOfRooms || 1} Room(s) • {selectedBillOrder.nightsCount || selectedBillOrder.numberOfNights || selectedBillOrder.nights || 1} Night(s)
+                        {(() => { const r = selectedBillOrder.roomsCount || selectedBillOrder.roomCount || selectedBillOrder.roomDetails?.roomsCount || selectedBillOrder.numberOfRooms; const n = selectedBillOrder.nightsCount || selectedBillOrder.numberOfNights || selectedBillOrder.nights || selectedBillOrder.roomDetails?.nightsCount; if (r && n) return `${r} ${r === 1 ? 'Room' : 'Rooms'} • ${n} ${n === 1 ? 'Night' : 'Nights'}`; if (r) return `${r} ${r === 1 ? 'Room' : 'Rooms'}`; if (n) return `${n} ${n === 1 ? 'Night' : 'Nights'}`; return 'Not provided'; })()}
                       </span>
                     </div>
                   </div>
@@ -13498,6 +14035,18 @@ required
                       <span className="text-[10px] text-slate-400 font-semibold block">Email Address</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">
                         {holder.email || 'Not provided'}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-slate-400 font-semibold block">Gender</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block capitalize">
+                        {holder.gender || 'Not provided'}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-slate-400 font-semibold block">Age</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere] block">
+                        {holder.age ? `${holder.age} Yrs` : 'Not provided'}
                       </span>
                     </div>
                     <div className="min-w-0">
@@ -15159,6 +15708,22 @@ required
           title={`Customer Purchase Details - ${selectedCustomerForDetails.name}`}
         >
           {(() => {
+            // Build vendor scope allowed IDs across user and all vendor businesses
+            const allowedVendorIds = new Set();
+            if (user?._id) allowedVendorIds.add(String(user._id));
+            if (user?.parentUserId) allowedVendorIds.add(String(user.parentUserId));
+            if (user?.vendorId) allowedVendorIds.add(String(user.vendorId));
+            if (user?.registrationId) allowedVendorIds.add(String(user.registrationId));
+            if (activeBusinessId) allowedVendorIds.add(String(activeBusinessId));
+            if (Array.isArray(user?.businesses)) {
+              user.businesses.forEach(b => {
+                if (b?._id) allowedVendorIds.add(String(b._id));
+                if (b?.id) allowedVendorIds.add(String(b.id));
+                if (b?.vendorId) allowedVendorIds.add(String(b.vendorId));
+                if (b?.businessId) allowedVendorIds.add(String(b.businessId));
+              });
+            }
+
             // Combine orders and bookings safely
             const allTxMap = new Map();
             [...(orders || []), ...(bookings || [])].forEach(tx => {
@@ -15170,8 +15735,8 @@ required
 
             const cNameLower = (selectedCustomerForDetails.name || '').trim().toLowerCase();
             const cEmailLower = (selectedCustomerForDetails.email || '').trim().toLowerCase();
-            const cPhoneDigits = String(selectedCustomerForDetails.phone || '').trim().replace(/\D/g, '');
-            const cMemberIdStr = String(selectedCustomerForDetails.memberId || selectedCustomerForDetails.id || selectedCustomerForDetails._id || selectedCustomerForDetails.customerId || '').trim();
+            const cPhoneDigits = String(selectedCustomerForDetails.phone || selectedCustomerForDetails.mobileNumber || '').trim().replace(/\D/g, '');
+            const cMemberIdStr = String(selectedCustomerForDetails.memberId || selectedCustomerForDetails.id || selectedCustomerForDetails._id || selectedCustomerForDetails.customerId || selectedCustomerForDetails.registrationId || '').trim();
             const cleanCustKey = cMemberIdStr.startsWith('cust_') ? cMemberIdStr.replace(/^cust_/, '').toLowerCase() : '';
 
             const custTransactions = allTransactions.filter(t => {
@@ -15182,22 +15747,21 @@ required
               if (classification === 'JOB_APPLICATION') return false;
 
               // Check vendor scope
-              const matchesVendor = !activeBusinessId ||
-                String(t.vendorId || t.vendor_id || '') === String(activeBusinessId) ||
-                String(t.vendorId || t.vendor_id || '') === String(user?.parentUserId || user?._id || '');
+              const tVendorId = String(t.vendorId || t.vendor_id || '').trim();
+              const matchesVendor = allowedVendorIds.size === 0 || !tVendorId || allowedVendorIds.has(tVendorId);
               if (!matchesVendor) return false;
 
               // Match customer identity
               const tName = (t.memberName || t.customer_name || t.bookingHolder?.name || '').trim().toLowerCase();
               const tEmail = (t.customer_email || t.email || t.candidateEmail || t.bookingHolder?.email || (t.memberId && t.memberId.includes('@') ? t.memberId : '') || '').trim().toLowerCase();
               const tPhoneDigits = String(t.customer_phone || t.phone || t.mobileNumber || t.bookingHolder?.phone || '').trim().replace(/\D/g, '');
-              const tMemberId = String(t.memberId || t.customerId || t.customerDisplayId || t.bookingHolder?.customerId || '').trim();
+              const tMemberId = String(t.memberId || t.customerId || t.customer_id || t.customerDisplayId || t.registrationId || t.bookingHolder?.customerId || t.bookingHolder?.customer_id || '').trim();
 
               if (cMemberIdStr && tMemberId && cMemberIdStr === tMemberId && !cMemberIdStr.startsWith('[object')) return true;
               if (cleanCustKey && (tMemberId.toLowerCase() === cleanCustKey || tName.toLowerCase() === cleanCustKey || (tEmail && tEmail.startsWith(cleanCustKey)))) return true;
               if (cEmailLower && tEmail && cEmailLower === tEmail) return true;
-              if (cPhoneDigits && tPhoneDigits && cPhoneDigits.length >= 8 && tPhoneDigits.includes(cPhoneDigits.slice(-8))) return true;
-              if (cNameLower && tName && cNameLower === tName && cNameLower !== 'customer' && cNameLower !== 'connect member') return true;
+              if (cPhoneDigits && tPhoneDigits && cPhoneDigits.length >= 8 && (tPhoneDigits.endsWith(cPhoneDigits.slice(-8)) || cPhoneDigits.endsWith(tPhoneDigits.slice(-8)))) return true;
+              if (cNameLower && tName && (cNameLower === tName || tName.includes(cNameLower) || cNameLower.includes(tName)) && cNameLower !== 'customer' && cNameLower !== 'connect member') return true;
               return false;
             });
 
@@ -15206,41 +15770,49 @@ required
               ? customerPurchases
               : custTransactions;
 
-            // Calculate spending from genuine transactions, falling back to authoritative summary
-            const computedTotalSpent = displayTransactions.reduce((sum, t) => {
+            // Calculate visits and spending from genuine transactions, falling back to authoritative summary
+            const completedTx = displayTransactions.filter(t => {
               const st = String(t.status || '').toLowerCase();
-              if (['cancelled', 'rejected', 'failed'].includes(st)) return sum;
+              return !['cancelled', 'rejected', 'failed'].includes(st);
+            });
+
+            const computedTotalSpent = completedTx.reduce((sum, t) => {
               return sum + Number(t.finalAmount || t.amount || t.totalAmount || 0);
             }, 0);
 
             const displayTotalSpent = computedTotalSpent > 0 ? computedTotalSpent : Number(selectedCustomerForDetails.totalSpent || 0);
+            const displayVisits = displayTransactions.length > 0 ? displayTransactions.length : Number(selectedCustomerForDetails.ordersCount || selectedCustomerForDetails.visits || 0);
 
             return (
               <div className="space-y-6 text-slate-800 dark:text-slate-100 animate-fadeIn">
                 {/* Header Summary */}
                 <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3.5">
+                  <div className="flex items-center gap-3.5 min-w-0">
                     <img
                       src={getCustomerAvatarUrl(selectedCustomerForDetails)}
                       alt={selectedCustomerForDetails.name}
-                      className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-800"
+                      className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-800 shrink-0"
                     />
-                    <div>
-                      <h3 className="text-base font-extrabold text-slate-900 dark:text-white">{selectedCustomerForDetails.name}</h3>
-                      <p className="text-xs text-slate-500 font-mono">{selectedCustomerForDetails.email || 'No email registered'}</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">ID: {formatCustomerId(selectedCustomerForDetails)}</p>
+                    <div className="min-w-0">
+                      <h3 className="text-base font-extrabold text-slate-900 dark:text-white truncate">{selectedCustomerForDetails.name}</h3>
+                      <p className="text-xs text-slate-500 font-mono truncate">{selectedCustomerForDetails.email || 'No email registered'}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5 truncate">ID: {formatCustomerId(selectedCustomerForDetails)}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">Gender: {selectedCustomerForDetails.gender || 'Not provided'}</p>
                     </div>
                   </div>
-                  <div className="flex gap-3 text-center sm:text-right">
-                    <div className="bg-white dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
-                      <span className="block text-[9px] font-extrabold uppercase text-slate-400">Total Visits</span>
-                      <span className="text-sm font-black text-slate-800 dark:text-slate-100">
-                        {selectedCustomerForDetails.ordersCount || displayTransactions.length || 1} times
-                      </span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="min-w-[105px] bg-white dark:bg-slate-950 px-4 py-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center text-center shadow-sm">
+                      <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">Total Visits</span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-lg font-black text-slate-900 dark:text-slate-100">
+                          {displayVisits}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">times</span>
+                      </div>
                     </div>
-                    <div className="bg-white dark:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
-                      <span className="block text-[9px] font-extrabold uppercase text-slate-400">Total Spent</span>
-                      <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">₹{displayTotalSpent}</span>
+                    <div className="min-w-[115px] bg-white dark:bg-slate-950 px-4 py-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center text-center shadow-sm">
+                      <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">Total Spent</span>
+                      <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">₹{displayTotalSpent.toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
@@ -15253,14 +15825,20 @@ required
 
                   {customerPurchasesLoading ? (
                     <div className="p-8 text-center bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
+                      <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
                       Loading purchase and booking records...
+                    </div>
+                  ) : customerPurchasesError && displayTransactions.length === 0 ? (
+                    <div className="p-6 text-center bg-rose-50 dark:bg-rose-950/20 rounded-2xl border border-rose-200 dark:border-rose-900/30 text-rose-600 text-xs space-y-2">
+                      <p className="font-semibold">{customerPurchasesError}</p>
+                      <p className="text-[11px] text-slate-500">Could not retrieve complete transaction records.</p>
                     </div>
                   ) : displayTransactions.length === 0 ? (
                     <div className="p-8 text-center bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
                       No transaction records found for this customer.
                     </div>
                   ) : (
-                    <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
+                    <div className="space-y-3.5 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                       {displayTransactions.map((tx, idx) => {
                         const isTravel = isTravelBooking(tx);
                         const isStay = !isTravel && isStayBooking(tx);
@@ -15276,6 +15854,7 @@ required
                         const txAmount = tx.finalAmount || tx.amount || tx.totalAmount || 0;
                         const txDate = tx.orderDate || tx.travelDate || tx.appointmentDate || tx.checkInDate || tx.createdAt || tx.created_at;
                         const formattedDate = txDate ? new Date(txDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+                        const sched = isStay ? resolveStaySchedule(tx) : null;
 
                         const statusBadge = (() => {
                           const raw = (tx.status || 'Order Received').toUpperCase();
@@ -15310,7 +15889,7 @@ required
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 text-xs">
                               <div>
                                 <span className="text-[10px] text-slate-400 block">Amount</span>
-                                <span className="font-extrabold text-emerald-600 dark:text-emerald-400">₹{txAmount}</span>
+                                <span className="font-extrabold text-emerald-600 dark:text-emerald-400">₹{txAmount.toLocaleString()}</span>
                               </div>
                               <div>
                                 <span className="text-[10px] text-slate-400 block">Date</span>
@@ -15323,7 +15902,7 @@ required
                               <div>
                                 <span className="text-[10px] text-slate-400 block">{isBooking ? 'Schedule' : 'Method'}</span>
                                 <span className="font-semibold text-indigo-600 dark:text-indigo-400 block truncate">
-                                  {isBooking ? (tx.checkInDate || tx.appointmentDate || tx.travelDate || 'Booked Slot') : (tx.paymentMethod || 'COD / Online')}
+                                  {isStay && sched ? `${sched.checkInDate} • ${sched.checkInTime}` : (isBooking ? (tx.checkInDate || tx.appointmentDate || tx.travelDate || 'Booked Slot') : (tx.paymentMethod || 'COD / Online'))}
                                 </span>
                               </div>
                             </div>

@@ -1,12 +1,14 @@
 
+const isCanonicalCustId = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-')) && String(id) !== 'FIC-CUST-100001';
+
 const formatCustomerId = (c, customersList = null) => {
   if (!c) return 'N/A';
   if (typeof c === 'object') {
-    if (c.customerDisplayId && (String(c.customerDisplayId).startsWith('FIC-CUS-') || String(c.customerDisplayId).startsWith('FIC-CUST-')) && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
-    if (c.customerId && (String(c.customerId).startsWith('FIC-CUS-') || String(c.customerId).startsWith('FIC-CUST-')) && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
-    if (c.registrationId && (String(c.registrationId).startsWith('FIC-CUS-') || String(c.registrationId).startsWith('FIC-CUST-')) && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
+    if (isCanonicalCustId(c.customerDisplayId)) return String(c.customerDisplayId);
+    if (isCanonicalCustId(c.customerId)) return String(c.customerId);
+    if (isCanonicalCustId(c.registrationId)) return String(c.registrationId);
+    if (isCanonicalCustId(c.memberId)) return String(c.memberId);
     if (c.registrationId && String(c.registrationId).startsWith('REG-')) return String(c.registrationId);
-    if (c.memberId && (String(c.memberId).startsWith('FIC-CUS-') || String(c.memberId).startsWith('FIC-CUST-')) && String(c.memberId) !== 'FIC-CUST-100001') return String(c.memberId);
 
     const list = Array.isArray(customersList) ? customersList : [];
     const oPhone = (c.customer_phone || c.phone || c.mobileNumber || c.candidatePhone || '').toString().trim().replace(/[^0-9]/g, '');
@@ -26,22 +28,34 @@ const formatCustomerId = (c, customersList = null) => {
       });
       if (match) {
         const mId = match.customerId || match.customerDisplayId || match.registrationId || match.userRegistrationId || match.memberId || match.id;
-        if (mId && String(mId) !== 'FIC-CUST-100001') return String(mId);
+        if (isCanonicalCustId(mId)) return String(mId);
       }
     }
-
-    if (c.registrationId && String(c.registrationId) !== 'FIC-CUST-100001') return String(c.registrationId);
-    if (c.customerDisplayId && String(c.customerDisplayId) !== 'FIC-CUST-100001') return String(c.customerDisplayId);
-    if (c.customerId && String(c.customerId) !== 'FIC-CUST-100001') return String(c.customerId);
-    if (c.memberId && String(c.memberId) !== 'FIC-CUST-100001' && !c.memberId.includes('@')) return String(c.memberId);
-    if (c.id && String(c.id) !== 'FIC-CUST-100001') return String(c.id);
   }
 
   const rawId = String(c).trim();
-  if ((rawId.startsWith('FIC-CUS-') || rawId.startsWith('FIC-CUST-')) && rawId !== 'FIC-CUST-100001') return rawId;
+  if (isCanonicalCustId(rawId)) return rawId;
   if (rawId.startsWith('REG-')) return rawId;
   return 'N/A';
 };
+
+const formatDisplayDate = (val) => {
+  if (!val || val === 'Not provided' || val === 'N/A') return 'Not provided';
+  const cleanStr = String(val).replace(/^[A-Za-z]+,\s*/, '').trim();
+  if (/^\d{1,2}\s+[A-Za-z]{3}\s+\d{4}$/.test(cleanStr)) {
+    return cleanStr;
+  }
+  let d = null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(cleanStr)) {
+    const [y, m, day] = cleanStr.substring(0, 10).split('-').map(Number);
+    d = new Date(y, m - 1, day);
+  } else {
+    d = new Date(cleanStr);
+  }
+  if (!d || isNaN(d.getTime())) return cleanStr || String(val);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
 import React from 'react';
 import { useDashboard } from '../../context/DashboardContext';
 import { 
@@ -308,11 +322,11 @@ const Orders = () => {
             </div>
 
             {/* Date range filter */}
-            <div className="w-full sm:w-48 shrink-0">
+            <div className="relative w-full sm:w-48 shrink-0">
               <select
                 value={orderTimeFilter}
                 onChange={(e) => setOrderTimeFilter(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300"
+                className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-4 pr-10 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
               >
                 <option value="All">All Time</option>
                 <option value="Today">Today</option>
@@ -322,21 +336,27 @@ const Orders = () => {
                 <option value="Last30Days">Last 30 Days</option>
                 <option value="LastYear">Last Year</option>
               </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                <ChevronDown size={16} />
+              </div>
             </div>
 
             {/* Status filter */}
-                  <div className="w-full sm:w-48 shrink-0">
-                    <select
-                      value={orderStatusFilter}
-                      onChange={(e) => setOrderStatusFilter(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 animate-fadeIn"
-                    >
-                      <option value="All">All Statuses</option>
-                      {terms.orderStatuses.map(status => (
-                        <option key={status} value={status}>{status}</option>
-                      ))}
-                    </select>
-                  </div>
+            <div className="relative w-full sm:w-48 shrink-0">
+              <select
+                value={orderStatusFilter}
+                onChange={(e) => setOrderStatusFilter(e.target.value)}
+                className="w-full appearance-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-4 pr-10 py-3 text-sm focus:outline-none focus:border-primary-500 font-semibold text-slate-700 dark:text-slate-300 animate-fadeIn cursor-pointer"
+              >
+                <option value="All">All Statuses</option>
+                {terms.orderStatuses.map(status => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                <ChevronDown size={16} />
+              </div>
+            </div>
 
 
                 </div>
@@ -544,7 +564,7 @@ const Orders = () => {
                                       </td>
                                       {/* Booking Schedule */}
                                       <td className="px-6 py-4 text-xs font-semibold text-slate-750 dark:text-slate-300">
-                                        <div>📅 {order.appointmentDate || (order.createdAt || order.created_at ? (order.createdAt || order.created_at).substring(0, 10) : 'N/A')}</div>
+                                        <div>📅 {formatDisplayDate(order.appointmentDate || order.createdAt || order.created_at)}</div>
                                         <div className="text-[10px] text-indigo-650 dark:text-indigo-400 font-bold mt-0.5">⌚ {order.appointmentTimeSlot || 'Standard Slot'}</div>
                                       </td>
                                       {/* Payment & Status */}
@@ -641,15 +661,18 @@ const Orders = () => {
                                   {/* Actions & View */}
                                   <td className="px-6 py-4 text-right">
                                     <div className="flex flex-col items-end gap-2">
-                                      <select
-                                        value={order.status}
-                                        onChange={(e) => handleUpdateOrderStatus(order._id, e.target.value)}
-                                        className="bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs px-2.5 py-1.5 w-36 focus:outline-none focus:border-primary-500 font-semibold"
-                                      >
-                                        {terms.orderStatuses.map(status => (
-                                          <option key={status} value={status}>{status}</option>
-                                        ))}
-                                      </select>
+                                      <div className="relative inline-flex items-center w-36">
+                                        <select
+                                          value={order.status}
+                                          onChange={(e) => handleUpdateOrderStatus(order._id, e.target.value)}
+                                          className="appearance-none bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs pl-3 pr-8 py-1.5 w-full focus:outline-none focus:border-primary-500 font-semibold cursor-pointer"
+                                        >
+                                          {terms.orderStatuses.map(status => (
+                                            <option key={status} value={status}>{status}</option>
+                                          ))}
+                                        </select>
+                                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                      </div>
                                       
                                       <button
                                         onClick={() => {
@@ -818,15 +841,18 @@ const Orders = () => {
                               <div className="text-slate-500 font-medium">
                                 {vendorType.startsWith('Hospital') ? 'Doctor:' : vendorType.startsWith('Hotel') ? 'Room Type:' : 'Service:'} <span className="font-semibold text-slate-800 dark:text-slate-200">{order.doctorName || order.items[0]?.name}</span>
                               </div>
-                              <select
-                                value={order.status}
-                                onChange={(e) => handleUpdateOrderStatus(order._id, e.target.value)}
-                                className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:border-primary-500 font-bold"
-                              >
-                                {terms.orderStatuses.map(status => (
-                                  <option key={status} value={status}>{status}</option>
-                                ))}
-                              </select>
+                              <div className="relative inline-flex items-center">
+                                <select
+                                  value={order.status}
+                                  onChange={(e) => handleUpdateOrderStatus(order._id, e.target.value)}
+                                  className="appearance-none bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] pl-2 pr-6 py-1 focus:outline-none focus:border-primary-500 font-bold cursor-pointer"
+                                >
+                                  {terms.orderStatuses.map(status => (
+                                    <option key={status} value={status}>{status}</option>
+                                  ))}
+                                </select>
+                                <ChevronDown size={12} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                              </div>
                             </div>
                           </div>
                         ));

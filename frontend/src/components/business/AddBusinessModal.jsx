@@ -352,16 +352,52 @@ export default function AddBusinessModal({
       for (const rule of docRules) {
         const docItem = formData.categoryDocs[rule.key];
         const is14DigitDoc = /fssai|insurance/i.test(rule.key || rule.label || '');
-        if (docItem?.docNumber) {
-          const numDigits = docItem.docNumber.replace(/\D/g, '').length;
-          if (is14DigitDoc && numDigits > 14) {
+        const isFitnessDoc = /fitness/i.test(rule.key || rule.label || '');
+        const isPermitDoc = /permit/i.test(rule.key || rule.label || '');
+        const isPropertyIdDoc = /property_id|^property id/i.test(rule.key || rule.label || '');
+
+        const rawDocNum = (docItem?.docNumber || '').trim();
+
+        if (rawDocNum) {
+          if (is14DigitDoc && rawDocNum.replace(/\D/g, '').length > 14) {
             setFormError(`${rule.label} cannot exceed 14 digits.`);
             return false;
           }
+          if (isFitnessDoc) {
+            if (rawDocNum.length < 15 || rawDocNum.length > 16 || !/^[A-Za-z0-9-]+$/.test(rawDocNum)) {
+              setFormError('Vehicle Fitness Certificate number must be between 15 and 16 characters.');
+              return false;
+            }
+          }
+          if (isPermitDoc) {
+            if (rawDocNum.length < 13 || rawDocNum.length > 16 || !/^[A-Za-z0-9/-]+$/.test(rawDocNum)) {
+              setFormError('Transport / Route Permit number must be between 13 and 16 characters.');
+              return false;
+            }
+          }
+          if (isPropertyIdDoc) {
+            if (!/^\d{13}$/.test(rawDocNum)) {
+              setFormError('Property ID must be exactly 13 numeric digits.');
+              return false;
+            }
+          }
         }
+
         if (rule.required) {
-          if (!docItem?.docNumber || !docItem.docNumber.trim()) {
+          if (!rawDocNum) {
             setFormError(`${rule.label} Number is required.`);
+            return false;
+          }
+          if (isFitnessDoc && (rawDocNum.length < 15 || rawDocNum.length > 16)) {
+            setFormError('Vehicle Fitness Certificate number must be between 15 and 16 characters.');
+            return false;
+          }
+          if (isPermitDoc && (rawDocNum.length < 13 || rawDocNum.length > 16)) {
+            setFormError('Transport / Route Permit number must be between 13 and 16 characters.');
+            return false;
+          }
+          if (isPropertyIdDoc && !/^\d{13}$/.test(rawDocNum)) {
+            setFormError('Property ID must be exactly 13 numeric digits.');
             return false;
           }
           if (!docItem?.docUrl) {
@@ -399,16 +435,45 @@ export default function AddBusinessModal({
 
     try {
       const chosenCategory = selectedCategory || formData.vendorType || selectedCategoryRef.current;
-      // Transform categoryDocs to array
-      const categoryDocuments = Object.entries(formData.categoryDocs)
-        .filter(([_, doc]) => doc.docUrl || doc.docNumber)
-        .map(([key, doc]) => ({
-          type: key,
-          label: doc.label || key,
-          docNumber: doc.docNumber || '',
-          docUrl: doc.docUrl || '',
-          status: 'Pending'
-        }));
+
+      // Transform categoryDocs to array and normalized map
+      const categoryDocsMap = {};
+      const categoryDocuments = Object.entries(formData.categoryDocs || {})
+        .filter(([_, doc]) => doc && (doc.docUrl || doc.docNumber))
+        .map(([key, doc]) => {
+          categoryDocsMap[key] = doc;
+          if (key === 'company_reg') {
+            categoryDocsMap.companyRegDoc = doc.docUrl;
+            categoryDocsMap.companyRegNo = doc.docNumber;
+          }
+          if (key === 'vehicle_rc') {
+            categoryDocsMap.rcDoc = doc.docUrl;
+            categoryDocsMap.rcNo = doc.docNumber;
+          }
+          if (key === 'vehicle_fitness') {
+            categoryDocsMap.fitnessDoc = doc.docUrl;
+            categoryDocsMap.fitnessNo = doc.docNumber;
+          }
+          if (key === 'transport_permit') {
+            categoryDocsMap.permitDoc = doc.docUrl;
+            categoryDocsMap.permitNo = doc.docNumber;
+          }
+          if (key === 'fssai_license' || key === 'food_safety') {
+            categoryDocsMap.foodSafetyDoc = doc.docUrl;
+            categoryDocsMap.foodSafetyLicenseNo = doc.docNumber;
+          }
+          if (key === 'bis_certificate') {
+            categoryDocsMap.bisDoc = doc.docUrl;
+            categoryDocsMap.bisNo = doc.docNumber;
+          }
+          return {
+            type: key,
+            label: doc.label || key,
+            docNumber: doc.docNumber || '',
+            docUrl: doc.docUrl || '',
+            status: 'Pending'
+          };
+        });
 
       const payload = {
         businessName: formData.businessName.trim() || chosenCategory,
@@ -427,7 +492,8 @@ export default function AddBusinessModal({
         aadhaarDoc: formData.aadhaarDoc,
         gstNumber: formData.gstNumber.trim().toUpperCase(),
         gstDoc: formData.gstDoc,
-        categoryDocuments
+        categoryDocuments,
+        categoryDocs: categoryDocsMap
       };
 
       const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/business`, payload);
@@ -1021,15 +1087,42 @@ export default function AddBusinessModal({
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           {(() => {
                             const is14DigitDoc = /fssai|insurance/i.test(rule.key || rule.label || '');
+                            const isFitnessDoc = /fitness/i.test(rule.key || rule.label || '');
+                            const isPermitDoc = /permit/i.test(rule.key || rule.label || '');
+                            const isPropertyIdDoc = /property_id|^property id/i.test(rule.key || rule.label || '');
+
+                            let maxL = undefined;
+                            let placeholder = rule.numberPlaceholder || 'Certificate / License Number';
+
+                            if (isFitnessDoc) {
+                              maxL = 16;
+                              placeholder = 'e.g. FC-987654321012 (15-16 chars)';
+                            } else if (isPermitDoc) {
+                              maxL = 16;
+                              placeholder = 'e.g. PERMIT-1234567 (13-16 chars)';
+                            } else if (isPropertyIdDoc) {
+                              maxL = 13;
+                              placeholder = '13-digit number (e.g. 1234567890123)';
+                            } else if (is14DigitDoc) {
+                              maxL = 14;
+                              placeholder = '14-digit number (e.g. 10012345678901)';
+                            }
+
                             return (
                               <input
                                 type="text"
-                                placeholder={is14DigitDoc ? '14-digit number (e.g. 10012345678901)' : (rule.numberPlaceholder || 'Certificate / License Number')}
+                                placeholder={placeholder}
                                 value={docState.docNumber || ''}
-                                maxLength={is14DigitDoc ? 14 : undefined}
+                                maxLength={maxL}
                                 onChange={(e) => {
                                   let val = e.target.value;
-                                  if (is14DigitDoc) {
+                                  if (isFitnessDoc) {
+                                    val = val.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 16).toUpperCase();
+                                  } else if (isPermitDoc) {
+                                    val = val.replace(/[^a-zA-Z0-9/-]/g, '').slice(0, 16).toUpperCase();
+                                  } else if (isPropertyIdDoc) {
+                                    val = val.replace(/\D/g, '').slice(0, 13);
+                                  } else if (is14DigitDoc) {
                                     val = val.replace(/\D/g, '').slice(0, 14);
                                   }
                                   setFormData(prev => ({
@@ -1100,6 +1193,94 @@ export default function AddBusinessModal({
                     {formData.gstNumber && (
                       <div><span className="font-semibold text-slate-400">GSTIN:</span> {formData.gstNumber}</div>
                     )}
+                  </div>
+                </div>
+
+                {/* Uploaded Documents & Regulatory Certificates Review */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3 text-xs">
+                  <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center justify-between">
+                    <span>Uploaded Documents & Regulatory Certificates</span>
+                    <span className="text-[11px] font-normal text-slate-400">Verification Review</span>
+                  </div>
+                  <div className="space-y-2">
+                    {/* Identity Docs */}
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">PAN Card Document</span>
+                      {formData.panDoc ? (
+                        <span className="text-xs font-bold text-emerald-500 flex items-center gap-1">
+                          <CheckCircle2 size={13} /> Uploaded
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-rose-500 flex items-center gap-1">
+                          <AlertTriangle size={13} /> Required
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">Aadhaar Card Document</span>
+                      {formData.aadhaarDoc ? (
+                        <span className="text-xs font-bold text-emerald-500 flex items-center gap-1">
+                          <CheckCircle2 size={13} /> Uploaded
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-rose-500 flex items-center gap-1">
+                          <AlertTriangle size={13} /> Required
+                        </span>
+                      )}
+                    </div>
+
+                    {formData.gstNumber && (
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">GST Registration Certificate</span>
+                        {formData.gstDoc ? (
+                          <span className="text-xs font-bold text-emerald-500 flex items-center gap-1">
+                            <CheckCircle2 size={13} /> Uploaded
+                          </span>
+                        ) : (
+                          <span className="text-xs font-bold text-amber-500 flex items-center gap-1">
+                            <AlertTriangle size={13} /> Optional
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Category-Specific Regulatory Certificates */}
+                    {(() => {
+                      const activeCat = selectedCategory || formData.vendorType || selectedCategoryRef.current;
+                      const docRules = getCategoryDocRules(activeCat);
+                      if (!docRules || docRules.length === 0) return null;
+                      return docRules.map((rule) => {
+                        const docState = formData.categoryDocs[rule.key] || {};
+                        const isUploaded = Boolean(docState.docUrl);
+                        return (
+                          <div 
+                            key={rule.key} 
+                            className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2">
+                              <span className="font-semibold text-slate-700 dark:text-slate-300">{rule.label}</span>
+                              {docState.docNumber && (
+                                <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">({docState.docNumber})</span>
+                              )}
+                            </div>
+                            <div>
+                              {isUploaded ? (
+                                <span className="text-xs font-bold text-emerald-500 flex items-center gap-1">
+                                  <CheckCircle2 size={13} /> Uploaded
+                                </span>
+                              ) : rule.required ? (
+                                <span className="text-xs font-bold text-rose-500 flex items-center gap-1">
+                                  <AlertTriangle size={13} /> Required
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400">Optional</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               </div>

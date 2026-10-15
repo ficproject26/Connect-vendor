@@ -383,12 +383,40 @@ const Overview = () => {
           // Top Selling Items (max 5)
           const getTopSellingData = () => {
             const itemMap = {};
+            const isServicesBiz = /service|hospital|technician|clinic/i.test(vendorType || '') || /service/i.test(terms?.catalogName || '');
             orders.forEach(o => {
-              if (o.status !== 'Cancelled') {
-                o.items?.forEach(item => {
-                  const name = item.name || 'Unknown Item';
-                  itemMap[name] = (itemMap[name] || 0) + (item.quantity || 1);
-                });
+              if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+                const itemList = (o.items && Array.isArray(o.items) && o.items.length > 0) ? o.items : [];
+                if (itemList.length > 0) {
+                  itemList.forEach(item => {
+                    const catMatch = catalog?.find(c => 
+                      (item.productId && String(c._id) === String(item.productId)) ||
+                      (item.id && String(c._id) === String(item.id)) ||
+                      (item.name && c.name && c.name.toLowerCase() === item.name.toLowerCase())
+                    );
+                    const name = catMatch ? catMatch.name : (item.name || o.serviceName || (o.doctorName ? `Dr. ${o.doctorName}` : null) || o.product_details || o.itemName || 'Item');
+                    if (name && name !== 'Unknown Item') {
+                      itemMap[name] = (itemMap[name] || 0) + (Number(item.quantity) || 1);
+                    }
+                  });
+                } else {
+                  const singleName = o.serviceName ||
+                    (o.doctorName ? `Dr. ${o.doctorName}` : null) ||
+                    (o.roomNumber ? `Room ${o.roomNumber}` : null) ||
+                    o.product_details ||
+                    o.itemName ||
+                    o.name ||
+                    o.title;
+
+                  const catMatch = catalog?.find(c => 
+                    (o.productId && String(c._id) === String(o.productId)) ||
+                    (singleName && c.name && c.name.toLowerCase() === singleName.toLowerCase())
+                  );
+                  const resolvedName = catMatch ? catMatch.name : (singleName || (isServicesBiz ? 'General Service' : 'Item'));
+                  if (resolvedName) {
+                    itemMap[resolvedName] = (itemMap[resolvedName] || 0) + 1;
+                  }
+                }
               }
             });
             return Object.keys(itemMap)
@@ -823,7 +851,7 @@ const Overview = () => {
         })()}
 
         {/* Catalog Tab */}
-    </>
+    </div>
   );
 };
 
