@@ -227,7 +227,7 @@ const validatePasswordMatch = (password, confirmPassword) => {
 
 const cleanAadhaar = (aadhaar) => {
   if (!aadhaar) return '';
-  return String(aadhaar).replace(/\D/g, '').slice(0, 12);
+  return String(aadhaar).replace(/\D/g, '');
 };
 
 const maskAadhaar = (aadhaar) => {
@@ -271,7 +271,7 @@ const validateAadhaar = (aadhaar, isRequired = true) => {
 
 const cleanPAN = (pan) => {
   if (!pan) return '';
-  return String(pan).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+  return String(pan).toUpperCase().replace(/[^A-Z0-9]/g, '');
 };
 
 const validatePAN = (pan, isRequired = true) => {
@@ -308,7 +308,7 @@ const validatePAN = (pan, isRequired = true) => {
 
 const cleanBankAccount = (account) => {
   if (!account) return '';
-  return String(account).replace(/\D/g, '').slice(0, 20);
+  return String(account).replace(/\D/g, '');
 };
 
 const maskBankAccount = (account) => {
@@ -388,7 +388,7 @@ const validateBankAccountMatch = (account, confirmAccount) => {
 
 const cleanIFSC = (ifsc) => {
   if (!ifsc) return '';
-  return String(ifsc).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11);
+  return String(ifsc).toUpperCase().replace(/[^A-Z0-9]/g, '');
 };
 
 const validateIFSC = (ifsc, isRequired = true) => {

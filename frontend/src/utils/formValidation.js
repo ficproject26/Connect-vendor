@@ -238,7 +238,7 @@ export const validatePasswordMatch = (password, confirmPassword) => {
 
 export const cleanAadhaar = (aadhaar) => {
   if (!aadhaar) return '';
-  return String(aadhaar).replace(/\D/g, '').slice(0, 12);
+  return String(aadhaar).replace(/\D/g, '');
 };
 
 export const maskAadhaar = (aadhaar) => {
@@ -282,7 +282,7 @@ export const validateAadhaar = (aadhaar, isRequired = true) => {
 
 export const cleanPAN = (pan) => {
   if (!pan) return '';
-  return String(pan).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+  return String(pan).toUpperCase().replace(/[^A-Z0-9]/g, '');
 };
 
 export const validatePAN = (pan, isRequired = true) => {
@@ -320,7 +320,7 @@ export const validatePAN = (pan, isRequired = true) => {
 
 export const cleanBankAccount = (account) => {
   if (!account) return '';
-  return String(account).replace(/\D/g, '').slice(0, 20);
+  return String(account).replace(/\D/g, '');
 };
 
 export const maskBankAccount = (account) => {
@@ -406,7 +406,7 @@ export const validateBankAccountMatch = (account, confirmAccount) => {
 
 export const cleanIFSC = (ifsc) => {
   if (!ifsc) return '';
-  return String(ifsc).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11);
+  return String(ifsc).toUpperCase().replace(/[^A-Z0-9]/g, '');
 };
 
 export const validateIFSC = (ifsc, isRequired = true) => {
@@ -462,6 +462,8 @@ export const getMinAgeCutoffDate = (minAge = 18) => {
   return cutoff.toISOString().split('T')[0];
 };
 
+export const getMaxAdultDOB = (minAge = 18) => getMinAgeCutoffDate(minAge);
+
 /**
  * Calculates exact age in years from date of birth, accurately accounting for month, day, and leap years.
  */
@@ -514,3 +516,46 @@ export const validateDOB = (dob, minAge = 18, isRequired = true) => {
 
   return { isValid: true, message: '', age };
 };
+
+// ==============================================================================
+// 10. INPUT FORMATTING EVENT HELPERS & PINCODE VALIDATION
+// ==============================================================================
+
+export const handleIndianMobileInput = (val) => {
+  return cleanIndianMobile(val).slice(0, 10);
+};
+
+export const handlePhoneInput = handleIndianMobileInput;
+
+export const handleAadhaarInput = (val) => {
+  return cleanAadhaar(val).slice(0, 12);
+};
+
+export const handlePANInput = (val) => {
+  return cleanPAN(val).slice(0, 10);
+};
+
+export const handleBankAccountInput = (val) => {
+  return cleanBankAccount(val).slice(0, 18);
+};
+
+export const handleIFSCInput = (val) => {
+  return cleanIFSC(val).slice(0, 11);
+};
+
+export const validatePincode = (val, isRequired = true) => {
+  if (!val || (typeof val === 'string' && !val.trim())) {
+    if (!isRequired) return { isValid: true, message: '', sanitizedValue: '' };
+    return { isValid: false, message: 'PIN code is required.', sanitizedValue: '' };
+  }
+  const clean = String(val).replace(/\D/g, '');
+  if (!/^[1-9][0-9]{5}$/.test(clean)) {
+    return { isValid: false, message: 'Enter a valid 6-digit Indian PIN code.', sanitizedValue: clean };
+  }
+  return { isValid: true, message: '', sanitizedValue: clean };
+};
+
+export const handlePincodeInput = (val) => {
+  return (val || '').replace(/\D/g, '').slice(0, 6);
+};
+
