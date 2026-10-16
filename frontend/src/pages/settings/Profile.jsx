@@ -11,6 +11,22 @@ import Modal from '../../components/common/Modal';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { getVendorBackendUrl } from '../../services/apiSetup';
 import { updateUser } from '../../store/authSlice';
+import {
+  normalizeName,
+  validateName,
+  normalizeEmail,
+  validateEmail,
+  normalizeIndianMobile,
+  validateIndianMobile,
+  normalizePAN,
+  validatePAN,
+  normalizeAadhaar,
+  validateAadhaar,
+  normalizeAccountNumber,
+  validateAccountNumber,
+  normalizeIFSC,
+  validateIFSC
+} from '../../utils/validation';
 
 const Profile = () => {
   const {
@@ -179,17 +195,106 @@ const Profile = () => {
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
-    const cleanAadhaar = profileForm.aadhaarNo ? String(profileForm.aadhaarNo).replace(/\D/g, '').slice(0, 12) : '';
-    if (cleanAadhaar && cleanAadhaar.length !== 12) {
-      setError('Please enter a valid 12-digit Aadhaar number.');
-      return;
+    setError('');
+    setMessage('');
+
+    if (profileForm.businessName) {
+      const bizErr = validateName(profileForm.businessName, 'Business Name');
+      if (bizErr) {
+        setError(bizErr);
+        return;
+      }
     }
+    if (profileForm.name) {
+      const nameErr = validateName(profileForm.name, 'Contact Person / Owner Name');
+      if (nameErr) {
+        setError(nameErr);
+        return;
+      }
+    }
+    if (profileForm.email) {
+      const emailErr = validateEmail(profileForm.email, 'Email Address');
+      if (emailErr) {
+        setError(emailErr);
+        return;
+      }
+    }
+    if (profileForm.mobileNumber) {
+      const mobileErr = validateIndianMobile(profileForm.mobileNumber, 'Mobile Number');
+      if (mobileErr) {
+        setError(mobileErr);
+        return;
+      }
+    }
+    if (profileForm.alternateNumber) {
+      const altErr = validateIndianMobile(profileForm.alternateNumber, 'Alternate Mobile Number', false);
+      if (altErr) {
+        setError(altErr);
+        return;
+      }
+    }
+    if (profileForm.telephone) {
+      const telErr = validateIndianMobile(profileForm.telephone, 'Telephone Number', false);
+      if (telErr) {
+        setError(telErr);
+        return;
+      }
+    }
+    if (profileForm.panNo) {
+      const panErr = validatePAN(profileForm.panNo, 'PAN Number', false);
+      if (panErr) {
+        setError(panErr);
+        return;
+      }
+    }
+    if (profileForm.aadhaarNo) {
+      const aadhaarErr = validateAadhaar(profileForm.aadhaarNo, 'Aadhaar Number', false);
+      if (aadhaarErr) {
+        setError(aadhaarErr);
+        return;
+      }
+    }
+    if (profileForm.accountHolderName) {
+      const holderErr = validateName(profileForm.accountHolderName, 'Account Holder Name', { required: false });
+      if (holderErr) {
+        setError(holderErr);
+        return;
+      }
+    }
+    if (profileForm.accountNo) {
+      const accErr = validateAccountNumber(profileForm.accountNo, profileForm.bankName, 'Bank Account Number', false);
+      if (accErr) {
+        setError(accErr);
+        return;
+      }
+    }
+    if (profileForm.ifscCode) {
+      const ifscErr = validateIFSC(profileForm.ifscCode, 'IFSC Code', false);
+      if (ifscErr) {
+        setError(ifscErr);
+        return;
+      }
+    }
+
     try {
-      const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/profile`, {
+      const cleanPayload = {
         ...profileForm,
-        aadhaarNo: cleanAadhaar,
+        name: profileForm.name ? normalizeName(profileForm.name) : '',
+        businessName: profileForm.businessName ? normalizeName(profileForm.businessName) : '',
+        contactPerson: profileForm.contactPerson ? normalizeName(profileForm.contactPerson) : (profileForm.name ? normalizeName(profileForm.name) : ''),
+        email: profileForm.email ? normalizeEmail(profileForm.email) : '',
+        mobileNumber: profileForm.mobileNumber ? normalizeIndianMobile(profileForm.mobileNumber) : '',
+        alternateNumber: profileForm.alternateNumber ? normalizeIndianMobile(profileForm.alternateNumber) : '',
+        telephone: profileForm.telephone ? normalizeIndianMobile(profileForm.telephone) : '',
+        panNo: profileForm.panNo ? normalizePAN(profileForm.panNo) : '',
+        aadhaarNo: profileForm.aadhaarNo ? normalizeAadhaar(profileForm.aadhaarNo) : '',
+        accountHolderName: profileForm.accountHolderName ? normalizeName(profileForm.accountHolderName) : '',
+        accountNo: profileForm.accountNo ? normalizeAccountNumber(profileForm.accountNo) : '',
+        ifscCode: profileForm.ifscCode ? normalizeIFSC(profileForm.ifscCode) : '',
         activeBusinessId
-      }, getAxiosConfig());
+      };
+
+      const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/profile`, cleanPayload, getAxiosConfig());
       if (res.data.success) {
         setMessage('Business profile updated successfully!');
         const updatedData = res.data.data || res.data.user;

@@ -3,6 +3,24 @@ const bcrypt = require('bcryptjs');
 const qrcode = require('qrcode');
 const { User, MembershipPlan, MembershipCard } = require('../models/Schemas');
 const { uploadToCloudinary } = require('../config/cloudinary');
+const {
+  normalizeName,
+  validateName,
+  normalizeEmail,
+  validateEmail,
+  normalizeIndianMobile,
+  validateIndianMobile,
+  validatePassword,
+  normalizeAadhaar,
+  validateAadhaar,
+  normalizePAN,
+  validatePAN,
+  normalizeAccountNumber,
+  validateAccountNumber,
+  normalizeIFSC,
+  validateIFSC,
+  validateDOB
+} = require('../utils/validation');
 
 // Helper function to generate JWT with scoped claims
 const generateToken = (id, email, extraClaims = {}) => {
@@ -135,7 +153,7 @@ const registerVendor = async (req, res) => {
       operatingHours
     } = req.body;
 
-    // Validate fields
+    // Validate mandatory fields
     if (
       !email || 
       !password || 
@@ -156,46 +174,82 @@ const registerVendor = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide all required fields (*)' });
     }
 
-    // Validate PAN Number format
-    if (panNo && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panNo.toUpperCase().trim())) {
-      return res.status(400).json({ success: false, message: 'Invalid PAN Number format. PAN must be 10 characters (5 uppercase letters, 4 digits, 1 letter, e.g. ABCDE1234F).' });
+    // 1. Name validation (Auto-capitalize first letter of each word, valid chars, length check)
+    const contactPersonErr = validateName(contactPerson, 'Owner / Contact Person Name');
+    if (contactPersonErr) return res.status(400).json({ success: false, message: contactPersonErr });
+
+    const businessNameErr = validateName(businessName, 'Vendor / Business Name', { minLength: 2, maxLength: 100 });
+    if (businessNameErr) return res.status(400).json({ success: false, message: businessNameErr });
+
+    if (agentName) {
+      const agentErr = validateName(agentName, 'Agent Name', { required: false });
+      if (agentErr) return res.status(400).json({ success: false, message: agentErr });
     }
 
-    // Validate Aadhaar Number format if provided
-    if (aadhaarNo && !/^\d{12}$/.test(aadhaarNo.trim())) {
-      return res.status(400).json({ success: false, message: 'Invalid Aadhaar Number format. Must be a 12-digit number.' });
+    if (coPartnerName) {
+      const coPartnerErr = validateName(coPartnerName, 'Co-partner Name', { required: false });
+      if (coPartnerErr) return res.status(400).json({ success: false, message: coPartnerErr });
     }
 
-    // Validate email format
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|in|org|net|co|edu|gov|info|biz|us|uk|ca|au)$/i;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ success: false, message: 'Enter valid email id.' });
+    const holderNameErr = validateName(accountHolderName, 'Account Holder Name');
+    if (holderNameErr) return res.status(400).json({ success: false, message: holderNameErr });
+
+    // 2. Email validation (RFC standard, exactly one @, valid domain & extension)
+    const emailErr = validateEmail(email, 'Email Address');
+    if (emailErr) return res.status(400).json({ success: false, message: emailErr });
+
+    // 3. Indian Mobile Number validation (exactly 10 digits starting with 6, 7, 8, 9)
+    const mobileErr = validateIndianMobile(mobileNumber, 'Mobile Number');
+    if (mobileErr) return res.status(400).json({ success: false, message: mobileErr });
+
+    if (alternateNumber) {
+      const altErr = validateIndianMobile(alternateNumber, 'Alternate Mobile Number', false);
+      if (altErr) return res.status(400).json({ success: false, message: altErr });
     }
 
-    // Validate phone number format (exactly 10 digits)
-    const mobileRegex = /^\d{10}$/;
-    if (!mobileRegex.test(mobileNumber)) {
-      return res.status(400).json({ success: false, message: 'Phone number must be 10 digits.' });
-    }
-    if (alternateNumber && !mobileRegex.test(alternateNumber)) {
-      return res.status(400).json({ success: false, message: 'Alternate phone number must be 10 digits.' });
+    // 4. Password validation (min 6 chars, uppercase, digit, special character)
+    const passwordErr = validatePassword(password, 'Account Password');
+    if (passwordErr) return res.status(400).json({ success: false, message: passwordErr });
+
+    // 5. Aadhaar Number validation (exactly 12 digits, format validation)
+    if (aadhaarNo) {
+      const aadhaarErr = validateAadhaar(aadhaarNo, 'Aadhaar Number', false);
+      if (aadhaarErr) return res.status(400).json({ success: false, message: aadhaarErr });
     }
 
-    // Validate password complexity
-    const hasLowercase = /[a-z]/.test(password);
-    const hasUppercase = /[A-Z]/.test(password);
-    const hasDigit = /\d/.test(password);
-    const hasSpecial = /[@$!%*?&#_.\-+=^~`/\\{}()|[\]:;\"'<>,?]/.test(password);
+    // 6. PAN Card validation (5 uppercase letters, 4 digits, 1 uppercase letter)
+    const panErr = validatePAN(panNo, 'PAN Number');
+    if (panErr) return res.status(400).json({ success: false, message: panErr });
 
-    if (password.length < 6 || !hasLowercase || !hasUppercase || !hasDigit || !hasSpecial) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Password must be at least 6 characters and contain uppercase letters, lowercase letters, numbers, and special characters (e.g. Dhanu@12345).' 
-      });
+    // 7. Bank Account Number validation (documented bank rules or safe 9-18 digit length)
+    const accErr = validateAccountNumber(accountNo, bankName, 'Account Number');
+    if (accErr) return res.status(400).json({ success: false, message: accErr });
+
+    // 8. IFSC Code validation (11 chars, 5th char 0, alphanumeric)
+    const ifscErr = validateIFSC(ifscCode, 'IFSC Code');
+    if (ifscErr) return res.status(400).json({ success: false, message: ifscErr });
+
+    // 9. Date of Birth and Minimum Age (minimum 18 years calculation)
+    if (req.body.dob || req.body.dateOfBirth) {
+      const dobErr = validateDOB(req.body.dob || req.body.dateOfBirth, 18, 'Date of Birth');
+      if (dobErr) return res.status(400).json({ success: false, message: dobErr });
     }
+
+    // Normalized values
+    const cleanEmail = normalizeEmail(email);
+    const cleanContactPerson = normalizeName(contactPerson);
+    const cleanBusinessName = normalizeName(businessName);
+    const cleanAgentName = agentName ? normalizeName(agentName) : '';
+    const cleanCoPartnerName = coPartnerName ? normalizeName(coPartnerName) : '';
+    const cleanAccountHolderName = normalizeName(accountHolderName);
+    const cleanMobileNumber = normalizeIndianMobile(mobileNumber);
+    const cleanAlternateNumber = alternateNumber ? normalizeIndianMobile(alternateNumber) : '';
+    const cleanPanNo = normalizePAN(panNo);
+    const cleanAadhaarNo = aadhaarNo ? normalizeAadhaar(aadhaarNo) : '';
+    const cleanAccountNo = normalizeAccountNumber(accountNo);
+    const cleanIfscCode = normalizeIFSC(ifscCode);
 
     // Check if user already exists (case-insensitive)
-    const cleanEmail = email.trim().toLowerCase();
     const escapedEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const userExists = await User.findOne({
       email: { $regex: new RegExp('^' + escapedEmail + '$', 'i') }
@@ -292,13 +346,13 @@ const registerVendor = async (req, res) => {
       existingV = await User.findOne({ $or: [{ vendorId: generatedVendorId }, { registrationId: generatedVendorId }] });
     }
 
-    // Create vendor user
+    // Create vendor user with normalized values
     const vendor = await User.create({
       _id: newVendorObjectId,
       vendorId: generatedVendorId,
       registrationId: generatedVendorId,
-      name: contactPerson, // Set name to contactPerson for general dashboard usage
-      email,
+      name: cleanContactPerson, // Set name to contactPerson for general dashboard usage
+      email: cleanEmail,
       password: hashedPassword,
       role: 'Vendor',
       status: 'Pending', // Put vendor registration under admin approval
@@ -308,10 +362,10 @@ const registerVendor = async (req, res) => {
       categoryId: finalCategoryId,
       subcategory,
       baseVendorType,
-      businessName,
-      agentName,
-      alternateVendorName,
-      contactPerson,
+      businessName: cleanBusinessName,
+      agentName: cleanAgentName,
+      alternateVendorName: alternateVendorName ? normalizeName(alternateVendorName) : '',
+      contactPerson: cleanContactPerson,
       address,
       street,
       city,
@@ -320,23 +374,23 @@ const registerVendor = async (req, res) => {
       postalCode,
       telephone,
       fax,
-      mobileNumber,
+      mobileNumber: cleanMobileNumber,
       gstStatus,
-      panNo,
-      aadhaarNo,
+      panNo: cleanPanNo,
+      aadhaarNo: cleanAadhaarNo,
       companyRegNo,
       msmeStatus,
-      accountHolderName,
+      accountHolderName: cleanAccountHolderName,
       bankName,
       bankBranch,
       bankStreet,
       bankCity,
-      accountNo,
-      ifscCode,
+      accountNo: cleanAccountNo,
+      ifscCode: cleanIfscCode,
       swiftCode,
       businessLicense,
-      alternateNumber,
-      coPartnerName,
+      alternateNumber: cleanAlternateNumber,
+      coPartnerName: cleanCoPartnerName,
       logo,
       businessWebsite,
       operatingHours,
@@ -534,27 +588,25 @@ const registerMember = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please fill all required fields' });
     }
 
-    // Validate email format
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|in|org|net|co|edu|gov|info|biz|us|uk|ca|au)$/i;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ success: false, message: 'Enter valid email id.' });
+    const nameErr = validateName(name, 'Member Name');
+    if (nameErr) return res.status(400).json({ success: false, message: nameErr });
+
+    const emailErr = validateEmail(email, 'Email Address');
+    if (emailErr) return res.status(400).json({ success: false, message: emailErr });
+
+    const passwordErr = validatePassword(password, 'Account Password');
+    if (passwordErr) return res.status(400).json({ success: false, message: passwordErr });
+
+    if (req.body.dob || req.body.dateOfBirth) {
+      const dobErr = validateDOB(req.body.dob || req.body.dateOfBirth, 18, 'Date of Birth');
+      if (dobErr) return res.status(400).json({ success: false, message: dobErr });
     }
 
-    // Validate password complexity
-    const hasLowercase = /[a-z]/.test(password);
-    const hasUppercase = /[A-Z]/.test(password);
-    const hasDigit = /\d/.test(password);
-    const hasSpecial = /[@$!%*?&#_.\-+=^~`/\\{}()|[\]:;\"'<>,?]/.test(password);
-
-    if (password.length < 6 || !hasLowercase || !hasUppercase || !hasDigit || !hasSpecial) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Password must be at least 6 characters and contain uppercase letters, lowercase letters, numbers, and special characters (e.g. Dhanu@12345).' 
-      });
-    }
+    const cleanName = normalizeName(name);
+    const cleanEmail = normalizeEmail(email);
 
     // Check if user already exists
-    const userExists = await User.findOne({ email });
+    const userExists = await User.findOne({ email: cleanEmail });
     if (userExists) {
       return res.status(400).json({ success: false, message: 'User already exists with this email' });
     }
@@ -571,8 +623,8 @@ const registerMember = async (req, res) => {
 
     // Create Member User
     const user = await User.create({
-      name,
-      email,
+      name: cleanName,
+      email: cleanEmail,
       password: hashedPassword,
       role: 'Member',
       status: 'Approved'

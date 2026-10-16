@@ -18,6 +18,26 @@ import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl, formatImageUrl 
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 import { compressImage } from '../utils/imageCompressor';
+import {
+  normalizeName,
+  validateName,
+  normalizeEmail,
+  validateEmail,
+  normalizeIndianMobile,
+  validateIndianMobile,
+  validatePassword,
+  validatePasswordMatch,
+  normalizePAN,
+  validatePAN,
+  normalizeAadhaar,
+  validateAadhaar,
+  normalizeAccountNumber,
+  validateAccountNumber,
+  normalizeIFSC,
+  validateIFSC,
+  getMaxAdultDOB,
+  validateDOB
+} from '../utils/validation';
 
 const SubscriptionManagement = lazy(() => import('./business/SubscriptionManagement'));
 const VendorPayments = lazy(() => import('./payments/VendorPayments'));
@@ -4154,15 +4174,62 @@ const VendorDashboard = () => {
 
   const handleSavePartner = async (e) => {
     e.preventDefault();
+    setError('');
+    setMessage('');
+
+    const nameErr = validateName(partnerForm.name, 'Partner Name');
+    if (nameErr) {
+      setError(nameErr);
+      return;
+    }
+
+    const phoneErr = validateIndianMobile(partnerForm.phone, 'Partner Mobile Number');
+    if (phoneErr) {
+      setError(phoneErr);
+      return;
+    }
+
+    if (partnerForm.email) {
+      const emailErr = validateEmail(partnerForm.email, 'Partner Email', false);
+      if (emailErr) {
+        setError(emailErr);
+        return;
+      }
+    }
+
+    if (partnerForm.dob) {
+      const dobErr = validateDOB(partnerForm.dob, 18, 'Partner Date of Birth', false);
+      if (dobErr) {
+        setError(dobErr);
+        return;
+      }
+    }
+
+    if (partnerForm.emergencyContact) {
+      const emErr = validateIndianMobile(partnerForm.emergencyContact, 'Emergency Contact Number', false);
+      if (emErr) {
+        setError(emErr);
+        return;
+      }
+    }
+
+    const cleanPartnerForm = {
+      ...partnerForm,
+      name: normalizeName(partnerForm.name),
+      phone: normalizeIndianMobile(partnerForm.phone),
+      email: partnerForm.email ? normalizeEmail(partnerForm.email) : '',
+      emergencyContact: partnerForm.emergencyContact ? normalizeIndianMobile(partnerForm.emergencyContact) : ''
+    };
+
     try {
       if (isEditPartner) {
-        const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/delivery-partners/${selectedPartnerId}`, partnerForm, getAxiosConfig());
+        const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/delivery-partners/${selectedPartnerId}`, cleanPartnerForm, getAxiosConfig());
         if (res.data.success) {
           setPartners(partners.map(p => p._id === selectedPartnerId ? res.data.data : p));
           setMessage('Delivery partner updated successfully!');
         }
       } else {
-        const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, partnerForm, getAxiosConfig());
+        const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, cleanPartnerForm, getAxiosConfig());
         if (res.data.success) {
           setPartners([...partners, res.data.data]);
           setMessage('Delivery partner added successfully!');
@@ -4194,56 +4261,114 @@ const VendorDashboard = () => {
     setProfileError('');
     setProfileMessage('');
 
-    if (!profileForm.businessName || !profileForm.businessName.trim()) {
-      setProfileError('Business Name is required.');
-      return;
+    if (profileForm.businessName) {
+      const bizErr = validateName(profileForm.businessName, 'Business Name');
+      if (bizErr) {
+        setProfileError(bizErr);
+        setError(bizErr);
+        return;
+      }
     }
-    if (!profileForm.name || !profileForm.name.trim()) {
-      setProfileError('Owner / Contact Person Name is required.');
-      return;
+    if (profileForm.name) {
+      const nameErr = validateName(profileForm.name, 'Owner / Contact Person Name');
+      if (nameErr) {
+        setProfileError(nameErr);
+        setError(nameErr);
+        return;
+      }
     }
-
-    let cleanMobile = profileForm.mobileNumber ? String(profileForm.mobileNumber).replace(/\D/g, '') : '';
-    if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) {
-      cleanMobile = cleanMobile.slice(-10);
+    if (profileForm.email) {
+      const emailErr = validateEmail(profileForm.email, 'Email Address');
+      if (emailErr) {
+        setProfileError(emailErr);
+        setError(emailErr);
+        return;
+      }
     }
-    cleanMobile = cleanMobile.slice(0, 10);
-    if (profileForm.mobileNumber && cleanMobile.length < 10) {
-      setProfileError('Please enter a valid 10-digit mobile number.');
-      return;
+    if (profileForm.mobileNumber) {
+      const mobileErr = validateIndianMobile(profileForm.mobileNumber, 'Mobile Number');
+      if (mobileErr) {
+        setProfileError(mobileErr);
+        setError(mobileErr);
+        return;
+      }
     }
-
-    let cleanTel = profileForm.telephone ? String(profileForm.telephone).replace(/\D/g, '') : '';
-    if (cleanTel.length > 10 && cleanTel.startsWith('91')) cleanTel = cleanTel.slice(-10);
-    cleanTel = cleanTel.slice(0, 10);
-
-    let cleanAlt = profileForm.alternateNumber ? String(profileForm.alternateNumber).replace(/\D/g, '') : '';
-    if (cleanAlt.length > 10 && cleanAlt.startsWith('91')) cleanAlt = cleanAlt.slice(-10);
-    cleanAlt = cleanAlt.slice(0, 10);
+    if (profileForm.telephone) {
+      const telErr = validateIndianMobile(profileForm.telephone, 'Telephone Number', false);
+      if (telErr) {
+        setProfileError(telErr);
+        setError(telErr);
+        return;
+      }
+    }
+    if (profileForm.alternateNumber) {
+      const altErr = validateIndianMobile(profileForm.alternateNumber, 'Alternate Phone Number', false);
+      if (altErr) {
+        setProfileError(altErr);
+        setError(altErr);
+        return;
+      }
+    }
+    if (profileForm.panNo) {
+      const panErr = validatePAN(profileForm.panNo, 'PAN Number', false);
+      if (panErr) {
+        setProfileError(panErr);
+        setError(panErr);
+        return;
+      }
+    }
+    if (profileForm.aadhaarNo) {
+      const aadhaarErr = validateAadhaar(profileForm.aadhaarNo, 'Aadhaar Number', false);
+      if (aadhaarErr) {
+        setProfileError(aadhaarErr);
+        setError(aadhaarErr);
+        return;
+      }
+    }
+    if (profileForm.accountHolderName) {
+      const holderErr = validateName(profileForm.accountHolderName, 'Account Holder Name', { required: false });
+      if (holderErr) {
+        setProfileError(holderErr);
+        setError(holderErr);
+        return;
+      }
+    }
+    if (profileForm.accountNo) {
+      const accErr = validateAccountNumber(profileForm.accountNo, profileForm.bankName, 'Account Number', false);
+      if (accErr) {
+        setProfileError(accErr);
+        setError(accErr);
+        return;
+      }
+    }
+    if (profileForm.ifscCode) {
+      const ifscErr = validateIFSC(profileForm.ifscCode, 'IFSC Code', false);
+      if (ifscErr) {
+        setProfileError(ifscErr);
+        setError(ifscErr);
+        return;
+      }
+    }
 
     const cleanPostal = profileForm.postalCode ? String(profileForm.postalCode).replace(/\D/g, '').slice(0, 6) : '';
-    const cleanPan = profileForm.panNo ? String(profileForm.panNo).toUpperCase().replace(/[^A-Z0-9]/g, '').trim() : '';
-    const cleanAadhaar = profileForm.aadhaarNo ? String(profileForm.aadhaarNo).replace(/\D/g, '').slice(0, 12) : '';
-
-    if (cleanAadhaar && cleanAadhaar.length !== 12) {
-      const errText = 'Please enter a valid 12-digit Aadhaar number.';
-      setError(errText);
-      setProfileError(errText);
-      return;
-    }
 
     setIsSavingProfile(true);
     try {
       const sanitizedProfileForm = {
         ...profileForm,
-        businessName: profileForm.businessName.trim(),
-        name: profileForm.name.trim(),
-        mobileNumber: cleanMobile,
-        telephone: cleanTel,
-        alternateNumber: cleanAlt,
+        businessName: profileForm.businessName ? normalizeName(profileForm.businessName) : '',
+        name: profileForm.name ? normalizeName(profileForm.name) : '',
+        contactPerson: profileForm.contactPerson ? normalizeName(profileForm.contactPerson) : (profileForm.name ? normalizeName(profileForm.name) : ''),
+        email: profileForm.email ? normalizeEmail(profileForm.email) : '',
+        mobileNumber: profileForm.mobileNumber ? normalizeIndianMobile(profileForm.mobileNumber) : '',
+        telephone: profileForm.telephone ? normalizeIndianMobile(profileForm.telephone) : '',
+        alternateNumber: profileForm.alternateNumber ? normalizeIndianMobile(profileForm.alternateNumber) : '',
         postalCode: cleanPostal,
-        panNo: cleanPan,
-        aadhaarNo: cleanAadhaar,
+        panNo: profileForm.panNo ? normalizePAN(profileForm.panNo) : '',
+        aadhaarNo: profileForm.aadhaarNo ? normalizeAadhaar(profileForm.aadhaarNo) : '',
+        accountHolderName: profileForm.accountHolderName ? normalizeName(profileForm.accountHolderName) : '',
+        accountNo: profileForm.accountNo ? normalizeAccountNumber(profileForm.accountNo) : '',
+        ifscCode: profileForm.ifscCode ? normalizeIFSC(profileForm.ifscCode) : '',
         activeBusinessId
       };
 
@@ -4285,6 +4410,11 @@ const VendorDashboard = () => {
   const handleChangePassword = async (e) => {
     e.preventDefault();
     if (!passwordForm.newPassword) return;
+    const passErr = validatePassword(passwordForm.newPassword, 'New Password');
+    if (passErr) {
+      setError(passErr);
+      return;
+    }
     try {
       const res = await axios.put(`${getVendorBackendUrl()}/api/vendor/change-password`, passwordForm, getAxiosConfig());
       if (res.data.success) {
@@ -4314,6 +4444,11 @@ const VendorDashboard = () => {
     e.preventDefault();
     if (!otp || !passwordForm.newPassword) {
       setError('Please provide OTP and new password.');
+      return;
+    }
+    const passErr = validatePassword(passwordForm.newPassword, 'New Password');
+    if (passErr) {
+      setError(passErr);
       return;
     }
     setError('');
@@ -12406,6 +12541,7 @@ required
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">Date of Birth</label>
                         <input
                           type="date"
+                          max={getMaxAdultDOB()}
                           value={partnerForm.dob}
                           onChange={e => setPartnerForm({ ...partnerForm, dob: e.target.value })}
                           className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"

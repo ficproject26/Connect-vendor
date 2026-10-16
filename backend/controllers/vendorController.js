@@ -6,6 +6,24 @@ const { Product, Order, Customer, DeliveryPartner, User, MembershipCard, Platfor
 const { COMPLETE_CAT_TAXONOMY } = require('../data/completeTaxonomy');
 const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES, cacheManager } = require('../realtime/realtimeManager');
 const { findPincodeAdmin, CATEGORY_DOC_RULES } = require('../utils/territoryRouting');
+const {
+  normalizeName,
+  validateName,
+  normalizeEmail,
+  validateEmail,
+  normalizeIndianMobile,
+  validateIndianMobile,
+  validatePassword,
+  normalizeAadhaar,
+  validateAadhaar,
+  normalizePAN,
+  validatePAN,
+  normalizeAccountNumber,
+  validateAccountNumber,
+  normalizeIFSC,
+  validateIFSC,
+  validateDOB
+} = require('../utils/validation');
 
 // High-performance cached vendor user lookup (short 30s TTL to absorb concurrent burst requests)
 const vendorUserCache = new Map();
@@ -3673,14 +3691,44 @@ const getCustomerPurchases = async (req, res) => {
 const createDeliveryPartner = async (req, res) => {
   try {
     const vendorId = req.user._id;
-    const { name, phone } = req.body;
+    const { name, phone, email, dob, emergencyContact } = req.body;
 
     if (!name || !phone) {
       return res.status(400).json({ success: false, message: 'Name and phone number are required' });
     }
 
+    const nameErr = validateName(name, 'Partner Name');
+    if (nameErr) return res.status(400).json({ success: false, message: nameErr });
+
+    const phoneErr = validateIndianMobile(phone, 'Partner Mobile Number');
+    if (phoneErr) return res.status(400).json({ success: false, message: phoneErr });
+
+    if (email) {
+      const emailErr = validateEmail(email, 'Partner Email', false);
+      if (emailErr) return res.status(400).json({ success: false, message: emailErr });
+    }
+
+    if (dob) {
+      const dobErr = validateDOB(dob, 18, 'Partner Date of Birth', false);
+      if (dobErr) return res.status(400).json({ success: false, message: dobErr });
+    }
+
+    if (emergencyContact) {
+      const emergencyErr = validateIndianMobile(emergencyContact, 'Emergency Contact Number', false);
+      if (emergencyErr) return res.status(400).json({ success: false, message: emergencyErr });
+    }
+
+    const cleanName = normalizeName(name);
+    const cleanPhone = normalizeIndianMobile(phone);
+    const cleanEmail = email ? normalizeEmail(email) : '';
+    const cleanEmergency = emergencyContact ? normalizeIndianMobile(emergencyContact) : '';
+
     const partner = await DeliveryPartner.create({
       ...req.body,
+      name: cleanName,
+      phone: cleanPhone,
+      email: cleanEmail || req.body.email,
+      emergencyContact: cleanEmergency || req.body.emergencyContact,
       vendorId,
       status: req.body.status || 'Available'
     });
@@ -3749,11 +3797,34 @@ const updateDeliveryPartner = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Delivery partner not found or unauthorized' });
     }
 
+    const updateData = { ...req.body, vendorId: req.user._id };
+    if (req.body.name) {
+      const nameErr = validateName(req.body.name, 'Partner Name');
+      if (nameErr) return res.status(400).json({ success: false, message: nameErr });
+      updateData.name = normalizeName(req.body.name);
+    }
+    if (req.body.phone) {
+      const phoneErr = validateIndianMobile(req.body.phone, 'Partner Mobile Number');
+      if (phoneErr) return res.status(400).json({ success: false, message: phoneErr });
+      updateData.phone = normalizeIndianMobile(req.body.phone);
+    }
+    if (req.body.email) {
+      const emailErr = validateEmail(req.body.email, 'Partner Email', false);
+      if (emailErr) return res.status(400).json({ success: false, message: emailErr });
+      updateData.email = normalizeEmail(req.body.email);
+    }
+    if (req.body.dob) {
+      const dobErr = validateDOB(req.body.dob, 18, 'Partner Date of Birth', false);
+      if (dobErr) return res.status(400).json({ success: false, message: dobErr });
+    }
+    if (req.body.emergencyContact) {
+      const emergencyErr = validateIndianMobile(req.body.emergencyContact, 'Emergency Contact Number', false);
+      if (emergencyErr) return res.status(400).json({ success: false, message: emergencyErr });
+      updateData.emergencyContact = normalizeIndianMobile(req.body.emergencyContact);
+    }
+
     const updated = await DeliveryPartner.findByIdAndUpdate(req.params.id, {
-      $set: {
-        ...req.body,
-        vendorId: req.user._id
-      }
+      $set: updateData
     }, { new: true });
 
     // Real-Time Event Generation (AFTER DB success)
@@ -3845,15 +3916,46 @@ const updateProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    // Sanitize and normalize inputs gracefully without breaking legacy records
-    if (req.body.mobileNumber !== undefined && req.body.mobileNumber !== null) {
-      let cleanMobile = String(req.body.mobileNumber).replace(/\D/g, '');
-      if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) {
-        cleanMobile = cleanMobile.slice(-10);
-      }
-      if (cleanMobile.length === 10) {
-        req.body.mobileNumber = cleanMobile;
-      }
+    // Sanitize and validate inputs gracefully with global validation rules
+    if (req.body.name !== undefined && req.body.name !== null && String(req.body.name).trim() !== '') {
+      const nameErr = validateName(req.body.name, 'Name');
+      if (nameErr) return res.status(400).json({ success: false, message: nameErr });
+      req.body.name = normalizeName(req.body.name);
+    }
+    if (req.body.contactPerson !== undefined && req.body.contactPerson !== null && String(req.body.contactPerson).trim() !== '') {
+      const contactErr = validateName(req.body.contactPerson, 'Contact Person Name');
+      if (contactErr) return res.status(400).json({ success: false, message: contactErr });
+      req.body.contactPerson = normalizeName(req.body.contactPerson);
+    }
+    if (req.body.agentName !== undefined && req.body.agentName !== null && String(req.body.agentName).trim() !== '') {
+      const agentErr = validateName(req.body.agentName, 'Agent Name', { required: false });
+      if (agentErr) return res.status(400).json({ success: false, message: agentErr });
+      req.body.agentName = normalizeName(req.body.agentName);
+    }
+    if (req.body.coPartnerName !== undefined && req.body.coPartnerName !== null && String(req.body.coPartnerName).trim() !== '') {
+      const coPartnerErr = validateName(req.body.coPartnerName, 'Co-partner Name', { required: false });
+      if (coPartnerErr) return res.status(400).json({ success: false, message: coPartnerErr });
+      req.body.coPartnerName = normalizeName(req.body.coPartnerName);
+    }
+    if (req.body.accountHolderName !== undefined && req.body.accountHolderName !== null && String(req.body.accountHolderName).trim() !== '') {
+      const holderErr = validateName(req.body.accountHolderName, 'Account Holder Name');
+      if (holderErr) return res.status(400).json({ success: false, message: holderErr });
+      req.body.accountHolderName = normalizeName(req.body.accountHolderName);
+    }
+    if (req.body.email !== undefined && req.body.email !== null && String(req.body.email).trim() !== '') {
+      const emailErr = validateEmail(req.body.email, 'Email Address');
+      if (emailErr) return res.status(400).json({ success: false, message: emailErr });
+      req.body.email = normalizeEmail(req.body.email);
+    }
+    if (req.body.mobileNumber !== undefined && req.body.mobileNumber !== null && String(req.body.mobileNumber).trim() !== '') {
+      const mobileErr = validateIndianMobile(req.body.mobileNumber, 'Mobile Number');
+      if (mobileErr) return res.status(400).json({ success: false, message: mobileErr });
+      req.body.mobileNumber = normalizeIndianMobile(req.body.mobileNumber);
+    }
+    if (req.body.alternateNumber !== undefined && req.body.alternateNumber !== null && String(req.body.alternateNumber).trim() !== '') {
+      const altErr = validateIndianMobile(req.body.alternateNumber, 'Alternate Mobile Number', false);
+      if (altErr) return res.status(400).json({ success: false, message: altErr });
+      req.body.alternateNumber = normalizeIndianMobile(req.body.alternateNumber);
     }
     if (req.body.postalCode !== undefined && req.body.postalCode !== null) {
       const cleanPostal = String(req.body.postalCode).replace(/\D/g, '').slice(0, 6);
@@ -3861,26 +3963,27 @@ const updateProfile = async (req, res) => {
         req.body.postalCode = cleanPostal;
       }
     }
-    if (req.body.panNo !== undefined && req.body.panNo !== null) {
-      const cleanPan = String(req.body.panNo).toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
-      if (cleanPan && cleanPan !== 'NA' && cleanPan !== 'N/A') {
-        req.body.panNo = cleanPan;
-      }
+    if (req.body.panNo !== undefined && req.body.panNo !== null && String(req.body.panNo).trim() !== '') {
+      const panErr = validatePAN(req.body.panNo, 'PAN Number');
+      if (panErr) return res.status(400).json({ success: false, message: panErr });
+      req.body.panNo = normalizePAN(req.body.panNo);
     }
-    if (req.body.aadhaarNo !== undefined && req.body.aadhaarNo !== null) {
-      const cleanAadhaar = String(req.body.aadhaarNo).replace(/\D/g, '').slice(0, 12);
-      if (cleanAadhaar.length === 12) {
-        req.body.aadhaarNo = cleanAadhaar;
-        user.aadhaarNo = cleanAadhaar;
-      } else if (cleanAadhaar.length === 0) {
-        req.body.aadhaarNo = '';
-        user.aadhaarNo = '';
-      } else {
-        return res.status(400).json({ success: false, message: 'Aadhaar number must be exactly 12 digits' });
-      }
+    if (req.body.aadhaarNo !== undefined && req.body.aadhaarNo !== null && String(req.body.aadhaarNo).trim() !== '') {
+      const aadhaarErr = validateAadhaar(req.body.aadhaarNo, 'Aadhaar Number');
+      if (aadhaarErr) return res.status(400).json({ success: false, message: aadhaarErr });
+      const cleanAadhaar = normalizeAadhaar(req.body.aadhaarNo);
+      req.body.aadhaarNo = cleanAadhaar;
+      user.aadhaarNo = cleanAadhaar;
     }
-    if (req.body.email !== undefined && req.body.email !== null) {
-      req.body.email = String(req.body.email).trim().toLowerCase();
+    if (req.body.accountNo !== undefined && req.body.accountNo !== null && String(req.body.accountNo).trim() !== '') {
+      const accErr = validateAccountNumber(req.body.accountNo, req.body.bankName || user.bankName, 'Account Number');
+      if (accErr) return res.status(400).json({ success: false, message: accErr });
+      req.body.accountNo = normalizeAccountNumber(req.body.accountNo);
+    }
+    if (req.body.ifscCode !== undefined && req.body.ifscCode !== null && String(req.body.ifscCode).trim() !== '') {
+      const ifscErr = validateIFSC(req.body.ifscCode, 'IFSC Code');
+      if (ifscErr) return res.status(400).json({ success: false, message: ifscErr });
+      req.body.ifscCode = normalizeIFSC(req.body.ifscCode);
     }
     if (req.body.gstNumber !== undefined && req.body.gstNumber !== null) {
       req.body.gstNumber = String(req.body.gstNumber).toUpperCase().trim();
@@ -3996,16 +4099,9 @@ const changePassword = async (req, res) => {
     }
 
     // Enforce password complexity
-    const hasLowercase = /[a-z]/.test(newPassword);
-    const hasUppercase = /[A-Z]/.test(newPassword);
-    const hasDigit = /\d/.test(newPassword);
-    const hasSpecial = /[@$!%*?&#_.\-+=^~`/\\{}()|[\]:;\"'<>,?]/.test(newPassword);
-
-    if (newPassword.length < 6 || !hasLowercase || !hasUppercase || !hasDigit || !hasSpecial) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'New password must be at least 6 characters and contain uppercase letters, lowercase letters, numbers, and special characters.' 
-      });
+    const passwordErr = validatePassword(newPassword, 'New Password');
+    if (passwordErr) {
+      return res.status(400).json({ success: false, message: passwordErr });
     }
 
     const user = await User.findById(vendorId);
@@ -4108,16 +4204,9 @@ const resetPasswordOTP = async (req, res) => {
     }
 
     // Enforce password complexity
-    const hasLowercase = /[a-z]/.test(newPassword);
-    const hasUppercase = /[A-Z]/.test(newPassword);
-    const hasDigit = /\d/.test(newPassword);
-    const hasSpecial = /[@$!%*?&#_.\-+=^~`/\\{}()|[\]:;\"'<>,?]/.test(newPassword);
-
-    if (newPassword.length < 6 || !hasLowercase || !hasUppercase || !hasDigit || !hasSpecial) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'New password must be at least 6 characters and contain uppercase letters, lowercase letters, numbers, and special characters.' 
-      });
+    const passwordErr = validatePassword(newPassword, 'New Password');
+    if (passwordErr) {
+      return res.status(400).json({ success: false, message: passwordErr });
     }
 
     const user = await User.findById(vendorId);
@@ -4435,6 +4524,10 @@ const addBusiness = async (req, res) => {
     if (!cleanPhone) {
       return res.status(400).json({ success: false, message: 'Phone Number is required.' });
     }
+    const phoneErr = validateIndianMobile(cleanPhone, 'Business Phone Number');
+    if (phoneErr) {
+      return res.status(400).json({ success: false, message: phoneErr });
+    }
 
     const fullAddress = `${cleanDoorNo}, ${cleanVillage}, ${cleanTaluk}, ${cleanDistrict}, ${cleanState} - ${pinVal}`;
 
@@ -4447,11 +4540,20 @@ const addBusiness = async (req, res) => {
     if (!cleanPanNo) {
       return res.status(400).json({ success: false, message: 'PAN Card Number is required.' });
     }
+    const panErr = validatePAN(cleanPanNo, 'PAN Card Number');
+    if (panErr) {
+      return res.status(400).json({ success: false, message: panErr });
+    }
+
     if (!cleanPanDoc) {
       return res.status(400).json({ success: false, message: 'PAN Card Document upload is required.' });
     }
     if (!cleanAadhaarNo) {
       return res.status(400).json({ success: false, message: 'Aadhaar Number is required.' });
+    }
+    const aadhaarErr = validateAadhaar(cleanAadhaarNo, 'Aadhaar Number');
+    if (aadhaarErr) {
+      return res.status(400).json({ success: false, message: aadhaarErr });
     }
     if (!cleanAadhaarDoc) {
       return res.status(400).json({ success: false, message: 'Aadhaar Document upload is required.' });

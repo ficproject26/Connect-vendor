@@ -11,6 +11,24 @@ import {
 } from 'lucide-react';
 import { vendorTaxonomy, getBaseVendorType } from '../../data/servicesData';
 import { getVendorBackendUrl } from '../../services/apiSetup';
+import {
+  normalizeName,
+  validateName,
+  normalizeEmail,
+  validateEmail,
+  normalizeIndianMobile,
+  validateIndianMobile,
+  validatePassword,
+  validatePasswordMatch,
+  normalizeAadhaar,
+  validateAadhaar,
+  normalizePAN,
+  validatePAN,
+  normalizeAccountNumber,
+  validateAccountNumber,
+  normalizeIFSC,
+  validateIFSC
+} from '../../utils/validation';
 
 const Register = () => {
   const [searchParams] = useSearchParams();
@@ -493,53 +511,59 @@ const Register = () => {
 
   const validateStep = (step) => {
     if (step === 1) {
-      if (!businessName) return 'Business / Shop Name is required';
+      const bizNameErr = validateName(businessName, 'Business / Shop Name');
+      if (bizNameErr) return bizNameErr;
       if (!logoFile) return 'Shop / Brand Logo is required';
       const businessesList = getSelectedBusinessesList();
       if (businessesList.length === 0 || !currentVendorType) return 'Main Business Category is required. Please select a category.';
-      if (!mobileNumber) return 'Business Phone Number is required';
-      if (!/^\d{10}$/.test(mobileNumber)) return 'Phone number must be 10 digits';
-      if (!email) return 'Email Address is required';
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|in|org|net|co|edu|gov|info|biz|us|uk|ca|au)$/i;
-      if (!emailRegex.test(email)) return 'Enter valid email id';
+      const mobileErr = validateIndianMobile(mobileNumber, 'Business Phone Number');
+      if (mobileErr) return mobileErr;
+      const emailErr = validateEmail(email, 'Email Address');
+      if (emailErr) return emailErr;
       if (!address) return 'Business Address is required';
       if (!state) return 'State is required';
       if (!city) return 'City is required';
       if (!postalCode) return 'Postal Code / PIN Code is required';
       if (!operatingHours) return 'Business Operating Hours are required';
     } else if (step === 2) {
-      if (!contactPerson) return 'Owner / Contact Person Name is required';
-      if (alternateNumber && !/^\d{10}$/.test(alternateNumber)) return 'Alternate number must be 10 digits';
-      
-      const hasLowercase = /[a-z]/.test(password);
-      const hasUppercase = /[A-Z]/.test(password);
-      const hasDigit = /\d/.test(password);
-      const hasSpecial = /[@$!%*?&#_.\-+=^~`/\\{}()|[\]:;\\"'<>,?]/.test(password);
-
-      if (!password) return 'Account Password is required';
-      if (password.length < 6 || !hasLowercase || !hasUppercase || !hasDigit || !hasSpecial) {
-        return 'Password must be at least 6 characters and contain uppercase, lowercase, numbers, and special characters';
+      const contactErr = validateName(contactPerson, 'Owner / Contact Person Name');
+      if (contactErr) return contactErr;
+      if (alternateNumber) {
+        const altErr = validateIndianMobile(alternateNumber, 'Alternate Phone Number', false);
+        if (altErr) return altErr;
       }
-      if (password !== confirmPassword) return 'Passwords do not match';
+      if (agentName) {
+        const agentErr = validateName(agentName, 'Agent Name', { required: false });
+        if (agentErr) return agentErr;
+      }
+      if (coPartnerName) {
+        const coErr = validateName(coPartnerName, 'Co-partner Name', { required: false });
+        if (coErr) return coErr;
+      }
+      const passErr = validatePassword(password, 'Account Password');
+      if (passErr) return passErr;
+      const matchErr = validatePasswordMatch(password, confirmPassword);
+      if (matchErr) return matchErr;
     } else if (step === 3) {
-      const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
-      const aadhaarRegex = /^\d{12}$/;
-      if (!panNo) return 'PAN Number is required';
-      if (!panRegex.test(panNo.toUpperCase())) return 'Enter valid 10-character PAN Number (e.g. ABCDE1234F)';
-      if (!aadhaarNo) return 'Aadhaar Number is required';
-      if (!aadhaarRegex.test(aadhaarNo)) return 'Enter valid 12-digit Aadhaar Number';
+      const panErr = validatePAN(panNo, 'PAN Number');
+      if (panErr) return panErr;
+      const aadhaarErr = validateAadhaar(aadhaarNo, 'Aadhaar Number');
+      if (aadhaarErr) return aadhaarErr;
       if (!licenseFile) return 'Business License Document is required';
       if (!gstStatus) return 'GST Status is required';
       if (gstStatus === 'GST Registered' && !gstNumber) return 'GST Number is required when GST Registered is selected';
       if (!msmeStatus) return 'MSME Status is required';
     } else if (step === 4) {
-      if (!accountHolderName) return 'Account Holder Name is required';
+      const holderErr = validateName(accountHolderName, 'Account Holder Name');
+      if (holderErr) return holderErr;
       if (!bankName) return 'Bank Name is required';
       if (!bankBranch) return 'Bank Branch is required';
       if (!bankStreet) return 'Bank Street is required';
       if (!bankCity) return 'Bank City is required';
-      if (!accountNo) return 'Account Number is required';
-      if (!ifscCode) return 'IFSC Code is required';
+      const accErr = validateAccountNumber(accountNo, bankName, 'Account Number');
+      if (accErr) return accErr;
+      const ifscErr = validateIFSC(ifscCode, 'IFSC Code');
+      if (ifscErr) return ifscErr;
     }
     return '';
   };
@@ -584,12 +608,35 @@ const Register = () => {
       return;
     }
 
+    // Verify all steps are fully valid according to global validation rules
+    for (let s = 1; s <= 4; s++) {
+      const stepError = validateStep(s);
+      if (stepError) {
+        setError(stepError);
+        setCurrentStep(s);
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
+      const cleanContactPerson = normalizeName(contactPerson);
+      const cleanBusinessName = normalizeName(businessName);
+      const cleanAgentName = normalizeName(agentName);
+      const cleanCoPartner = normalizeName(coPartnerName);
+      const cleanAccountHolder = normalizeName(accountHolderName);
+      const cleanEmail = normalizeEmail(email);
+      const cleanMobile = normalizeIndianMobile(mobileNumber);
+      const cleanAltMobile = normalizeIndianMobile(alternateNumber);
+      const cleanPAN = normalizePAN(panNo);
+      const cleanAadhaar = normalizeAadhaar(aadhaarNo);
+      const cleanAccountNo = normalizeAccountNumber(accountNo);
+      const cleanIFSC = normalizeIFSC(ifscCode);
+
       const formData = new FormData();
-      formData.append('name', contactPerson); // Map contactPerson to general name
-      formData.append('email', email);
+      formData.append('name', cleanContactPerson); // Map contactPerson to general name
+      formData.append('email', cleanEmail);
       formData.append('password', password);
       const businessesList = getSelectedBusinessesList();
       const primaryBiz = businessesList[0];
@@ -600,11 +647,11 @@ const Register = () => {
       formData.append('categoryId', selectedCategoryId || primaryBiz.categoryId || computedCategoryId);
       formData.append('subcategory', primaryBiz.subcategory);
       formData.append('businesses', JSON.stringify(businessesList));
-      formData.append('businessName', businessName);
-      formData.append('agentName', agentName);
-      formData.append('alternateVendorName', alternateVendorName || '');
-      formData.append('contactPerson', contactPerson);
-      formData.append('mobileNumber', mobileNumber);
+      formData.append('businessName', cleanBusinessName);
+      formData.append('agentName', cleanAgentName);
+      formData.append('alternateVendorName', normalizeName(alternateVendorName || ''));
+      formData.append('contactPerson', cleanContactPerson);
+      formData.append('mobileNumber', cleanMobile);
       formData.append('address', address);
       formData.append('street', street || address.split(',')[0] || '');
       formData.append('city', city || 'City');
@@ -612,19 +659,19 @@ const Register = () => {
       formData.append('country', country);
       formData.append('postalCode', postalCode);
       formData.append('gstStatus', gstStatus);
-      formData.append('panNo', panNo.toUpperCase());
-      formData.append('aadhaarNo', aadhaarNo);
+      formData.append('panNo', cleanPAN);
+      formData.append('aadhaarNo', cleanAadhaar);
       formData.append('companyRegNo', companyRegNo || '');
       formData.append('msmeStatus', msmeStatus);
-      formData.append('accountHolderName', accountHolderName);
+      formData.append('accountHolderName', cleanAccountHolder);
       formData.append('bankName', bankName);
       formData.append('bankBranch', bankBranch);
       formData.append('bankStreet', bankStreet);
       formData.append('bankCity', bankCity);
-      formData.append('accountNo', accountNo);
-      formData.append('ifscCode', ifscCode);
-      formData.append('alternateNumber', alternateNumber || '');
-      formData.append('coPartnerName', coPartnerName || '');
+      formData.append('accountNo', cleanAccountNo);
+      formData.append('ifscCode', cleanIFSC);
+      formData.append('alternateNumber', cleanAltMobile);
+      formData.append('coPartnerName', cleanCoPartner);
 
       // Redesign fields
       formData.append('operatingHours', operatingHours);
@@ -793,7 +840,7 @@ const Register = () => {
                       type="text"
                       required
                       value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
+                      onChange={(e) => setBusinessName(normalizeName(e.target.value))}
                       placeholder="e.g. Sri Lakshmi Food Court"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm"
                     />
@@ -848,7 +895,7 @@ const Register = () => {
                       type="text"
                       required
                       value={mobileNumber}
-                      onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      onChange={(e) => setMobileNumber(normalizeIndianMobile(e.target.value))}
                       placeholder="e.g. 9876543210"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm"
                     />
@@ -1228,7 +1275,7 @@ const Register = () => {
                       type="text"
                       required
                       value={contactPerson}
-                      onChange={(e) => setContactPerson(e.target.value)}
+                      onChange={(e) => setContactPerson(normalizeName(e.target.value))}
                       placeholder="e.g. Ramesh Kumar"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm"
                     />
@@ -1245,7 +1292,7 @@ const Register = () => {
                     <input
                       type="text"
                       value={alternateNumber}
-                      onChange={(e) => setAlternateNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      onChange={(e) => setAlternateNumber(normalizeIndianMobile(e.target.value))}
                       placeholder="e.g. 9876543211"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm"
                     />
@@ -1264,7 +1311,7 @@ const Register = () => {
                     <input
                       type="text"
                       value={agentName}
-                      onChange={(e) => setAgentName(e.target.value)}
+                      onChange={(e) => setAgentName(normalizeName(e.target.value))}
                       placeholder="Referrer / Agent Name"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm"
                     />
@@ -1281,7 +1328,7 @@ const Register = () => {
                     <input
                       type="text"
                       value={coPartnerName}
-                      onChange={(e) => setCoPartnerName(e.target.value)}
+                      onChange={(e) => setCoPartnerName(normalizeName(e.target.value))}
                       placeholder="Co-partner Name"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm"
                     />
@@ -1370,7 +1417,7 @@ const Register = () => {
                       required
                       maxLength={10}
                       value={panNo}
-                      onChange={(e) => setPanNo(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
+                      onChange={(e) => setPanNo(normalizePAN(e.target.value))}
                       placeholder="e.g. ABCDE1234F"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm uppercase font-mono"
                     />
@@ -1389,7 +1436,7 @@ const Register = () => {
                       required
                       maxLength={12}
                       value={aadhaarNo}
-                      onChange={(e) => setAadhaarNo(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                      onChange={(e) => setAadhaarNo(normalizeAadhaar(e.target.value))}
                       placeholder="12-digit Aadhaar Number"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm font-mono"
                     />
@@ -1536,7 +1583,7 @@ const Register = () => {
                       type="text"
                       required
                       value={accountHolderName}
-                      onChange={(e) => setAccountHolderName(e.target.value)}
+                      onChange={(e) => setAccountHolderName(normalizeName(e.target.value))}
                       placeholder="e.g. Ramesh Kumar"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm"
                     />
@@ -1654,7 +1701,7 @@ const Register = () => {
                       type="text"
                       required
                       value={accountNo}
-                      onChange={(e) => setAccountNo(e.target.value)}
+                      onChange={(e) => setAccountNo(normalizeAccountNumber(e.target.value))}
                       placeholder="Account Number"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm font-mono"
                     />
@@ -1672,7 +1719,7 @@ const Register = () => {
                       type="text"
                       required
                       value={ifscCode}
-                      onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
+                      onChange={(e) => setIfscCode(normalizeIFSC(e.target.value))}
                       placeholder="e.g. SBIN0001234"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm uppercase font-mono"
                     />

@@ -7,6 +7,16 @@ import {
 import Modal from '../common/Modal';
 import { getVendorBackendUrl, formatImageUrl } from '../../services/apiSetup';
 import { vendorTaxonomy } from '../../data/servicesData';
+import {
+  normalizeName,
+  validateName,
+  normalizeIndianMobile,
+  validateIndianMobile,
+  normalizePAN,
+  validatePAN,
+  normalizeAadhaar,
+  validateAadhaar
+} from '../../utils/validation';
 
 // Document requirements schema per category (Admin Main Categories only)
 const CATEGORY_DOC_CONFIG = {
@@ -313,24 +323,27 @@ export default function AddBusinessModal({
         setFormError('Please enter a valid 6-digit Pincode (e.g. 636112)');
         return false;
       }
-      if (!formData.phone || formData.phone.trim().length < 10) {
-        setFormError('Please enter a valid 10-digit Phone Number');
+      const phoneErr = validateIndianMobile(formData.phone, 'Phone Number');
+      if (phoneErr) {
+        setFormError(phoneErr);
         return false;
       }
       return true;
     }
 
     if (currentStep === 3) {
-      if (!formData.panNo.trim() || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(formData.panNo.trim())) {
-        setFormError('Please enter a valid 10-character PAN Card Number (e.g. ABCDE1234F)');
+      const panErr = validatePAN(formData.panNo, 'PAN Card Number');
+      if (panErr) {
+        setFormError(panErr);
         return false;
       }
       if (!formData.panDoc) {
         setFormError('PAN Card Document is required. Please upload a copy.');
         return false;
       }
-      if (!formData.aadhaarNo.trim() || !/^\d{12}$/.test(formData.aadhaarNo.trim().replace(/\s/g, ''))) {
-        setFormError('Please enter a valid 12-digit Aadhaar Number');
+      const aadhaarErr = validateAadhaar(formData.aadhaarNo, 'Aadhaar Number');
+      if (aadhaarErr) {
+        setFormError(aadhaarErr);
         return false;
       }
       if (!formData.aadhaarDoc) {
@@ -476,7 +489,7 @@ export default function AddBusinessModal({
         });
 
       const payload = {
-        businessName: formData.businessName.trim() || chosenCategory,
+        businessName: normalizeName(formData.businessName.trim()) || chosenCategory,
         vendorType: chosenCategory,
         category: chosenCategory,
         doorNo: formData.doorNo.trim(),
@@ -485,10 +498,10 @@ export default function AddBusinessModal({
         district: formData.district.trim(),
         state: formData.state.trim(),
         pincode: formData.pincode.trim(),
-        phone: formData.phone.trim(),
-        panNo: formData.panNo.trim().toUpperCase(),
+        phone: normalizeIndianMobile(formData.phone),
+        panNo: normalizePAN(formData.panNo),
         panDoc: formData.panDoc,
-        aadhaarNo: formData.aadhaarNo.trim(),
+        aadhaarNo: normalizeAadhaar(formData.aadhaarNo),
         aadhaarDoc: formData.aadhaarDoc,
         gstNumber: formData.gstNumber.trim().toUpperCase(),
         gstDoc: formData.gstDoc,

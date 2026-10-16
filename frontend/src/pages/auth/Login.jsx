@@ -9,6 +9,7 @@ import {
   clearError 
 } from '../../store/authSlice';
 import { getVendorBackendUrl } from '../../services/apiSetup';
+import { normalizeEmail } from '../../utils/validation';
 import { Store, Lock, Mail, ArrowRight, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 
 const Login = () => {
@@ -71,7 +72,7 @@ const Login = () => {
         ? `${backendUrl}/api/auth/login-vendor`
         : `${backendUrl}/api/auth/login-member`;
 
-      const response = await axios.post(endpoint, { email, password });
+      const response = await axios.post(endpoint, { email: normalizeEmail(email), password });
       
       if (response.data.success) {
         dispatch(loginSuccess(response.data));

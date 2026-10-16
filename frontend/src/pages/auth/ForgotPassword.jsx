@@ -1,15 +1,23 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, ArrowLeft } from 'lucide-react';
+import { Mail, ArrowLeft, AlertCircle } from 'lucide-react';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
+import { validateEmail, normalizeEmail } from '../../utils/validation';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setError('');
+    const emailErr = validateEmail(email, 'Email Address');
+    if (emailErr) {
+      setError(emailErr);
+      return;
+    }
     setSuccess('Password reset link has been sent to your email.');
   };
 
@@ -19,6 +27,13 @@ const ForgotPassword = () => {
         <h2 className="text-xl font-bold text-center mb-2">Reset <span className="text-[#faed26]">Password</span></h2>
         <p className="text-xs text-slate-400 text-center mb-6">Enter your registered email to get a reset link.</p>
         
+        {error && (
+          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-xl flex items-center gap-2 text-xs mb-4">
+            <AlertCircle size={15} className="shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {success ? (
           <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-4 rounded-xl text-center text-xs mb-4">
             {success}
