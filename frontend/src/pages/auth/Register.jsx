@@ -544,7 +544,17 @@ const Register = () => {
     return '';
   };
 
+  // Step validation helpers
+  const isCurrentStepValid = !validateStep(currentStep);
+  const isNextDisabled = currentStep < 5
+    ? (!termsAccepted || !isCurrentStepValid)
+    : (loading || !termsAccepted || !bankDetailsCorrect);
+
   const handleNextStep = () => {
+    if (!termsAccepted) {
+      setError('Please accept the Terms & Conditions to continue.');
+      return;
+    }
     const errorMsg = validateStep(currentStep);
     if (errorMsg) {
       setError(errorMsg);
@@ -560,17 +570,17 @@ const Register = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setError('');
     setSuccess('');
 
     // Final checks
-    if (!bankDetailsCorrect) {
-      setError('You must declare that the bank details are correct.');
+    if (!termsAccepted) {
+      setError('Please accept the Terms & Conditions to continue.');
       return;
     }
-    if (!termsAccepted) {
-      setError('You must accept the Terms & Conditions and Privacy Policy.');
+    if (!bankDetailsCorrect) {
+      setError('You must declare that the bank details are correct.');
       return;
     }
 
@@ -667,20 +677,20 @@ const Register = () => {
       {/* Subtle overlay to enhance contrast and readability */}
       <div className="absolute inset-0 bg-slate-900/15 backdrop-blur-[1px] pointer-events-none z-0" />
 
-      {/* Main Centered Registration Card (Slightly reduced size, fixed modal container) */}
-      <div className="w-full max-w-2xl lg:max-w-[740px] h-[92vh] max-h-[650px] sm:max-h-[670px] bg-white/98 backdrop-blur-md rounded-2xl sm:rounded-3xl shadow-[0_20px_60px_-15px_rgba(15,23,42,0.35)] border border-slate-100 flex flex-col relative z-10 overflow-hidden animate-fadeIn">
+      {/* Main Centered Registration Card (Solid white container, elevated shadow, no background bleed) */}
+      <div className="w-full max-w-2xl lg:max-w-[760px] h-[92vh] max-h-[700px] bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200/90 flex flex-col relative z-10 overflow-hidden animate-fadeIn">
         
         {/* CARD HEADER (Fixed at top) */}
-        <div className="p-4 sm:p-5 pb-3 sm:pb-4 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0 bg-white">
+        <div className="p-4 sm:p-5 pb-3.5 sm:pb-4 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0 bg-white">
           <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">
             {/* Storefront Icon */}
-            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 shadow-sm shrink-0">
-              <Store size={24} strokeWidth={2.2} />
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-[#8C532C] shadow-xs shrink-0">
+              <Store size={22} strokeWidth={2.2} />
             </div>
 
             {/* Title & Subtitle */}
             <div className="min-w-0">
-              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight leading-tight">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight leading-tight">
                 Vendor Registration
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 font-normal mt-0.5 truncate">
@@ -695,13 +705,14 @@ const Register = () => {
             onClick={() => navigate('/login?type=vendor')}
             className="p-2 sm:p-2.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
             title="Close"
+            aria-label="Close registration"
           >
             <X size={20} strokeWidth={2.2} />
           </button>
         </div>
 
         {/* 5-STEP PROGRESS INDICATOR (Fixed at top) */}
-        <div className="px-4 sm:px-6 py-2.5 bg-slate-50/80 border-b border-slate-100 shrink-0 overflow-x-auto scrollbar-none">
+        <div className="px-4 sm:px-6 py-2.5 sm:py-3 bg-slate-50/90 border-b border-slate-100 shrink-0 overflow-x-auto scrollbar-none">
           <div className="flex items-center justify-between min-w-[460px]">
             {stepsList.map((step, idx) => {
               const isActive = currentStep === step.id;
@@ -713,16 +724,16 @@ const Register = () => {
                     <div 
                       className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-200 ${
                         isActive
-                          ? 'bg-[#8C532C] text-white shadow-md ring-4 ring-[#8C532C]/15'
+                          ? 'bg-[#8C532C] text-white shadow-sm ring-4 ring-[#8C532C]/15'
                           : isCompleted
-                            ? 'bg-emerald-500 text-white shadow-sm'
+                            ? 'bg-emerald-600 text-white shadow-xs'
                             : 'bg-white border border-slate-200 text-slate-400'
                       }`}
                     >
                       {isCompleted ? <Check size={13} strokeWidth={3} /> : step.id}
                     </div>
                     <span 
-                      className={`text-xs font-semibold whitespace-nowrap ${
+                      className={`text-xs font-semibold whitespace-nowrap transition-colors ${
                         isActive 
                           ? 'text-[#8C532C]' 
                           : isCompleted 
@@ -1755,34 +1766,11 @@ const Register = () => {
                   id="bankDetailsCheck"
                   required
                   checked={bankDetailsCorrect}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setBankDetailsCorrect(false);
-                      if (!email) {
-                        setError("Please enter your Email address first to read and receive the Terms & Conditions.");
-                      } else {
-                        setError("");
-                        setShowTermsModal(true);
-                      }
-                    } else {
-                      setBankDetailsCorrect(false);
-                    }
-                  }}
+                  onChange={(e) => setBankDetailsCorrect(e.target.checked)}
                   className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#8C532C] focus:ring-[#8C532C] accent-[#8C532C] cursor-pointer shrink-0"
                 />
                 <label 
-                  onClick={() => {
-                    if (!bankDetailsCorrect) {
-                      if (!email) {
-                        setError("Please enter your Email address first to read and receive the Terms & Conditions.");
-                      } else {
-                        setError("");
-                        setShowTermsModal(true);
-                      }
-                    } else {
-                      setBankDetailsCorrect(false);
-                    }
-                  }}
+                  htmlFor="bankDetailsCheck"
                   className="text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer select-none leading-relaxed"
                 >
                   I declare that the above bank and business details are correct and belong to my business entity <span className="text-rose-500">*</span>
@@ -1796,15 +1784,31 @@ const Register = () => {
         {/* CARD FOOTER & NAVIGATION BUTTONS (Fixed at bottom) */}
         <div className="p-3.5 sm:p-4 px-4 sm:px-6 bg-white border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           
-          {/* Footer Terms & Login Links */}
-          <div className="text-xs text-slate-500 flex items-center gap-1.5 order-2 sm:order-1 text-center sm:text-left">
-            <span>By signing up, you agree to our</span>
-            <span 
-              onClick={() => setShowTermsModal(true)} 
-              className="text-[#8C532C] font-semibold hover:underline cursor-pointer"
-            >
-              Terms & Conditions
-            </span>
+          {/* Mandatory Terms & Conditions Checkbox */}
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-600 order-2 sm:order-1 select-none w-full sm:w-auto">
+            <input
+              type="checkbox"
+              id="termsAcceptanceCheckbox"
+              checked={termsAccepted}
+              onChange={(e) => {
+                setTermsAccepted(e.target.checked);
+                if (e.target.checked && error === 'Please accept the Terms & Conditions to continue.') {
+                  setError('');
+                }
+              }}
+              className="h-4 w-4 rounded border-slate-300 text-[#8C532C] focus:ring-[#8C532C] accent-[#8C532C] cursor-pointer shrink-0"
+            />
+            <label htmlFor="termsAcceptanceCheckbox" className="cursor-pointer text-slate-600 font-medium leading-tight">
+              I have read and agree to the{' '}
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(true)}
+                className="text-[#8C532C] font-semibold hover:underline cursor-pointer focus:outline-none"
+              >
+                Terms & Conditions
+              </button>
+              <span className="text-rose-500 font-bold ml-0.5">*</span>
+            </label>
           </div>
 
           {/* Action Buttons */}
@@ -1814,7 +1818,7 @@ const Register = () => {
               <button
                 type="button"
                 onClick={() => navigate('/login?type=vendor')}
-                className="w-1/2 sm:w-auto px-5 sm:px-6 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs sm:text-sm font-semibold transition-all shadow-sm"
+                className="w-1/2 sm:w-auto px-5 sm:px-6 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs sm:text-sm font-semibold transition-all shadow-xs"
               >
                 Cancel
               </button>
@@ -1822,7 +1826,7 @@ const Register = () => {
               <button
                 type="button"
                 onClick={handlePrevStep}
-                className="w-1/2 sm:w-auto px-5 sm:px-6 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                className="w-1/2 sm:w-auto px-5 sm:px-6 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs sm:text-sm font-semibold transition-all shadow-xs flex items-center justify-center gap-1.5"
               >
                 <ArrowLeft size={14} /> Back
               </button>
@@ -1832,8 +1836,14 @@ const Register = () => {
             {currentStep < 5 ? (
               <button
                 type="button"
+                disabled={isNextDisabled}
                 onClick={handleNextStep}
-                className="w-1/2 sm:w-auto px-6 sm:px-8 py-2.5 bg-[#8C532C] hover:bg-[#784421] text-white font-bold text-xs sm:text-sm rounded-xl shadow-md hover:shadow-lg transition-all duration-200 active:scale-[0.99] flex items-center justify-center gap-2"
+                title={!termsAccepted ? 'Please accept the Terms & Conditions to continue' : (!isCurrentStepValid ? 'Please fill all required fields' : '')}
+                className={`w-1/2 sm:w-auto px-6 sm:px-8 py-2.5 font-bold text-xs sm:text-sm rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                  isNextDisabled
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                    : 'bg-[#8C532C] hover:bg-[#784421] text-white shadow-md hover:shadow-lg active:scale-[0.99] cursor-pointer'
+                }`}
               >
                 Next Step
                 <ArrowRight size={14} />
@@ -1841,9 +1851,14 @@ const Register = () => {
             ) : (
               <button
                 type="button"
-                disabled={loading}
+                disabled={isNextDisabled}
                 onClick={handleSubmit}
-                className="w-1/2 sm:w-auto px-6 sm:px-8 py-2.5 bg-[#8C532C] disabled:bg-slate-300 hover:bg-[#784421] text-white font-bold text-xs sm:text-sm rounded-xl shadow-md hover:shadow-lg transition-all duration-200 active:scale-[0.99] flex items-center justify-center gap-2"
+                title={!termsAccepted ? 'Please accept the Terms & Conditions to continue' : (!bankDetailsCorrect ? 'Please declare bank details are correct' : '')}
+                className={`w-1/2 sm:w-auto px-6 sm:px-8 py-2.5 font-bold text-xs sm:text-sm rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                  isNextDisabled
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                    : 'bg-[#8C532C] hover:bg-[#784421] text-white shadow-md hover:shadow-lg active:scale-[0.99] cursor-pointer'
+                }`}
               >
                 {loading ? 'Registering...' : 'Register Business'}
                 {!loading && <ArrowRight size={14} />}
@@ -1853,7 +1868,7 @@ const Register = () => {
         </div>
 
         {/* Bottom Login Hint (Fixed at bottom) */}
-        <div className="py-2 bg-slate-50 border-t border-slate-100 text-center text-xs text-slate-500 shrink-0">
+        <div className="py-2.5 bg-slate-50 border-t border-slate-100 text-center text-xs text-slate-500 shrink-0">
           Already have a vendor account?{' '}
           <Link to="/login?type=vendor" className="text-[#8C532C] font-bold hover:underline">
             Login here
@@ -1865,7 +1880,7 @@ const Register = () => {
       {/* TERMS & CONDITIONS MODAL (Styled in matching clean light design) */}
       {showTermsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white border border-slate-100 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative overflow-hidden">
             
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900">
@@ -1875,17 +1890,16 @@ const Register = () => {
                 type="button"
                 onClick={() => {
                   setShowTermsModal(false);
-                  setTermsAccepted(false);
-                  setBankDetailsCorrect(false);
                 }}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                title="Close"
               >
                 <X size={18} />
               </button>
             </div>
             
             {/* Scrollable text */}
-            <div className="my-4 bg-slate-50 border border-slate-200/80 rounded-xl p-4 h-60 overflow-y-auto text-xs sm:text-sm text-slate-600 leading-relaxed space-y-3">
+            <div className="my-4 bg-slate-50 border border-slate-200/80 rounded-xl p-4 h-60 overflow-y-auto text-xs sm:text-sm text-slate-600 leading-relaxed space-y-3 scrollbar-thin">
               <p className="font-bold text-slate-800">1. Verification of Bank Details</p>
               <p>By registering on the Connect App platform, you declare and warrant that all banking details provided above, including Account Holder Name, Bank Name, Account Number, and IFSC/Swift Code, are correct, active, and belong to your registered business entity or co-partner.</p>
               <p>Connect App is not responsible for any failed transfers, delayed payments, or transfers made to incorrect accounts due to false or mistyped information provided during registration.</p>
@@ -1906,7 +1920,12 @@ const Register = () => {
                 type="checkbox"
                 id="modalAgreeCheck"
                 checked={termsAccepted}
-                onChange={(e) => setTermsAccepted(e.target.checked)}
+                onChange={(e) => {
+                  setTermsAccepted(e.target.checked);
+                  if (e.target.checked && error === 'Please accept the Terms & Conditions to continue.') {
+                    setError('');
+                  }
+                }}
                 className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#8C532C] focus:ring-[#8C532C] accent-[#8C532C] cursor-pointer shrink-0"
               />
               <label htmlFor="modalAgreeCheck" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
@@ -1920,37 +1939,29 @@ const Register = () => {
                 type="button"
                 onClick={() => {
                   setShowTermsModal(false);
-                  setTermsAccepted(false);
-                  setBankDetailsCorrect(false);
                 }}
                 className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors"
               >
-                Cancel
+                Close
               </button>
               <button
                 type="button"
                 disabled={!termsAccepted}
                 onClick={async () => {
-                  if (termsAccepted) {
-                    setBankDetailsCorrect(true);
-                    setShowTermsModal(false);
-                    // Send terms email asynchronously in the background
+                  setTermsAccepted(true);
+                  setShowTermsModal(false);
+                  if (error === 'Please accept the Terms & Conditions to continue.') {
+                    setError('');
+                  }
+                  // Send terms email asynchronously in the background
+                  if (email) {
                     try {
                       axios.post(`${getVendorBackendUrl()}/api/auth/send-terms-email`, { email })
-                        .then(res => {
-                          if (res.data.success) {
-                            console.log("✉️ Terms and conditions email sent successfully:", res.data.message);
-                          }
-                        })
-                        .catch(err => {
-                          console.error("❌ Failed to send terms email:", err.message);
-                        });
-                    } catch (err) {
-                      console.error("❌ Async email sending error:", err);
-                    }
+                        .catch(() => {});
+                    } catch (err) {}
                   }
                 }}
-                className="px-5 py-2 rounded-xl bg-[#8C532C] disabled:bg-slate-300 hover:bg-[#784421] text-white text-xs font-bold shadow-md transition-all active:scale-[0.98]"
+                className="px-5 py-2 rounded-xl bg-[#8C532C] disabled:bg-slate-200 disabled:text-slate-400 hover:bg-[#784421] text-white text-xs font-bold shadow-md transition-all active:scale-[0.98] cursor-pointer disabled:cursor-not-allowed"
               >
                 Agree & Close
               </button>
