@@ -950,7 +950,7 @@ const SubscriptionManagementContent = ({ user: propUser, setMessage: propSetMess
                     <th className="py-4 px-4">Valid From</th>
                     <th className="py-4 px-4">Valid Until</th>
                     <th className="py-4 px-4">Payment ID</th>
-                    <th className="py-4 px-4">Order ID</th>
+                    <th className="py-4 px-4">Subscription ID</th>
                     <th className="py-4 px-4">Method</th>
                     <th className="py-4 px-4">Status</th>
                     <th className="py-4 px-5 text-right">Actions</th>
@@ -987,8 +987,8 @@ const SubscriptionManagementContent = ({ user: propUser, setMessage: propSetMess
                         <td className="py-4 px-4 font-mono text-[11px] text-slate-500 truncate max-w-[120px]" title={tx.razorpayPaymentId || tx.paymentId}>
                           {tx.razorpayPaymentId || tx.paymentId}
                         </td>
-                        <td className="py-4 px-4 font-mono text-[11px] text-slate-500 truncate max-w-[120px]" title={tx.razorpayOrderId}>
-                          {tx.razorpayOrderId}
+                        <td className="py-4 px-4 font-mono text-[11px] text-slate-500 truncate max-w-[120px]" title={tx.subscriptionId || tx.subscription_id || tx.razorpayOrderId}>
+                          {tx.subscriptionId || tx.subscription_id || tx.razorpayOrderId}
                         </td>
                         <td className="py-4 px-4 text-slate-600 dark:text-slate-400">
                           {tx.paymentMethod || 'Online'}
@@ -1325,9 +1325,9 @@ const SubscriptionManagementContent = ({ user: propUser, setMessage: propSetMess
                 </span>
               </div>
               <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                <span>Order ID:</span>
+                <span>Subscription ID:</span>
                 <span className="font-mono text-slate-800 dark:text-slate-200">
-                  {receiptModalData.razorpayOrderId}
+                  {receiptModalData.subscriptionId || receiptModalData.subscription_id || receiptModalData.subscription || receiptModalData._id}
                 </span>
               </div>
               <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">

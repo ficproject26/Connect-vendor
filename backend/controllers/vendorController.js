@@ -5064,16 +5064,41 @@ const getSalesPayments = async (req, res) => {
       ]
     };
 
-    // Category filter
-    if (req.query.category && !['All', 'all', ''].includes(String(req.query.category).trim())) {
-      const catParam = String(req.query.category).trim();
-      const catRegex = new RegExp(`^${catParam}$`, 'i');
+    // Category filter and normalization helper
+    const normalizeCategoryParam = (cat) => {
+      if (!cat) return null;
+      const c = String(cat).trim().toLowerCase();
+      if (['all', 'all categories', ''].includes(c)) return null;
+      if (['product', 'products', 'order', 'orders'].includes(c)) return 'Products';
+      if (['daily needs', 'daily need', 'daily_needs', 'grocery', 'pharmacy'].includes(c)) return 'Daily Needs';
+      if (['food', 'foods', 'restaurant', 'restaurants'].includes(c)) return 'Food';
+      if (['service', 'services', 'appointment', 'appointments', 'hospital', 'technician'].includes(c)) return 'Services';
+      if (['stay', 'stays', 'hotel', 'hotels', 'room', 'rooms'].includes(c)) return 'Stay';
+      if (['travel', 'travels', 'cab', 'transport', 'package', 'packages'].includes(c)) return 'Travel';
+      if (['job', 'jobs'].includes(c)) return 'Jobs';
+      return cat;
+    };
+    const requestedCategory = normalizeCategoryParam(req.query.category);
+
+    if (requestedCategory) {
+      let catPattern = requestedCategory;
+      if (requestedCategory === 'Products') catPattern = 'product|products|order|orders';
+      else if (requestedCategory === 'Services') catPattern = 'service|services|appointment|appointments';
+      else if (requestedCategory === 'Stay') catPattern = 'stay|stays|hotel|hotels|room|rooms';
+      else if (requestedCategory === 'Daily Needs') catPattern = 'daily needs|daily need|daily_needs|grocery|pharmacy';
+      else if (requestedCategory === 'Food') catPattern = 'food|foods|restaurant|restaurants';
+      else if (requestedCategory === 'Travel') catPattern = 'travel|travels|cab|transport|package';
+      else if (requestedCategory === 'Jobs') catPattern = 'job|jobs';
+
+      const catRegex = new RegExp(`^(${catPattern})$`, 'i');
       query.$and = query.$and || [];
       query.$and.push({
         $or: [
           { type: catRegex },
           { category: catRegex },
-          { subNavbarCategory: catRegex }
+          { subNavbarCategory: catRegex },
+          { type: { $exists: false } },
+          { type: null }
         ]
       });
     }
@@ -5108,63 +5133,60 @@ const getSalesPayments = async (req, res) => {
     const istDay = istNow.getUTCDate();
     const istDayOfWeek = istNow.getUTCDay(); // 0 is Sunday
 
-    // If explicit start/end dates are provided in query, use them
-    if (req.query.startDate) {
-      const sStr = String(req.query.startDate).trim();
-      if (sStr.includes('T') || sStr.endsWith('Z')) {
-        const parsed = new Date(sStr);
-        if (!isNaN(parsed.getTime())) startDate = parsed;
-      } else {
+    const normDur = duration.toLowerCase();
+
+    // Standard durations computed authoritatively in IST
+    if (normDur === 'today') {
+      startDate = new Date(Date.UTC(istYear, istMonth, istDay, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth, istDay, 23, 59, 59, 999) - istOffsetMs);
+    } else if (normDur === 'this week') {
+      const diffToMonday = istDayOfWeek === 0 ? 6 : istDayOfWeek - 1;
+      startDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday + 6, 23, 59, 59, 999) - istOffsetMs);
+    } else if (normDur === 'this month') {
+      startDate = new Date(Date.UTC(istYear, istMonth, 1, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth + 1, 0, 23, 59, 59, 999) - istOffsetMs);
+    } else if (normDur === 'this year') {
+      startDate = new Date(Date.UTC(istYear, 0, 1, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, 11, 31, 23, 59, 59, 999) - istOffsetMs);
+    } else if (normDur === 'custom' || req.query.startDate || req.query.endDate) {
+      if (req.query.startDate) {
+        const sStr = String(req.query.startDate).trim();
         const parts = sStr.split('-');
         if (parts.length === 3) {
           startDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 0, 0, 0, 0) - istOffsetMs);
         } else {
           const parsed = new Date(sStr);
-          if (!isNaN(parsed.getTime())) {
-            parsed.setHours(0, 0, 0, 0);
-            startDate = parsed;
-          }
+          if (!isNaN(parsed.getTime())) startDate = parsed;
         }
       }
-    }
-
-    if (req.query.endDate) {
-      const eStr = String(req.query.endDate).trim();
-      if (eStr.includes('T') || eStr.endsWith('Z')) {
-        const parsed = new Date(eStr);
-        if (!isNaN(parsed.getTime())) endDate = parsed;
-      } else {
+      if (req.query.endDate) {
+        const eStr = String(req.query.endDate).trim();
         const parts = eStr.split('-');
         if (parts.length === 3) {
           endDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59, 999) - istOffsetMs);
         } else {
           const parsed = new Date(eStr);
-          if (!isNaN(parsed.getTime())) {
-            parsed.setHours(23, 59, 59, 999);
-            endDate = parsed;
-          }
+          if (!isNaN(parsed.getTime())) endDate = parsed;
         }
       }
     }
 
-    // If explicit dates were not provided, compute from duration keyword
-    if (!startDate && !endDate) {
-      const normDur = duration.toLowerCase();
-      if (normDur === 'today') {
-        startDate = new Date(Date.UTC(istYear, istMonth, istDay, 0, 0, 0, 0) - istOffsetMs);
-        endDate = new Date(Date.UTC(istYear, istMonth, istDay, 23, 59, 59, 999) - istOffsetMs);
-      } else if (normDur === 'this week') {
-        const diffToMonday = istDayOfWeek === 0 ? 6 : istDayOfWeek - 1;
-        startDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday, 0, 0, 0, 0) - istOffsetMs);
-        endDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday + 6, 23, 59, 59, 999) - istOffsetMs);
-      } else if (normDur === 'this month') {
-        startDate = new Date(Date.UTC(istYear, istMonth, 1, 0, 0, 0, 0) - istOffsetMs);
-        endDate = new Date(Date.UTC(istYear, istMonth + 1, 0, 23, 59, 59, 999) - istOffsetMs);
-      } else if (normDur === 'this year') {
-        startDate = new Date(Date.UTC(istYear, 0, 1, 0, 0, 0, 0) - istOffsetMs);
-        endDate = new Date(Date.UTC(istYear, 11, 31, 23, 59, 59, 999) - istOffsetMs);
+    // Helper to get authoritative transaction date (never use future checkInDate/appointmentDate/travelDate)
+    const getTransactionDate = (o, matchedPayment) => {
+      const raw = matchedPayment?.paymentDate || o.paidAt || o.paymentDate || o.orderDate || o.date || o.created_at || o.createdAt;
+      if (!raw) {
+        if (o._id && typeof o._id === 'string' && o._id.length === 24) {
+          try {
+            const timestamp = parseInt(o._id.substring(0, 8), 16) * 1000;
+            if (!isNaN(timestamp) && timestamp > 0) return new Date(timestamp);
+          } catch (e) {}
+        }
+        return null;
       }
-    }
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? null : d;
+    };
 
     // Fetch all matching orders sorted newest first
     const allOrders = await Order.find(query).sort({ created_at: -1, createdAt: -1, _id: -1 }).lean();
@@ -5180,24 +5202,14 @@ const getSalesPayments = async (req, res) => {
       }
     }
 
-    // Apply date range / Duration filter accurately in memory to handle both Date objects and ISO strings
+    // Apply date range / Duration filter accurately using authoritative transaction date
     if (startDate || endDate) {
       const startMs = startDate ? startDate.getTime() : -Infinity;
       const endMs = endDate ? endDate.getTime() : Infinity;
       uniqueOrders = uniqueOrders.filter(o => {
-        const rawDate = o.paidAt || o.paymentDate || o.createdAt || o.created_at || o.orderDate || o.appointmentDate || o.travelDate || o.checkInDate || o.date;
-        let t = null;
-        if (rawDate) {
-          const d = new Date(rawDate);
-          if (!isNaN(d.getTime())) t = d.getTime();
-        }
-        if (t === null && o._id && typeof o._id === 'string' && o._id.length === 24) {
-          try {
-            const timestamp = parseInt(o._id.substring(0, 8), 16) * 1000;
-            if (!isNaN(timestamp) && timestamp > 0) t = timestamp;
-          } catch (e) {}
-        }
-        if (t === null) return false;
+        const d = getTransactionDate(o);
+        if (!d) return false;
+        const t = d.getTime();
         return t >= startMs && t <= endMs;
       });
     }
@@ -5206,7 +5218,8 @@ const getSalesPayments = async (req, res) => {
 
     // Map each order to standard Sales Payment record
     const mappedRecords = uniqueOrders.map((o) => {
-      const orderDate = o.createdAt || o.created_at || new Date();
+      const matchedPayment = customerLookup.paymentsByOrderId ? customerLookup.paymentsByOrderId[String(o._id)] : null;
+      const txnDate = getTransactionDate(o, matchedPayment) || new Date();
       const saleAmount = Number(o.totalAmount || o.finalAmount || o.amount || 0);
       const discount = Number(o.discountApplied || o.discount || 0);
       const effectiveRate = o.commissionRate !== undefined ? Number(o.commissionRate) : defaultRate;
@@ -5214,8 +5227,6 @@ const getSalesPayments = async (req, res) => {
         ? Number(o.commissionAmount) 
         : Math.round(saleAmount * (effectiveRate / 100));
       const vendorNet = saleAmount - commissionAmount - (o.otherDeductions || 0);
-
-      const matchedPayment = customerLookup.paymentsByOrderId ? customerLookup.paymentsByOrderId[String(o._id)] : null;
 
       // Determine standardized payment status: 'Successful', 'Failed', 'Hold'
       const rawPayStatus = (o.paymentStatus || o.payment_status || (matchedPayment ? matchedPayment.status : '') || '').toLowerCase();
@@ -5232,9 +5243,9 @@ const getSalesPayments = async (req, res) => {
       }
 
       // Business category normalized
-      let category = o.type || o.category || 'Product';
+      let category = o.type || o.category || 'Products';
       const detailStr = String(o.product_details || (o.items && o.items[0]?.name) || '');
-      if (/car|bus|bike|travel|cab|transport/i.test(category) || /car|bus|bike|travel|cab|transport/i.test(detailStr) || (o.items && o.items.some(it => /car|bus|bike|travel|cab|transport/i.test(it?.name || '')))) {
+      if (/car|bus|bike|travel|cab|transport|package/i.test(category) || /car|bus|bike|travel|cab|transport|package/i.test(detailStr) || (o.items && o.items.some(it => /car|bus|bike|travel|cab|transport|package/i.test(it?.name || '')))) {
         category = 'Travel';
       } else if (/stay|hotel|room|resort/i.test(category) || /room|suite|villa|resort|hotel/i.test(detailStr)) {
         category = 'Stay';
@@ -5242,12 +5253,12 @@ const getSalesPayments = async (req, res) => {
         category = 'Food';
       } else if (/daily/i.test(category)) {
         category = 'Daily Needs';
-      } else if (/service/i.test(category) || o.doctorName) {
+      } else if (/service|appointment/i.test(category) || o.doctorName) {
         category = 'Services';
       } else if (/job/i.test(category)) {
         category = 'Jobs';
       } else {
-        category = 'Product';
+        category = 'Products';
       }
 
       // Item Name / Description
@@ -5301,14 +5312,13 @@ const getSalesPayments = async (req, res) => {
 
       // Preserve genuine transaction ID from payments collection or order
       const txnId = matchedPayment?.transactionReference || matchedPayment?.paymentId || o.transactionId || o.razorpayPaymentId || o.walletTxnId || o.paymentReference || null;
-      const paymentDate = matchedPayment?.paymentDate || o.paidAt || orderDate;
 
       return {
         _id: o._id,
         transactionId: txnId,
         orderId: o.order_number || o.id || o._id,
-        saleDate: orderDate,
-        paymentDate: paymentDate,
+        saleDate: txnDate,
+        paymentDate: txnDate,
         category,
         itemName,
         customerName: custName,
@@ -5325,11 +5335,17 @@ const getSalesPayments = async (req, res) => {
       };
     });
 
+    // Apply category filter in-memory if specified
+    let categoryFilteredRecords = mappedRecords;
+    if (requestedCategory) {
+      categoryFilteredRecords = mappedRecords.filter(r => r.category.toLowerCase() === requestedCategory.toLowerCase());
+    }
+
     // Apply status filter if specified
     const statusFilter = req.query.status || 'All';
-    let filteredRecords = mappedRecords;
+    let filteredRecords = categoryFilteredRecords;
     if (statusFilter !== 'All') {
-      filteredRecords = mappedRecords.filter(r => r.paymentStatus.toLowerCase() === statusFilter.toLowerCase());
+      filteredRecords = categoryFilteredRecords.filter(r => r.paymentStatus.toLowerCase() === statusFilter.toLowerCase());
     }
 
     // Category-wise totals based on REAL vendor data
@@ -5355,6 +5371,19 @@ const getSalesPayments = async (req, res) => {
     const totalCommission = filteredRecords.reduce((sum, r) => sum + r.commission, 0);
     const totalVendorReceived = filteredRecords.reduce((sum, r) => sum + r.vendorReceivedAmount, 0);
 
+    // Format IST labels for period
+    const formatISTDateStr = (dateObj) => {
+      if (!dateObj) return null;
+      const istDate = new Date(dateObj.getTime() + istOffsetMs);
+      const dd = String(istDate.getUTCDate()).padStart(2, '0');
+      const mm = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+      const yyyy = istDate.getUTCFullYear();
+      return `${dd}/${mm}/${yyyy}`;
+    };
+
+    const startLabel = startDate ? formatISTDateStr(startDate) : null;
+    const endLabel = endDate ? formatISTDateStr(endDate) : null;
+
     // Pagination
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.max(1, parseInt(req.query.limit) || 20);
@@ -5378,7 +5407,9 @@ const getSalesPayments = async (req, res) => {
       period: {
         duration,
         startDate: startDate ? startDate.toISOString() : null,
-        endDate: endDate ? endDate.toISOString() : null
+        endDate: endDate ? endDate.toISOString() : null,
+        startLabel,
+        endLabel
       }
     });
   } catch (error) {

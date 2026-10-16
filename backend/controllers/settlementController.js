@@ -345,61 +345,42 @@ const getVendorSettlements = async (req, res) => {
     const istDay = istNow.getUTCDate();
     const istDayOfWeek = istNow.getUTCDay(); // 0 is Sunday
 
-    // If explicit start/end dates are provided in query, use them
-    if (req.query.startDate) {
-      const sStr = String(req.query.startDate).trim();
-      if (sStr.includes('T') || sStr.endsWith('Z')) {
-        const parsed = new Date(sStr);
-        if (!isNaN(parsed.getTime())) startDate = parsed;
-      } else {
+    const normDur = duration.toLowerCase();
+
+    // Standard durations computed authoritatively in IST
+    if (normDur === 'today') {
+      startDate = new Date(Date.UTC(istYear, istMonth, istDay, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth, istDay, 23, 59, 59, 999) - istOffsetMs);
+    } else if (normDur === 'this week') {
+      const diffToMonday = istDayOfWeek === 0 ? 6 : istDayOfWeek - 1;
+      startDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday + 6, 23, 59, 59, 999) - istOffsetMs);
+    } else if (normDur === 'this month') {
+      startDate = new Date(Date.UTC(istYear, istMonth, 1, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, istMonth + 1, 0, 23, 59, 59, 999) - istOffsetMs);
+    } else if (normDur === 'this year') {
+      startDate = new Date(Date.UTC(istYear, 0, 1, 0, 0, 0, 0) - istOffsetMs);
+      endDate = new Date(Date.UTC(istYear, 11, 31, 23, 59, 59, 999) - istOffsetMs);
+    } else if (normDur === 'custom' || req.query.startDate || req.query.endDate) {
+      if (req.query.startDate) {
+        const sStr = String(req.query.startDate).trim();
         const parts = sStr.split('-');
         if (parts.length === 3) {
           startDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 0, 0, 0, 0) - istOffsetMs);
         } else {
           const parsed = new Date(sStr);
-          if (!isNaN(parsed.getTime())) {
-            parsed.setHours(0, 0, 0, 0);
-            startDate = parsed;
-          }
+          if (!isNaN(parsed.getTime())) startDate = parsed;
         }
       }
-    }
-
-    if (req.query.endDate) {
-      const eStr = String(req.query.endDate).trim();
-      if (eStr.includes('T') || eStr.endsWith('Z')) {
-        const parsed = new Date(eStr);
-        if (!isNaN(parsed.getTime())) endDate = parsed;
-      } else {
+      if (req.query.endDate) {
+        const eStr = String(req.query.endDate).trim();
         const parts = eStr.split('-');
         if (parts.length === 3) {
           endDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59, 999) - istOffsetMs);
         } else {
           const parsed = new Date(eStr);
-          if (!isNaN(parsed.getTime())) {
-            parsed.setHours(23, 59, 59, 999);
-            endDate = parsed;
-          }
+          if (!isNaN(parsed.getTime())) endDate = parsed;
         }
-      }
-    }
-
-    // If explicit dates were not provided, compute from duration keyword
-    if (!startDate && !endDate) {
-      const normDur = duration.toLowerCase();
-      if (normDur === 'today') {
-        startDate = new Date(Date.UTC(istYear, istMonth, istDay, 0, 0, 0, 0) - istOffsetMs);
-        endDate = new Date(Date.UTC(istYear, istMonth, istDay, 23, 59, 59, 999) - istOffsetMs);
-      } else if (normDur === 'this week') {
-        const diffToMonday = istDayOfWeek === 0 ? 6 : istDayOfWeek - 1;
-        startDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday, 0, 0, 0, 0) - istOffsetMs);
-        endDate = new Date(Date.UTC(istYear, istMonth, istDay - diffToMonday + 6, 23, 59, 59, 999) - istOffsetMs);
-      } else if (normDur === 'this month') {
-        startDate = new Date(Date.UTC(istYear, istMonth, 1, 0, 0, 0, 0) - istOffsetMs);
-        endDate = new Date(Date.UTC(istYear, istMonth + 1, 0, 23, 59, 59, 999) - istOffsetMs);
-      } else if (normDur === 'this year') {
-        startDate = new Date(Date.UTC(istYear, 0, 1, 0, 0, 0, 0) - istOffsetMs);
-        endDate = new Date(Date.UTC(istYear, 11, 31, 23, 59, 59, 999) - istOffsetMs);
       }
     }
 
@@ -426,8 +407,8 @@ const getVendorSettlements = async (req, res) => {
 
     // Category filter
     if (req.query.category && !['All', 'all', ''].includes(String(req.query.category).trim())) {
-      const catParam = String(req.query.category).trim().toLowerCase();
-      filtered = filtered.filter(item => item.category.toLowerCase() === catParam);
+      const catParam = normalizeCategory(String(req.query.category).trim()).toLowerCase();
+      filtered = filtered.filter(item => normalizeCategory(item.category).toLowerCase() === catParam);
     }
 
     // Search query
@@ -478,6 +459,16 @@ const getVendorSettlements = async (req, res) => {
     const totalPages = Math.ceil(totalCount / limit) || 1;
     const paginatedRecords = filtered.slice((page - 1) * limit, page * limit);
 
+    // Format IST labels for period
+    const formatISTDateStr = (dateObj) => {
+      if (!dateObj) return null;
+      const istDate = new Date(dateObj.getTime() + istOffsetMs);
+      const dd = String(istDate.getUTCDate()).padStart(2, '0');
+      const mm = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+      const yyyy = istDate.getUTCFullYear();
+      return `${dd}/${mm}/${yyyy}`;
+    };
+
     res.status(200).json({
       success: true,
       data: paginatedRecords,
@@ -494,7 +485,9 @@ const getVendorSettlements = async (req, res) => {
       period: {
         duration,
         startDate: startDate ? startDate.toISOString() : null,
-        endDate: endDate ? endDate.toISOString() : null
+        endDate: endDate ? endDate.toISOString() : null,
+        startLabel: startDate ? formatISTDateStr(startDate) : null,
+        endLabel: endDate ? formatISTDateStr(endDate) : null
       }
     });
   } catch (error) {

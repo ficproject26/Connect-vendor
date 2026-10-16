@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import { getVendorBackendUrl } from '../../services/apiSetup';
+import { isBookingCategory } from '../../utils/categoryContext';
 
 const formatCurrency = (val) => {
   // Normalize -0 → 0 to prevent display of -₹0
@@ -47,6 +48,11 @@ const formatDate = (dateVal) => {
 const formatDateOnly = (dateVal) => {
   if (!dateVal) return '-';
   try {
+    const str = String(dateVal).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      const [y, m, d] = str.split('-');
+      return `${d}/${m}/${y}`;
+    }
     const d = new Date(dateVal);
     if (isNaN(d.getTime())) return String(dateVal);
     const day = String(d.getDate()).padStart(2, '0');
@@ -137,6 +143,7 @@ const AdminStatusBadge = ({ status }) => {
 const CategoryBadge = ({ category }) => {
   const cat = String(category || 'General').toUpperCase();
   const colorMap = {
+    PRODUCTS: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
     PRODUCT: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
     FOOD: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
     'DAILY NEEDS': 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
@@ -254,10 +261,6 @@ export default function VendorPayments() {
       if (salesDuration === 'Custom') {
         if (salesFromDate) params.startDate = salesFromDate;
         if (salesToDate) params.endDate = salesToDate;
-      } else {
-        const computed = computeDurationRange(salesDuration);
-        if (computed.startDate) params.startDate = computed.startDate;
-        if (computed.endDate) params.endDate = computed.endDate;
       }
 
       const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/payments/sales`, { params });
@@ -323,10 +326,6 @@ export default function VendorPayments() {
       if (adminDuration === 'Custom') {
         if (adminFromDate) params.startDate = adminFromDate;
         if (adminToDate) params.endDate = adminToDate;
-      } else {
-        const computed = computeDurationRange(adminDuration);
-        if (computed.startDate) params.startDate = computed.startDate;
-        if (computed.endDate) params.endDate = computed.endDate;
       }
 
       const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/settlements`, { params });
@@ -443,13 +442,26 @@ export default function VendorPayments() {
     if (duration === 'All') {
       return 'Payment Period: All Historical Records';
     }
+    if (duration === 'Today') {
+      const todayLabel = periodInfo?.startLabel || (periodInfo?.startDate ? formatDateOnly(periodInfo.startDate) : formatDateOnly(new Date()));
+      return `Payment Period: ${todayLabel}`;
+    }
     if (duration === 'Custom') {
       const from = fromDate ? formatDateOnly(fromDate) : 'Start';
       const to = toDate ? formatDateOnly(toDate) : 'End';
       return `Payment Period: ${from} – ${to}`;
     }
+    if (periodInfo?.startLabel && periodInfo?.endLabel) {
+      if (periodInfo.startLabel === periodInfo.endLabel) {
+        return `Payment Period: ${periodInfo.startLabel}`;
+      }
+      return `Payment Period: ${periodInfo.startLabel} – ${periodInfo.endLabel}`;
+    }
     if (periodInfo?.startDate && periodInfo?.endDate) {
-      return `Payment Period: ${formatDateOnly(periodInfo.startDate)} – ${formatDateOnly(periodInfo.endDate)}`;
+      const s = formatDateOnly(periodInfo.startDate);
+      const e = formatDateOnly(periodInfo.endDate);
+      if (s === e) return `Payment Period: ${s}`;
+      return `Payment Period: ${s} – ${e}`;
     }
     return `Payment Period: ${duration}`;
   };
@@ -528,11 +540,11 @@ export default function VendorPayments() {
                   className="w-full px-3 py-2 text-sm rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#faed26]/50"
                 >
                   <option value="All">All Categories</option>
-                  <option value="Product">Product</option>
-                  <option value="Food">Food</option>
-                  <option value="Daily Needs">Daily Needs</option>
-                  <option value="Services">Services</option>
                   <option value="Stay">Stay</option>
+                  <option value="Services">Services</option>
+                  <option value="Products">Products</option>
+                  <option value="Daily Needs">Daily Needs</option>
+                  <option value="Food">Food</option>
                   <option value="Travel">Travel</option>
                   <option value="Jobs">Jobs</option>
                 </select>
@@ -851,11 +863,11 @@ export default function VendorPayments() {
                   className="w-full px-3 py-2 text-sm rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#faed26]/50"
                 >
                   <option value="All">All Categories</option>
-                  <option value="Product">Product</option>
-                  <option value="Food">Food</option>
-                  <option value="Daily Needs">Daily Needs</option>
-                  <option value="Services">Services</option>
                   <option value="Stay">Stay</option>
+                  <option value="Services">Services</option>
+                  <option value="Products">Products</option>
+                  <option value="Daily Needs">Daily Needs</option>
+                  <option value="Food">Food</option>
                   <option value="Travel">Travel</option>
                   <option value="Jobs">Jobs</option>
                 </select>
@@ -1196,7 +1208,13 @@ export default function VendorPayments() {
         <Modal
           isOpen={!!selectedSaleDetail}
           onClose={() => setSelectedSaleDetail(null)}
-          title="Sales Payment Details"
+          title={
+            (isBookingCategory(selectedSaleDetail.category) ||
+             ['Stay', 'Services', 'Travel', 'Appointments'].includes(selectedSaleDetail.category) ||
+             (typeof selectedSaleDetail.orderId === 'string' && selectedSaleDetail.orderId.startsWith('BKG')))
+              ? 'Booking Payment Details'
+              : 'Sales Payment Details'
+          }
           maxWidth="max-w-2xl"
         >
           <div className="space-y-5 text-left text-slate-800 dark:text-slate-100">
