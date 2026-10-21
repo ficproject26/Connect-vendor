@@ -77,7 +77,7 @@ const isValidTimeFormat = (timeStr) => {
   return regex24.test(trimmed) || regex12.test(trimmed);
 };
 
-const isCanonicalCustId = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-')) && String(id) !== 'FIC-CUST-100001';
+const isCanonicalCustId = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-') || String(id).startsWith('REG-')) && String(id) !== 'FIC-CUST-100001';
 
 const formatCustomerId = (c, customersList = null) => {
   if (!c) return 'N/A';
@@ -90,6 +90,7 @@ const formatCustomerId = (c, customersList = null) => {
 
     // Check against customers list
     const list = Array.isArray(customersList) ? customersList : [];
+    const oMemberId = String(c.memberId || c.customerId || c.userId || '').trim();
     const oPhone = (c.customer_phone || c.phone || c.mobileNumber || c.candidatePhone || '').toString().trim().replace(/[^0-9]/g, '');
     const oEmail = (c.candidateEmail || c.customer_email || (c.memberId && c.memberId.includes('@') ? c.memberId : '') || '').trim().toLowerCase();
     const oName = (c.memberName || c.customer_name || c.name || c.candidateName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -97,6 +98,7 @@ const formatCustomerId = (c, customersList = null) => {
     if (list.length > 0) {
       const match = list.find(cust => {
         if (!cust) return false;
+        if (oMemberId && (String(cust._id) === oMemberId || String(cust.id) === oMemberId || String(cust.memberId) === oMemberId || String(cust.customerId) === oMemberId)) return true;
         const cPhone = (cust.phone || cust.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
         const cEmail = (cust.email || '').trim().toLowerCase();
         const cName = (cust.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -615,18 +617,18 @@ const VendorDashboard = () => {
         let dbCats = [];
         try {
           const vendorBackendUrl = getBackendUrl();
-          const res = await fetch(`${vendorBackendUrl}/api/public/categories`);
-          if (res.ok) {
-            const json = await res.json();
-            dbCats = Array.isArray(json) ? json : (json.data || []);
+          const res = await axios.get(`${vendorBackendUrl}/api/public/categories`, { timeout: 10000 });
+          if (res.data) {
+            dbCats = Array.isArray(res.data) ? res.data : (res.data.data || []);
           }
         } catch (e) {
           try {
             const adminUrl = getAdminBackendUrl();
-            const res = await fetch(`${adminUrl}/api/admin/categories`);
-            if (res.ok) {
-              const json = await res.json();
-              dbCats = Array.isArray(json) ? json : (json.data || []);
+            if (adminUrl && !adminUrl.includes('trycloudflare.com')) {
+              const res = await axios.get(`${adminUrl}/api/admin/categories`, { timeout: 8000 });
+              if (res.data) {
+                dbCats = Array.isArray(res.data) ? res.data : (res.data.data || []);
+              }
             }
           } catch (adminErr) {
             // Quiet fallback to static taxonomy
@@ -1926,11 +1928,12 @@ const VendorDashboard = () => {
   const getCustomerDisplayId = (order) => {
     if (!order) return 'N/A';
     if (order.bookingHolder?.customerId && String(order.bookingHolder.customerId) !== 'FIC-CUST-100001') return String(order.bookingHolder.customerId);
-    if (order.customerDisplayId && (String(order.customerDisplayId).startsWith('FIC-CUS-') || String(order.customerDisplayId).startsWith('FIC-CUST-')) && String(order.customerDisplayId) !== 'FIC-CUST-100001') return String(order.customerDisplayId);
-    if (order.customerId && (String(order.customerId).startsWith('FIC-CUS-') || String(order.customerId).startsWith('FIC-CUST-')) && String(order.customerId) !== 'FIC-CUST-100001') return String(order.customerId);
+    if (order.customerDisplayId && (String(order.customerDisplayId).startsWith('FIC-CUS-') || String(order.customerDisplayId).startsWith('FIC-CUST-') || String(order.customerDisplayId).startsWith('REG-')) && String(order.customerDisplayId) !== 'FIC-CUST-100001') return String(order.customerDisplayId);
+    if (order.customerId && (String(order.customerId).startsWith('FIC-CUS-') || String(order.customerId).startsWith('FIC-CUST-') || String(order.customerId).startsWith('REG-')) && String(order.customerId) !== 'FIC-CUST-100001') return String(order.customerId);
     if (order.registrationId && String(order.registrationId).startsWith('REG-')) return String(order.registrationId);
-    if (order.memberId && (String(order.memberId).startsWith('FIC-CUS-') || String(order.memberId).startsWith('FIC-CUST-')) && String(order.memberId) !== 'FIC-CUST-100001') return String(order.memberId);
+    if (order.memberId && (String(order.memberId).startsWith('FIC-CUS-') || String(order.memberId).startsWith('FIC-CUST-') || String(order.memberId).startsWith('REG-')) && String(order.memberId) !== 'FIC-CUST-100001') return String(order.memberId);
 
+    const oMemberId = String(order.memberId || order.customerId || order.userId || '').trim();
     const oNameClean = (order.memberName || order.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     const oEmailClean = (order.candidateEmail || order.customer_email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
     const oPhoneClean = (order.customer_phone || order.phone || '').toString().trim().replace(/[^0-9]/g, '');
@@ -1938,6 +1941,7 @@ const VendorDashboard = () => {
     if (customers && Array.isArray(customers) && customers.length > 0) {
       const cust = customers.find(c => {
         if (!c) return false;
+        if (oMemberId && (String(c._id) === oMemberId || String(c.id) === oMemberId || String(c.memberId) === oMemberId || String(c.customerId) === oMemberId)) return true;
         const cPhone = (c.phone || c.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
         const cNameClean = (c.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
         const cEmailClean = (c.email || '').trim().toLowerCase();
@@ -3006,13 +3010,21 @@ const VendorDashboard = () => {
               });
             }
           } else {
+            const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
+            const activeBiz = user?.businesses?.find(b => String(b?._id || b?.id || '') === String(savedActiveId || ''));
+            const activeCat = activeBiz?.vendorType || vendorType || '';
+            const queryParams = new URLSearchParams();
+            if (savedActiveId) queryParams.append('businessId', savedActiveId);
+            if (activeCat) queryParams.append('category', activeCat);
+            const qStr = queryParams.toString() ? `?${queryParams.toString()}` : '';
+
             const [analyticsRes, ordersRes, bookingsRes, productsRes, customersRes, appsRes] = await Promise.allSettled([
-              axios.get(`${getVendorBackendUrl()}/api/vendor/analytics`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/products`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/applications`, getAxiosConfig())
+              axios.get(`${getVendorBackendUrl()}/api/vendor/analytics${qStr}`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/orders${qStr}`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/bookings${qStr}`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/products${qStr}`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/customers${qStr}`, getAxiosConfig()),
+              axios.get(`${getVendorBackendUrl()}/api/vendor/applications${qStr}`, getAxiosConfig())
             ]);
             if (analyticsRes.status === 'fulfilled' && analyticsRes.value.data.success) {
               setAnalytics(analyticsRes.value.data.data);
@@ -5356,25 +5368,19 @@ const VendorDashboard = () => {
 
           // Filter by active business and category context
           const currentBizRecords = allVendorRecords.filter(o => {
-            const matchesBusiness = !savedActiveId ||
-              String(o.vendorId) === String(savedActiveId) ||
-              String(o.vendor_id) === String(savedActiveId) ||
-              String(o.vendorId) === String(user?._id) ||
-              String(o.vendor_id) === String(user?._id) ||
-              String(o.vendorId) === String(user?.registrationId) ||
-              (user?.businesses || []).some(b => String(b._id || b.id) === String(o.vendorId || o.vendor_id));
-
+            const oBizId = String(o.vendorId || o.vendor_id || o.businessId || '');
+            const matchesBusiness = !savedActiveId || oBizId === String(savedActiveId);
             if (!matchesBusiness) return false;
 
             const recCat = getRecordCategory(o);
             const oType = String(o.type || '').toLowerCase();
             const oCat = String(o.category || '').toLowerCase();
 
-            const isJobRecord = oType === 'job' || oType === 'jobs' || oType === 'job application' || oType === 'application' || recCat === 'Jobs' || oCat === 'jobs' || Boolean(o.jobId || o.jobTitle || o.applicationId || o.candidateName);
+            const isJobRecord = oType === 'job' || oType === 'jobs' || oType === 'job application' || oType === 'application' || recCat === 'Jobs' || oCat === 'jobs' || Boolean(o.jobId || o.applicationId || (o.jobTitle && !isTravelBooking(o) && !isStayBooking(o) && !isServicesBooking(o)));
             const isServiceRecord = isServicesBooking(o) || recCat === CATEGORY_SERVICES || oType === 'services' || oType === 'service' || oType === 'appointment' || oCat === 'services' || oCat === 'service' || Boolean(o.doctorName || o.serviceName);
             const isTravelRecord = isTravelBooking(o) || recCat === CATEGORY_TRAVEL || oType === 'travel' || oCat === 'travel' || Boolean(o.travelDate || o.journeyDate);
             const isStayRecord = isStayBooking(o) || recCat === CATEGORY_STAY || oType === 'stay' || oType === 'hotel' || oCat === 'stay' || oCat === 'hotel' || Boolean(o.checkInDate || o.roomNumber);
-            const isFoodRecord = recCat === CATEGORY_FOOD || oType === 'food' || oType === 'restaurant' || oCat === 'food' || oCat === 'restaurant' || Boolean(o.tableNumber);
+            const isFoodRecord = !isTravelRecord && !isStayRecord && !isJobRecord && (recCat === CATEGORY_FOOD || oType === 'food' || oType === 'restaurant' || oCat === 'food' || oCat === 'restaurant' || Boolean(o.tableNumber));
 
             if (isJobBiz) return isJobRecord;
             if (isTravelBiz) return isTravelRecord;
@@ -5417,6 +5423,50 @@ const VendorDashboard = () => {
 
           // Top Selling Items (max 5)
           const getTopSellingData = () => {
+            if (isJobBiz) {
+              const jobAppMap = {};
+              currentBizRecords.forEach(o => {
+                if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+                  const catMatch = catalog.find(c => 
+                    (o.jobId && String(c._id) === String(o.jobId)) ||
+                    (o.job_id && String(c._id) === String(o.job_id)) ||
+                    (o.productId && String(c._id) === String(o.productId)) ||
+                    (o.jobTitle && c.title && c.title.toLowerCase() === o.jobTitle.toLowerCase()) ||
+                    (o.jobTitle && c.name && c.name.toLowerCase() === o.jobTitle.toLowerCase()) ||
+                    (o.title && c.title && c.title.toLowerCase() === o.title.toLowerCase())
+                  );
+                  const title = catMatch?.title || catMatch?.name || o.jobTitle || o.title || o.position || 'Job Posting';
+                  jobAppMap[title] = (jobAppMap[title] || 0) + 1;
+                }
+              });
+              return Object.keys(jobAppMap)
+                .map(name => ({ name, sales: jobAppMap[name] }))
+                .sort((a, b) => b.sales - a.sales)
+                .slice(0, 5);
+            }
+
+            if (isTravelBiz) {
+              const travelMap = {};
+              currentBizRecords.forEach(o => {
+                if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+                  const catMatch = catalog.find(c => 
+                    (o.productId && String(c._id) === String(o.productId)) ||
+                    (o.product_details && c.name && c.name.toLowerCase() === o.product_details.toLowerCase()) ||
+                    (o.vehicleType && c.category && c.category.toLowerCase() === o.vehicleType.toLowerCase())
+                  );
+                  let routeOpt = catMatch?.category || catMatch?.name || o.vehicleType || o.product_details || 'Travel Route';
+                  if (/car/i.test(routeOpt)) routeOpt = 'Car';
+                  else if (/bus/i.test(routeOpt)) routeOpt = 'Bus';
+                  else if (/bike/i.test(routeOpt)) routeOpt = 'Bike';
+                  travelMap[routeOpt] = (travelMap[routeOpt] || 0) + 1;
+                }
+              });
+              return Object.keys(travelMap)
+                .map(name => ({ name, sales: travelMap[name] }))
+                .sort((a, b) => b.sales - a.sales)
+                .slice(0, 5);
+            }
+
             const itemMap = {};
             currentBizRecords.forEach(o => {
               if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
@@ -5544,7 +5594,14 @@ const VendorDashboard = () => {
                   <div className="p-2.5 md:p-3.5 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-355 rounded-xl md:rounded-2xl shadow-inner shrink-0"><ClipboardList size={20} className="md:w-6 md:h-6" /></div>
                   <div className="min-w-0">
                     <p className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider truncate">Total {terms.ordersName}</p>
-                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-orange-600 dark:text-orange-400">{analytics.ordersCount || 0}</p>
+                    <p className="text-lg md:text-2xl font-extrabold mt-0.5 tracking-tight text-orange-600 dark:text-orange-400">
+                      {isJobBiz
+                        ? (analytics.applicationsCount !== undefined ? analytics.applicationsCount : currentBizRecords.length)
+                        : (isTravelBiz || isStayBiz || isServicesBiz)
+                          ? (analytics.bookingsCount !== undefined ? analytics.bookingsCount : currentBizRecords.length)
+                          : (analytics.ordersCount !== undefined ? analytics.ordersCount : currentBizRecords.length)
+                      }
+                    </p>
                   </div>
                 </div>
 
@@ -5682,9 +5739,9 @@ const VendorDashboard = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Top Selling Dishes/Products */}
                   <div className="bg-white dark:bg-slate-900/80 p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 tracking-tight">Top Selling {terms.catalogName}</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 tracking-tight">Top {isJobBiz ? 'Applied' : 'Selling'} {terms.catalogName}</h3>
                     {topSellingData.length === 0 ? (
-                      <p className="text-slate-400 dark:text-slate-500 text-center py-12 font-medium">No sales details to graph</p>
+                      <p className="text-slate-400 dark:text-slate-500 text-center py-12 font-medium">{isJobBiz ? 'No job applications to graph' : 'No sales details to graph'}</p>
                     ) : (
                       <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
@@ -5694,7 +5751,7 @@ const VendorDashboard = () => {
                             <YAxis stroke="#64748b" fontSize={11} fontWeight={500} allowDecimals={false} />
                             <Tooltip 
                               contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#f8fafc', borderRadius: '16px', backdropFilter: 'blur(10px)' }} 
-                              formatter={(value) => [`${value}`, 'Units Sold']}
+                              formatter={(value) => [`${value}`, isJobBiz ? 'Applications' : (isTravelBiz || isStayBiz || isServicesBiz) ? 'Bookings' : 'Units Sold']}
                             />
                             <Bar dataKey="sales" fill="#fbbf24" radius={[8, 8, 0, 0]} />
                           </BarChart>
@@ -5936,7 +5993,7 @@ const VendorDashboard = () => {
                     {/* Mini Customers List */}
                     <div className="space-y-3">
                       {customers.slice(0, 3).map((customer, idx) => {
-                        const metrics = getCustomerMetrics(customer, orders);
+                        const metrics = getCustomerMetrics(customer, currentBizRecords);
                         return (
                           <div 
                             key={customer._id || idx} 
@@ -5960,7 +6017,6 @@ const VendorDashboard = () => {
                               <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
                                 {metrics.count} {terms.ordersName === 'Applications' ? (metrics.count === 1 ? 'application' : 'applications') : terms.ordersName === 'Orders' ? (metrics.count === 1 ? 'order' : 'orders') : (metrics.count === 1 ? 'booking' : 'bookings')}
                               </p>
-                              <p className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">₹{metrics.totalSpent}</p>
                             </div>
                           </div>
                         );
@@ -6038,25 +6094,43 @@ const VendorDashboard = () => {
                   const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
                   const allRecords = [
                     ...(Array.isArray(orders) ? orders : []),
-                    ...(Array.isArray(bookings) ? bookings : [])
+                    ...(Array.isArray(bookings) ? bookings : []),
+                    ...(Array.isArray(applications) ? applications : [])
                   ];
+                  const isJobCatalog = vendorType.startsWith('Job') || terms.catalogName === 'Job Openings' || terms.catalogItem === 'Job Posting';
                   const isTravelCatalog = vendorType.startsWith('Travel') || terms.catalogName === 'Travel Routes' || terms.catalogItem === 'Travel Route';
-                  const bizOrders = allRecords.filter(o => {
-                    const matchBiz = !savedActiveId || String(o.vendorId) === String(savedActiveId) || String(o.vendor_id) === String(savedActiveId);
-                    if (!matchBiz) return false;
-                    if (isTravelCatalog) {
+
+                  const catalogItemIds = new Set(catalog.map(c => String(c._id || c.id || '').trim()));
+                  const catalogItemNames = new Set(catalog.map(c => (c.name || c.title || '').trim().toLowerCase()));
+
+                  let bizOrders = [];
+                  if (isJobCatalog) {
+                    bizOrders = (Array.isArray(applications) ? applications : []).filter(app => {
+                      const appBizId = String(app.vendorId || app.vendor_id || app.businessId || '');
+                      const matchBiz = !savedActiveId || appBizId === String(savedActiveId);
+                      const appId = String(app.jobId || app.job_id || app.id || '').trim();
+                      const appTitle = (app.jobTitle || app.title || app.position || '').trim().toLowerCase();
+                      const matchCatalog = (appId && catalogItemIds.has(appId)) || (appTitle && catalogItemNames.has(appTitle));
+                      return matchBiz || matchCatalog;
+                    });
+                  } else if (isTravelCatalog) {
+                    bizOrders = allRecords.filter(o => {
+                      const matchBiz = !savedActiveId || String(o.vendorId) === String(savedActiveId) || String(o.vendor_id) === String(savedActiveId);
+                      if (!matchBiz) return false;
                       return isTravelBooking(o) || o.type === 'Travel' || o.category === 'Travel';
-                    }
-                    return true;
-                  });
+                    });
+                  } else {
+                    bizOrders = allRecords.filter(o => {
+                      const matchBiz = !savedActiveId || String(o.vendorId) === String(savedActiveId) || String(o.vendor_id) === String(savedActiveId);
+                      return matchBiz;
+                    });
+                  }
 
                   const totalItems = catalog.length;
                   const totalOrders = bizOrders.length;
                   
                   // Calculate revenue accurately from catalog items of valid, completed / paid orders
                   const completedStatuses = ['Completed', 'Delivered', 'Checked Out', 'Hired', 'Enrolled'];
-                  const catalogItemIds = new Set(catalog.map(c => String(c._id || c.id || '').trim()));
-                  const catalogItemNames = new Set(catalog.map(c => (c.name || '').trim().toLowerCase()));
 
                   const eligibleBizOrders = bizOrders.filter(o => 
                     o.status !== 'Cancelled' && 
@@ -6087,26 +6161,62 @@ const VendorDashboard = () => {
                   
                   // Pending orders
                   const pendingStatuses = ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'];
-                  const pendingCount = bizOrders.filter(o => pendingStatuses.includes(o.status)).length;
+                  const pendingCount = isTravelCatalog ? totalOrders : bizOrders.filter(o => pendingStatuses.includes(o.status)).length;
                   
                   // Top selling item
-                  const itemSalesMap = {};
-                  bizOrders.forEach(o => {
-                    if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
-                      const itemList = (o.items && o.items.length > 0) ? o.items : (o.product_details ? [{ name: o.product_details, productId: o.productId, quantity: 1 }] : []);
-                      itemList.forEach(item => {
-                        const catMatch = catalog.find(c => 
-                          (item.productId && String(c._id) === String(item.productId)) ||
-                          (item.id && String(c._id) === String(item.id)) ||
-                          c.name === item.name
-                        );
-                        const rawName = item.name || o.product_details || o.vehicleType || o.vehicleDetails?.vehicleName || 'Travel Route';
-                        const name = catMatch ? catMatch.name : rawName;
-                        itemSalesMap[name] = (itemSalesMap[name] || 0) + (item.quantity || 1);
-                      });
-                    }
-                  });
-                  const topSelling = Object.entries(itemSalesMap).sort((a, b) => b[1] - a[1])[0];
+                  let topSelling = null;
+                  if (isJobCatalog) {
+                    const jobSalesMap = {};
+                    bizOrders.forEach(app => {
+                      const matchedJob = catalog.find(c => 
+                        (app.jobId && String(c._id) === String(app.jobId)) ||
+                        (app.job_id && String(c._id) === String(app.job_id)) ||
+                        (app.jobTitle && c.title && c.title.toLowerCase() === app.jobTitle.toLowerCase()) ||
+                        (app.jobTitle && c.name && c.name.toLowerCase() === app.jobTitle.toLowerCase())
+                      );
+                      const title = matchedJob?.title || matchedJob?.name || app.jobTitle || app.title || app.position || 'Job Posting';
+                      jobSalesMap[title] = (jobSalesMap[title] || 0) + 1;
+                    });
+                    topSelling = Object.entries(jobSalesMap).sort((a, b) => b[1] - a[1])[0] || null;
+                  } else if (isTravelCatalog) {
+                    const travelSalesMap = {};
+                    bizOrders.forEach(o => {
+                      if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+                        const itemList = (o.items && o.items.length > 0) ? o.items : (o.product_details ? [{ name: o.product_details, productId: o.productId, quantity: 1 }] : []);
+                        itemList.forEach(item => {
+                          const catMatch = catalog.find(c => 
+                            (item.productId && String(c._id) === String(item.productId)) ||
+                            (item.id && String(c._id) === String(item.id)) ||
+                            c.name === item.name
+                          );
+                          let routeOpt = catMatch?.category || catMatch?.name || item.name || o.product_details || o.vehicleType || 'Travel Route';
+                          if (/car/i.test(routeOpt)) routeOpt = 'Car';
+                          else if (/bus/i.test(routeOpt)) routeOpt = 'Bus';
+                          else if (/bike/i.test(routeOpt)) routeOpt = 'Bike';
+                          travelSalesMap[routeOpt] = (travelSalesMap[routeOpt] || 0) + (item.quantity || 1);
+                        });
+                      }
+                    });
+                    topSelling = Object.entries(travelSalesMap).sort((a, b) => b[1] - a[1])[0] || null;
+                  } else {
+                    const itemSalesMap = {};
+                    bizOrders.forEach(o => {
+                      if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
+                        const itemList = (o.items && o.items.length > 0) ? o.items : (o.product_details ? [{ name: o.product_details, productId: o.productId, quantity: 1 }] : []);
+                        itemList.forEach(item => {
+                          const catMatch = catalog.find(c => 
+                            (item.productId && String(c._id) === String(item.productId)) ||
+                            (item.id && String(c._id) === String(item.id)) ||
+                            c.name === item.name
+                          );
+                          const rawName = item.name || o.product_details || o.itemName || 'Item';
+                          const name = catMatch ? catMatch.name : rawName;
+                          itemSalesMap[name] = (itemSalesMap[name] || 0) + (item.quantity || 1);
+                        });
+                      }
+                    });
+                    topSelling = Object.entries(itemSalesMap).sort((a, b) => b[1] - a[1])[0] || null;
+                  }
 
                   // Dynamic labels based on vendor type
                   const type = vendorType || '';
@@ -6117,6 +6227,7 @@ const VendorDashboard = () => {
                   else if (type.startsWith('Job')) pendingLabel = 'Pending Applications';
                   else if (type.startsWith('Education')) pendingLabel = 'Pending Enrollments';
                   else if (type.startsWith('Restaurant')) pendingLabel = 'Pending Orders';
+                  else if (type.startsWith('Travel') || terms.catalogName === 'Travel Routes' || terms.catalogItem === 'Travel Route') pendingLabel = 'Travel Bookings';
 
                   let soldLabel = 'sold';
                   if (type.startsWith('Job')) soldLabel = 'applied';
@@ -7451,7 +7562,7 @@ const VendorDashboard = () => {
                                           </div>
                                         );
                                       })() : isTravelBooking(b) ? (() => {
-                                        const rawJourneyDate = b.travelDate || b.journeyDate || b.date;
+                                        const rawJourneyDate = b.travelDate || b.journeyDate || b.appointmentDate || b.bookingDate || b.date;
                                         let formattedJourneyDate = 'Not provided';
                                         if (rawJourneyDate) {
                                           const d = new Date(rawJourneyDate);
@@ -7459,7 +7570,7 @@ const VendorDashboard = () => {
                                             ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
                                             : String(rawJourneyDate);
                                         }
-                                        const depTime = b.departureTime || b.time || b.boardingTime || 'Not provided';
+                                        const depTime = b.departureTime || b.appointmentTimeSlot || b.timeSlot || b.time || b.boardingTime || (b.boardingPoint && b.boardingPoint.time) || b.schedule || 'Not provided';
                                         return (
                                           <div className="space-y-1 py-0.5">
                                             <div className="leading-tight">
@@ -7577,8 +7688,8 @@ const VendorDashboard = () => {
                                       <div className="mt-1.5 flex items-center">
                                         {(() => {
                                           let displayStatus = b.status || 'Pending';
-                                          if ((isStayBooking(b) || isServicesBooking(b)) && (displayStatus === 'Order Received' || displayStatus === 'Accepted')) {
-                                            displayStatus = b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending';
+                                          if ((isStayBooking(b) || isServicesBooking(b) || isTravelBooking(b)) && (displayStatus === 'Order Received' || displayStatus === 'Accepted' || displayStatus === 'BOOKING RECEIVED')) {
+                                            displayStatus = (b.paymentStatus === 'Completed' || b.paymentStatus === 'Paid') ? 'Confirmed' : 'Pending';
                                           }
                                           return (
                                             <span className={`inline-flex items-center text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
@@ -7601,7 +7712,7 @@ const VendorDashboard = () => {
                                       <div className="flex flex-col items-end gap-2">
                                         <div className="relative inline-flex items-center w-36">
                                           <select
-                                            value={(isStayBooking(b) || isServicesBooking(b)) && (b.status === 'Order Received' || b.status === 'Accepted') ? (b.paymentStatus === 'Completed' ? 'Confirmed' : 'Pending') : b.status}
+                                            value={(isStayBooking(b) || isServicesBooking(b) || isTravelBooking(b)) && (b.status === 'Order Received' || b.status === 'Accepted' || b.status === 'BOOKING RECEIVED') ? ((b.paymentStatus === 'Completed' || b.paymentStatus === 'Paid') ? 'Confirmed' : 'Pending') : b.status}
                                             disabled={updatingStatusIds.has(String(b._id || b.id || b.order_number))}
                                             onChange={(e) => handleUpdateOrderStatus(b._id || b.id || b.order_number, e.target.value)}
                                             className={`appearance-none bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs pl-3 pr-8 py-1.5 w-full focus:outline-none focus:border-primary-500 font-semibold cursor-pointer ${updatingStatusIds.has(String(b._id || b.id || b.order_number)) ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -14074,7 +14185,9 @@ required
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Departure / Time Slot</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{selectedBillOrder.appointmentTimeSlot || selectedBillOrder.bookingTime || 'Standard Slot'}</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {selectedBillOrder.departureTime || selectedBillOrder.appointmentTimeSlot || selectedBillOrder.timeSlot || selectedBillOrder.time || selectedBillOrder.bookingTime || (selectedBillOrder.boardingPoint && selectedBillOrder.boardingPoint.time) || selectedBillOrder.schedule || 'Standard Slot'}
+                      </span>
                     </div>
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Vehicle / Travel Type</span>
@@ -14117,7 +14230,13 @@ required
                     <div>
                       <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider">Status</span>
                       <span className="font-extrabold text-emerald-600 dark:text-emerald-450 uppercase">
-                        {['ORDER RECEIVED', 'PENDING', 'BOOKING RECEIVED'].includes((selectedBillOrder.status || '').toUpperCase()) ? 'BOOKING RECEIVED' : selectedBillOrder.status}
+                        {(() => {
+                          let st = selectedBillOrder.status || 'Pending';
+                          if (['ORDER RECEIVED', 'PENDING', 'ACCEPTED', 'BOOKING RECEIVED'].includes(st.toUpperCase())) {
+                            return (selectedBillOrder.paymentStatus === 'Completed' || selectedBillOrder.paymentStatus === 'Paid') ? 'CONFIRMED' : 'PENDING';
+                          }
+                          return st;
+                        })()}
                       </span>
                     </div>
                   </div>

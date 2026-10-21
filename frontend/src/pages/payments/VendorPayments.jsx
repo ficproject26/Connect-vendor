@@ -265,7 +265,13 @@ export default function VendorPayments() {
 
       const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/payments/sales`, { params });
       if (res.data && res.data.success) {
-        setSalesRecords(res.data.data || []);
+        const rawList = res.data.data || [];
+        const filteredList = rawList.filter(r => {
+          const isJob = String(r.category || '').toLowerCase() === 'jobs' || String(r.type || '').toLowerCase() === 'jobs';
+          if (isJob && Number(r.saleAmount || r.amount || 0) <= 0) return false;
+          return true;
+        });
+        setSalesRecords(filteredList);
         setSalesTotalCount(res.data.totalCount || 0);
         setSalesTotalPages(res.data.totalPages || 1);
         setSalesCategoryTotals(res.data.categoryTotals || []);
@@ -1246,7 +1252,9 @@ export default function VendorPayments() {
             {/* Transaction Metadata Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80">
-                <div className="text-slate-400 font-medium mb-1">Sale Date</div>
+                <div className="text-slate-400 font-medium mb-1">
+                  {selectedSaleDetail.category === 'Travel' ? 'Booking Date' : 'Sale Date'}
+                </div>
                 <div className="font-semibold text-slate-800 dark:text-slate-200">
                   {formatDate(selectedSaleDetail.saleDate)}
                 </div>
@@ -1311,7 +1319,11 @@ export default function VendorPayments() {
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between items-center text-slate-600 dark:text-slate-300">
-                  <span>How much the item was sold for (Sale Amount):</span>
+                  <span>
+                    {selectedSaleDetail.category === 'Travel'
+                      ? 'How much the item was booked for (Booking Amount):'
+                      : 'How much the item was sold for (Sale Amount):'}
+                  </span>
                   <span className="font-bold text-slate-900 dark:text-white">
                     {formatCurrency(selectedSaleDetail.saleAmount)}
                   </span>

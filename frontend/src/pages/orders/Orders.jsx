@@ -1,5 +1,5 @@
 
-const isCanonicalCustId = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-')) && String(id) !== 'FIC-CUST-100001';
+const isCanonicalCustId = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-') || String(id).startsWith('REG-')) && String(id) !== 'FIC-CUST-100001';
 
 const formatCustomerId = (c, customersList = null) => {
   if (!c) return 'N/A';
@@ -11,6 +11,7 @@ const formatCustomerId = (c, customersList = null) => {
     if (c.registrationId && String(c.registrationId).startsWith('REG-')) return String(c.registrationId);
 
     const list = Array.isArray(customersList) ? customersList : [];
+    const oMemberId = String(c.memberId || c.customerId || c.userId || '').trim();
     const oPhone = (c.customer_phone || c.phone || c.mobileNumber || c.candidatePhone || '').toString().trim().replace(/[^0-9]/g, '');
     const oEmail = (c.candidateEmail || c.customer_email || (c.memberId && c.memberId.includes('@') ? c.memberId : '') || '').trim().toLowerCase();
     const oName = (c.memberName || c.customer_name || c.name || c.candidateName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -18,6 +19,7 @@ const formatCustomerId = (c, customersList = null) => {
     if (list.length > 0) {
       const match = list.find(cust => {
         if (!cust) return false;
+        if (oMemberId && (String(cust._id) === oMemberId || String(cust.id) === oMemberId || String(cust.memberId) === oMemberId || String(cust.customerId) === oMemberId)) return true;
         const cPhone = (cust.phone || cust.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
         const cEmail = (cust.email || '').trim().toLowerCase();
         const cName = (cust.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -234,11 +236,12 @@ const Orders = () => {
 
   const getCustomerDisplayId = (order) => {
     if (!order) return 'N/A';
-    if (order.customerDisplayId && (String(order.customerDisplayId).startsWith('FIC-CUS-') || String(order.customerDisplayId).startsWith('FIC-CUST-')) && String(order.customerDisplayId) !== 'FIC-CUST-100001') return String(order.customerDisplayId);
-    if (order.customerId && (String(order.customerId).startsWith('FIC-CUS-') || String(order.customerId).startsWith('FIC-CUST-')) && String(order.customerId) !== 'FIC-CUST-100001') return String(order.customerId);
+    if (order.customerDisplayId && (String(order.customerDisplayId).startsWith('FIC-CUS-') || String(order.customerDisplayId).startsWith('FIC-CUST-') || String(order.customerDisplayId).startsWith('REG-')) && String(order.customerDisplayId) !== 'FIC-CUST-100001') return String(order.customerDisplayId);
+    if (order.customerId && (String(order.customerId).startsWith('FIC-CUS-') || String(order.customerId).startsWith('FIC-CUST-') || String(order.customerId).startsWith('REG-')) && String(order.customerId) !== 'FIC-CUST-100001') return String(order.customerId);
     if (order.registrationId && String(order.registrationId).startsWith('REG-')) return String(order.registrationId);
-    if (order.memberId && (String(order.memberId).startsWith('FIC-CUS-') || String(order.memberId).startsWith('FIC-CUST-')) && String(order.memberId) !== 'FIC-CUST-100001') return String(order.memberId);
+    if (order.memberId && (String(order.memberId).startsWith('FIC-CUS-') || String(order.memberId).startsWith('FIC-CUST-') || String(order.memberId).startsWith('REG-')) && String(order.memberId) !== 'FIC-CUST-100001') return String(order.memberId);
 
+    const oMemberId = String(order.memberId || order.customerId || order.userId || '').trim();
     const oNameClean = (order.memberName || order.customer_name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     const oEmailClean = (order.candidateEmail || order.customer_email || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || '').trim().toLowerCase();
     const oPhoneClean = (order.customer_phone || order.phone || '').toString().trim().replace(/[^0-9]/g, '');
@@ -246,6 +249,7 @@ const Orders = () => {
     if (customers && Array.isArray(customers) && customers.length > 0) {
       const cust = customers.find(c => {
         if (!c) return false;
+        if (oMemberId && (String(c._id) === oMemberId || String(c.id) === oMemberId || String(c.memberId) === oMemberId || String(c.customerId) === oMemberId)) return true;
         const cPhone = (c.phone || c.mobileNumber || '').toString().trim().replace(/[^0-9]/g, '');
         const cNameClean = (c.name || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
         const cEmailClean = (c.email || '').trim().toLowerCase();

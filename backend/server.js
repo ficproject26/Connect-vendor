@@ -141,17 +141,18 @@ if (process.env.ALLOWED_ORIGINS) {
   });
 }
 
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  const isExplicitlyAllowed = allowedOrigins.includes(origin);
+  const isVercelDomain = /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/.test(origin);
+  const isFicappDomain = /^https?:\/\/([a-z0-9-]+\.)*ficapp\.in(:[0-9]+)?$/.test(origin);
+  const isLocalDev = !isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(origin);
+  return Boolean(isExplicitlyAllowed || isVercelDomain || isFicappDomain || isLocalDev);
+};
+
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow non-browser requests (e.g. mobile apps, curl, server-to-server health checks)
-    if (!origin) return callback(null, true);
-
-    const isExplicitlyAllowed = allowedOrigins.includes(origin);
-    const isVercelDomain = /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/.test(origin);
-    const isFicappDomain = /^https?:\/\/([a-z0-9-]+\.)*ficapp\.in(:[0-9]+)?$/.test(origin);
-    const isLocalDev = !isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(origin);
-
-    if (isExplicitlyAllowed || isVercelDomain || isFicappDomain || isLocalDev) {
+    if (!origin || isOriginAllowed(origin)) {
       return callback(null, true);
     }
 
@@ -349,6 +350,13 @@ app.get(['/', '/health', '/api', '/api/health', '/api/public/health'], (req, res
 // Error handling middleware (production-safe error masking)
 app.use((err, req, res, next) => {
   console.error('Unhandled Error:', err.message);
+
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
   const status = err.status || 500;
   const message = isProduction && status >= 500
     ? 'Internal Server Error'

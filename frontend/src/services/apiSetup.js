@@ -226,12 +226,12 @@ axios.interceptors.response.use(
 );
 
 // --- WAKE-UP PING ---
-// Send a lightweight ping to guaranteed public endpoint
+// Send a lightweight ping to guaranteed public health endpoint
 const wakeUpBackend = async () => {
   try {
     const backendUrl = getBackendUrl();
     if (!backendUrl) return;
-    await fetch(`${backendUrl}/api/public/categories`, { method: 'GET', mode: 'no-cors' }).catch(() => {});
+    await fetch(`${backendUrl}/api/public/health`, { method: 'GET', mode: 'no-cors' }).catch(() => {});
   } catch (err) {
     // Ignore initial wake-up ping errors
   }
@@ -241,7 +241,7 @@ const wakeUpBackend = async () => {
 wakeUpBackend();
 
 export const getAdminBackendUrl = () => {
-  const hostname = window.location.hostname;
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   
   if (
     !hostname || 
@@ -253,7 +253,15 @@ export const getAdminBackendUrl = () => {
     return `http://${hostname || 'localhost'}:5001`;
   }
   
-  return import.meta.env.VITE_ADMIN_BACKEND_URL || 'https://connect-admin-96pc.onrender.com';
+  let adminUrl = import.meta.env.VITE_ADMIN_BACKEND_URL;
+  if (adminUrl && typeof adminUrl === 'string') {
+    adminUrl = adminUrl.trim().replace(/\/+$/, '');
+    if (!adminUrl.includes('trycloudflare.com')) {
+      return adminUrl;
+    }
+  }
+
+  return 'https://connect-admin-96pc.onrender.com';
 };
 
 export const getVendorBackendUrl = () => {

@@ -833,8 +833,9 @@ const Overview = () => {
                               <p className="text-[10px] text-slate-400 truncate">{customer.phone || customer.email || 'No Contact'}</p>
                             </div>
                             <div className="text-right">
-                              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{metrics.count} bookings</p>
-                              <p className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">₹{metrics.totalSpent}</p>
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                {metrics.count} {terms?.ordersName === 'Applications' ? (metrics.count === 1 ? 'application' : 'applications') : terms?.ordersName === 'Orders' ? (metrics.count === 1 ? 'order' : 'orders') : (metrics.count === 1 ? 'booking' : 'bookings')}
+                              </p>
                             </div>
                           </div>
                         );

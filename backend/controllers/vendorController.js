@@ -240,17 +240,42 @@ const getVendorAnalytics = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    const allMatchIds = getVendorMatchingIds(user, parentUserId);
+    let allMatchIds = getVendorMatchingIds(user, parentUserId);
+    const requestedBizId = req.query.businessId ? String(req.query.businessId).trim() : null;
+    if (requestedBizId && requestedBizId !== 'All' && requestedBizId !== 'all') {
+      const allowedBiz = (user.businesses || []).find(b => String(b._id || b.id) === requestedBizId);
+      if (allowedBiz || String(user._id) === requestedBizId || String(parentUserId) === requestedBizId) {
+        allMatchIds = [requestedBizId];
+        if (mongoose.Types.ObjectId.isValid(requestedBizId)) {
+          allMatchIds.push(new mongoose.Types.ObjectId(requestedBizId));
+        }
+      }
+    }
 
     // Fetch vendor orders with projection and lean() for fast query execution
-    const rawOrders = await Order.find({
+    const orderFilter = {
       $or: [
         { vendorId: { $in: allMatchIds } },
         { vendor_id: { $in: allMatchIds } },
         { 'items.vendorId': { $in: allMatchIds } },
         { 'items.vendor_id': { $in: allMatchIds } }
       ]
-    }).select('vendorId vendor_id memberName customer_name memberId customer_id finalAmount totalAmount amount createdAt created_at orderDate date type status paymentStatus payment_status vendorPaymentStatus candidateEmail customer_email items').lean();
+    };
+    if (req.query.category && req.query.category !== 'All' && req.query.category !== 'all') {
+      const c = String(req.query.category).trim();
+      const catRegex = new RegExp(`^${c}`, 'i');
+      orderFilter.$and = [
+        {
+          $or: [
+            { type: catRegex },
+            { category: catRegex },
+            { 'items.category': catRegex },
+            { 'items.mainCategory': catRegex }
+          ]
+        }
+      ];
+    }
+    const rawOrders = await Order.find(orderFilter).select('vendorId vendor_id memberName customer_name memberId customer_id finalAmount totalAmount amount createdAt created_at orderDate date type status paymentStatus payment_status vendorPaymentStatus candidateEmail customer_email items').lean();
 
     const orders = rawOrders.map(o => {
       const obj = o.toObject ? o.toObject() : o;
@@ -434,7 +459,8 @@ const getVendorAnalytics = async (req, res) => {
     };
 
     // Store in cache with 120s TTL (automatically invalidated upon any order/item mutation)
-    await cacheManager.set('analytics', parentUserId.toString(), analyticsData, 120);
+    const analyticsCacheKey = `${parentUserId}_${req.query.businessId || 'all'}_${req.query.category || 'all'}`;
+    await cacheManager.set('analytics', analyticsCacheKey, analyticsData, 120);
 
     res.status(200).json({
       success: true,
@@ -1903,7 +1929,7 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
   const isCanonicalCustId = (id) => {
     if (!id) return false;
     const str = String(id).trim();
-    return (str.startsWith('FIC-CUS-') || str.startsWith('FIC-CUST-')) && str !== 'FIC-CUST-100001';
+    return (str.startsWith('FIC-CUS-') || str.startsWith('FIC-CUST-') || str.startsWith('REG-')) && str !== 'FIC-CUST-100001';
   };
 
   let resolvedCustomerId = null;
@@ -2234,8 +2260,8 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
 
   // Travel specific schedule and vehicle details
   if (isTravel) {
-    const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || 'Not provided';
-    const departureTimeVal = obj.departureTime || obj.time || obj.bookingTime || obj.schedule || 'Not provided';
+    const travelDateVal = obj.travelDate || obj.travel_date || obj.journeyDate || obj.departureDate || obj.appointmentDate || obj.bookingDate || obj.date || 'Not provided';
+    const departureTimeVal = obj.departureTime || obj.appointmentTimeSlot || obj.timeSlot || obj.time || obj.bookingTime || obj.schedule || (obj.boardingPoint && obj.boardingPoint.time) || (matchedProd?.boardingPoints && matchedProd.boardingPoints[0]?.departureTime) || (matchedProd?.busTiming) || 'Not provided';
     obj.travelDate = travelDateVal;
     obj.departureTime = departureTimeVal;
 
@@ -5341,6 +5367,14 @@ const getSalesPayments = async (req, res) => {
         return t >= startMs && t <= endMs;
       });
     }
+
+    // Filter out zero-amount job records from payments list
+    uniqueOrders = uniqueOrders.filter(o => {
+      const isJobRecord = /job/i.test(o.type || o.category || '') || Boolean(o.jobId || o.candidateResume || (o.applicationId && String(o.applicationId).startsWith('APP')));
+      const amt = Number(o.totalAmount || o.finalAmount || o.amount || 0);
+      if (isJobRecord && amt <= 0) return false;
+      return true;
+    });
 
     const customerLookup = await buildCustomerLookupForOrders(uniqueOrders);
 

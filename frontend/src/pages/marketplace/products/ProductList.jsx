@@ -247,14 +247,26 @@ const ProductList = () => {
     .filter(o => completedStatuses.includes(o.status))
     .reduce((sum, o) => sum + (o.totalAmount || o.total || 0), 0);
   
+  const isTravelCatalog = vendorType.startsWith('Travel') || terms.catalogName === 'Travel Routes' || terms.catalogItem === 'Travel Route';
   const pendingStatuses = ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'];
-  const pendingCount = bizOrders.filter(o => pendingStatuses.includes(o.status)).length;
+  const pendingCount = isTravelCatalog ? totalOrders : bizOrders.filter(o => pendingStatuses.includes(o.status)).length;
   
   const itemSalesMap = {};
   bizOrders.forEach(o => {
     if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
-      o.items?.forEach(item => {
-        const name = item.name || 'Unknown';
+      const itemList = (o.items && o.items.length > 0) ? o.items : (o.product_details ? [{ name: o.product_details, productId: o.productId, quantity: 1 }] : []);
+      itemList.forEach(item => {
+        const catMatch = catalog.find(c => 
+          (item.productId && String(c._id) === String(item.productId)) ||
+          (item.id && String(c._id) === String(item.id)) ||
+          c.name === item.name
+        );
+        let name = catMatch ? (isTravelCatalog ? (catMatch.category || catMatch.name) : catMatch.name) : (item.name || o.product_details || 'Item');
+        if (isTravelCatalog) {
+          if (/car/i.test(name)) name = 'Car';
+          else if (/bus/i.test(name)) name = 'Bus';
+          else if (/bike/i.test(name)) name = 'Bike';
+        }
         itemSalesMap[name] = (itemSalesMap[name] || 0) + (item.quantity || 1);
       });
     }
@@ -268,6 +280,7 @@ const ProductList = () => {
   else if (vendorType.startsWith('Job')) pendingLabel = 'Pending Applications';
   else if (vendorType.startsWith('Education')) pendingLabel = 'Pending Enrollments';
   else if (vendorType.startsWith('Restaurant')) pendingLabel = 'Pending Orders';
+  else if (isTravelCatalog) pendingLabel = 'Travel Bookings';
 
   return (
     <div className="space-y-6 animate-fadeIn">
