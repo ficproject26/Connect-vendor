@@ -197,30 +197,17 @@ const Register = () => {
   const isCategorySelected = (cat) => {
     const catName = typeof cat === 'string' ? cat : cat?.name;
     const catId = typeof cat === 'object' && cat?._id ? cat._id : catName;
-    return selectedVendorTypesOrder.includes(catName) || 
-           currentVendorType === catName ||
-           (selectedCategoryId && selectedCategoryId === catId);
+    return currentVendorType === catName || 
+           (selectedCategoryId && selectedCategoryId === catId) ||
+           (selectedVendorTypesOrder.length === 1 && selectedVendorTypesOrder[0] === catName);
   };
 
   const toggleCategorySelection = (cat) => {
     const catName = typeof cat === 'string' ? cat : cat?.name;
     const catId = typeof cat === 'object' && cat?._id ? cat._id : catName;
-    const isSelected = isCategorySelected(cat);
-
-    if (isSelected) {
-      const next = selectedVendorTypesOrder.filter(t => t !== catName);
-      setSelectedVendorTypesOrder(next);
-      if (currentVendorType === catName) {
-        const nextCatName = next[0] || '';
-        setCurrentVendorType(nextCatName);
-        const nextCatObj = adminMainCategories.find(c => c.name === nextCatName);
-        setSelectedCategoryId(nextCatObj?._id || nextCatName || '');
-      }
-    } else {
-      setSelectedVendorTypesOrder(prev => [...prev, catName]);
-      setCurrentVendorType(catName);
-      setSelectedCategoryId(catId);
-    }
+    setSelectedVendorTypesOrder([catName]);
+    setCurrentVendorType(catName);
+    setSelectedCategoryId(catId);
   };
 
   const getSelectedBusinessesList = () => {
@@ -571,14 +558,10 @@ const Register = () => {
   // Step validation helpers
   const isCurrentStepValid = !validateStep(currentStep);
   const isNextDisabled = currentStep < 5
-    ? (!termsAccepted || !isCurrentStepValid)
+    ? !isCurrentStepValid
     : (loading || !termsAccepted || !bankDetailsCorrect);
 
   const handleNextStep = () => {
-    if (!termsAccepted) {
-      setError('Please accept the Terms & Conditions to continue.');
-      return;
-    }
     const errorMsg = validateStep(currentStep);
     if (errorMsg) {
       setError(errorMsg);
@@ -913,9 +896,14 @@ const Register = () => {
                       type="email"
                       required
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => setEmail(e.target.value.toLowerCase())}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        const text = e.clipboardData ? e.clipboardData.getData('text') : '';
+                        setEmail((text || '').toLowerCase());
+                      }}
                       placeholder="e.g. vendor@example.com"
-                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm"
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm lowercase"
                     />
                   </div>
                 </div>
@@ -1187,17 +1175,17 @@ const Register = () => {
                             </div>
                           </div>
 
-                          {/* Checkbox */}
-                          <div 
-                            className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all shrink-0 ml-2.5 ${
-                              selected 
-                                ? 'bg-[#8C532C] border-[#8C532C] text-white shadow-sm' 
-                                : 'bg-white border-slate-300'
-                            }`}
-                          >
-                            {selected && <Check size={12} strokeWidth={3} />}
+                            {/* Radio indicator */}
+                            <div 
+                              className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all shrink-0 ml-2.5 ${
+                                selected 
+                                  ? 'border-[#8C532C] bg-white shadow-sm ring-2 ring-[#8C532C]/20' 
+                                  : 'bg-white border-slate-300'
+                              }`}
+                            >
+                              {selected && <div className="w-2.5 h-2.5 rounded-full bg-[#8C532C]" />}
+                            </div>
                           </div>
-                        </div>
                       );
                     })}
                   </div>
@@ -1700,9 +1688,10 @@ const Register = () => {
                     <input
                       type="text"
                       required
+                      maxLength={18}
                       value={accountNo}
-                      onChange={(e) => setAccountNo(normalizeAccountNumber(e.target.value))}
-                      placeholder="Account Number"
+                      onChange={(e) => setAccountNo(normalizeAccountNumber(e.target.value).slice(0, 18))}
+                      placeholder="18-digit Account Number"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm font-mono"
                     />
                   </div>
@@ -1718,8 +1707,9 @@ const Register = () => {
                     <input
                       type="text"
                       required
+                      maxLength={11}
                       value={ifscCode}
-                      onChange={(e) => setIfscCode(normalizeIFSC(e.target.value))}
+                      onChange={(e) => setIfscCode(normalizeIFSC(e.target.value).slice(0, 11))}
                       placeholder="e.g. SBIN0001234"
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#8C532C] focus:ring-4 focus:ring-[#8C532C]/10 transition-all shadow-sm uppercase font-mono"
                     />
@@ -1823,43 +1813,47 @@ const Register = () => {
                   I declare that the above bank and business details are correct and belong to my business entity <span className="text-rose-500">*</span>
                 </label>
               </div>
+
+              {/* Terms & Conditions Checkbox */}
+              <div className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="termsAcceptanceCheckbox"
+                  required
+                  checked={termsAccepted}
+                  onChange={(e) => {
+                    setTermsAccepted(e.target.checked);
+                    if (e.target.checked && error === 'Please accept the Terms & Conditions to continue.') {
+                      setError('');
+                    }
+                  }}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#8C532C] focus:ring-[#8C532C] accent-[#8C532C] cursor-pointer shrink-0"
+                />
+                <label htmlFor="termsAcceptanceCheckbox" className="text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer select-none leading-relaxed">
+                  I have read and agree to the{' '}
+                  <button
+                    type="button"
+                    onClick={() => setShowTermsModal(true)}
+                    className="text-[#8C532C] font-semibold hover:underline cursor-pointer focus:outline-none"
+                  >
+                    Terms & Conditions
+                  </button>
+                  <span className="text-rose-500 ml-0.5">*</span>
+                </label>
+              </div>
             </div>
           )}
 
         </div>
 
         {/* CARD FOOTER & NAVIGATION BUTTONS (Fixed at bottom) */}
-        <div className="p-3.5 sm:p-4 px-4 sm:px-6 bg-white border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-          
-          {/* Mandatory Terms & Conditions Checkbox */}
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-600 order-2 sm:order-1 select-none w-full sm:w-auto">
-            <input
-              type="checkbox"
-              id="termsAcceptanceCheckbox"
-              checked={termsAccepted}
-              onChange={(e) => {
-                setTermsAccepted(e.target.checked);
-                if (e.target.checked && error === 'Please accept the Terms & Conditions to continue.') {
-                  setError('');
-                }
-              }}
-              className="h-4 w-4 rounded border-slate-300 text-[#8C532C] focus:ring-[#8C532C] accent-[#8C532C] cursor-pointer shrink-0"
-            />
-            <label htmlFor="termsAcceptanceCheckbox" className="cursor-pointer text-slate-600 font-medium leading-tight">
-              I have read and agree to the{' '}
-              <button
-                type="button"
-                onClick={() => setShowTermsModal(true)}
-                className="text-[#8C532C] font-semibold hover:underline cursor-pointer focus:outline-none"
-              >
-                Terms & Conditions
-              </button>
-              <span className="text-rose-500 font-bold ml-0.5">*</span>
-            </label>
+        <div className="p-3.5 sm:p-4 px-4 sm:px-6 bg-white border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
+          <div className="text-xs text-slate-500 font-medium">
+            Step {currentStep} of 5
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3 w-full sm:w-auto order-1 sm:order-2 justify-end">
+          <div className="flex items-center gap-3 justify-end">
             {/* Cancel or Back Button */}
             {currentStep === 1 ? (
               <button

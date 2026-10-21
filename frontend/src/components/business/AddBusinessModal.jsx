@@ -249,9 +249,11 @@ export default function AddBusinessModal({
       const uploadData = new FormData();
       uploadData.append('image', file); // backend multer accepts 'image' field for both images and pdfs
 
+      const activeToken = localStorage.getItem('vendor_token') || sessionStorage.getItem('vendor_token') || localStorage.getItem('token');
       const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/upload`, uploadData, {
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'multipart/form-data',
+          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {})
         }
       });
 
@@ -259,7 +261,11 @@ export default function AddBusinessModal({
         const fileUrl = formatImageUrl(res.data.imageUrl);
 
         if (['panDoc', 'aadhaarDoc', 'gstDoc'].includes(fieldName)) {
-          setFormData(prev => ({ ...prev, [fieldName]: fileUrl }));
+          setFormData(prev => ({ 
+            ...prev, 
+            [fieldName]: fileUrl,
+            [`${fieldName}Name`]: file.name
+          }));
         } else {
           // Dynamic category doc
           setFormData(prev => ({
@@ -268,11 +274,13 @@ export default function AddBusinessModal({
               ...prev.categoryDocs,
               [fieldName]: {
                 ...(prev.categoryDocs[fieldName] || {}),
-                docUrl: fileUrl
+                docUrl: fileUrl,
+                fileName: file.name
               }
             }
           }));
         }
+        setFormError(''); // Clear error immediately when document is uploaded successfully
       } else {
         setFormError('Failed to upload file. Please try again.');
       }
@@ -509,7 +517,12 @@ export default function AddBusinessModal({
         categoryDocs: categoryDocsMap
       };
 
-      const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/business`, payload);
+      const activeToken = localStorage.getItem('vendor_token') || sessionStorage.getItem('vendor_token') || localStorage.getItem('token');
+      const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/business`, payload, {
+        headers: {
+          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {})
+        }
+      });
 
       if (res.data && res.data.success) {
         setSuccessInfo({
@@ -1159,7 +1172,7 @@ export default function AddBusinessModal({
                           <div>
                             <label className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-amber-400 cursor-pointer">
                               <Upload size={14} />
-                              {uploadingField === rule.key ? 'Uploading...' : docState.docUrl ? 'Replace Document' : 'Upload Document (PDF / Image)'}
+                              {uploadingField === rule.key ? 'Uploading...' : docState.docUrl ? `✓ ${docState.fileName || 'Document Uploaded'} (Replace)` : 'Upload Document (PDF / Image)'}
                               <input
                                 type="file"
                                 accept=".pdf,image/*"

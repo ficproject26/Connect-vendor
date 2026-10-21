@@ -5012,6 +5012,29 @@ const updateBusiness = async (req, res) => {
       if (ifscCode !== undefined) biz.ifscCode = ifscCode;
       if (swiftCode !== undefined) biz.swiftCode = swiftCode;
 
+      if (isActive !== undefined) {
+        const bStatus = (biz.status || '').toLowerCase().trim();
+        const isAdminSuspended = ['suspended', 'banned', 'account suspended'].includes(bStatus) || biz.isSuspendedByAdmin === true;
+        if (isAdminSuspended && Boolean(isActive)) {
+          return res.status(403).json({ success: false, message: 'This business profile has been suspended by an administrator and cannot be activated.' });
+        }
+        biz.isActive = Boolean(isActive);
+        if (status) {
+          biz.status = status;
+        } else {
+          biz.status = Boolean(isActive) ? 'Active' : 'Inactive';
+        }
+      } else if (status !== undefined) {
+        const bStatus = (biz.status || '').toLowerCase().trim();
+        const isAdminSuspended = ['suspended', 'banned', 'account suspended'].includes(bStatus) || biz.isSuspendedByAdmin === true;
+        if (isAdminSuspended && status.toLowerCase() === 'active') {
+          return res.status(403).json({ success: false, message: 'This business profile has been suspended by an administrator and cannot be activated.' });
+        }
+        biz.status = status;
+        if (status.toLowerCase() === 'active') biz.isActive = true;
+        if (status.toLowerCase() === 'inactive') biz.isActive = false;
+      }
+
       // If updating primary/active business or the only business, also update top-level user fields
       if (!user.primaryBusinessId || String(user.primaryBusinessId) === String(biz._id) || String(user.primaryBusinessId) === String(biz.id) || user.businesses.length === 1) {
         if (businessName !== undefined) user.businessName = businessName;
@@ -5192,17 +5215,20 @@ const getSalesPayments = async (req, res) => {
       else if (requestedCategory === 'Travel') catPattern = 'travel|travels|cab|transport|package';
       else if (requestedCategory === 'Jobs') catPattern = 'job|jobs';
 
-      const catRegex = new RegExp(`^(${catPattern})$`, 'i');
+      const catRegex = new RegExp(`(${catPattern})`, 'i');
+      const orClauses = [
+        { type: catRegex },
+        { category: catRegex },
+        { subNavbarCategory: catRegex },
+        { product_details: catRegex },
+        { 'items.name': catRegex },
+        { 'items.category': catRegex }
+      ];
+      if (requestedCategory === 'Products') {
+        orClauses.push({ type: { $exists: false } }, { type: null });
+      }
       query.$and = query.$and || [];
-      query.$and.push({
-        $or: [
-          { type: catRegex },
-          { category: catRegex },
-          { subNavbarCategory: catRegex },
-          { type: { $exists: false } },
-          { type: null }
-        ]
-      });
+      query.$and.push({ $or: orClauses });
     }
 
     // Search query

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { useSelector } from 'react-redux';
 import { useDashboard } from '../../context/DashboardContext';
@@ -197,6 +197,8 @@ const BusinessList = () => {
     }
     return set;
   }, [user]);
+
+  const [switchingBizId, setSwitchingBizId] = useState(null);
 
   const handleDeleteBusiness = async (bizId) => {
     if (!window.confirm('Are you sure you want to delete this business profile?')) return;
@@ -411,26 +413,57 @@ const BusinessList = () => {
                       );
                     }
 
-                    if (isActive) {
-                      return (
-                        <span className="bg-[#faed26] text-slate-950 text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-wider">
-                          Active
-                        </span>
-                      );
-                    }
+                    const isSwitching = switchingBizId === (biz._id || biz.id);
 
                     return (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          dispatch(switchBusinessSuccess(biz._id));
-                          setMessage(`Switched business profile to ${biz.vendorType}!`);
-                        }}
-                        className="text-[#faed26] hover:underline font-bold transition-all"
-                      >
-                        Switch Profile &rarr;
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[11px] font-bold ${isActive ? 'text-[#8C532C] dark:text-[#faed26]' : 'text-slate-500 dark:text-slate-400'}`}>
+                          {isActive ? 'Active Profile' : 'Switch Profile'}
+                        </span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={isActive}
+                          disabled={isActive || isSwitching}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (isActive || isSwitching) return;
+                            const targetId = biz._id || biz.id;
+                            setSwitchingBizId(targetId);
+                            setError('');
+                            try {
+                              const updateRes = await axios.put(
+                                `${getVendorBackendUrl()}/api/vendor/business/${targetId}`,
+                                { isActive: true, status: 'Active' },
+                                getAxiosConfig()
+                              );
+                              if (updateRes.data.success) {
+                                dispatch(switchBusinessSuccess(targetId));
+                                setMessage(`Switched business profile to ${biz.businessName || biz.vendorType}!`);
+                              } else {
+                                setError(updateRes.data.message || 'Failed to switch profile');
+                              }
+                            } catch (err) {
+                              setError(err.response?.data?.message || 'Failed to switch profile');
+                            } finally {
+                              setSwitchingBizId(null);
+                            }
+                          }}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            isActive ? 'bg-[#8C532C] dark:bg-[#faed26]' : 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400'
+                          } ${isActive ? 'cursor-default opacity-90' : isSwitching ? 'opacity-50 cursor-wait' : ''}`}
+                        >
+                          {isSwitching ? (
+                            <div className="w-3 h-3 rounded-full border-2 border-slate-600 border-t-transparent animate-spin mx-auto" />
+                          ) : (
+                            <span
+                              className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white dark:bg-slate-900 shadow-sm ring-0 transition duration-200 ease-in-out ${
+                                isActive ? 'translate-x-4' : 'translate-x-0.5'
+                              }`}
+                            />
+                          )}
+                        </button>
+                      </div>
                     );
                   })()}
                 </div>

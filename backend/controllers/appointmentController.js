@@ -143,10 +143,18 @@ const createBooking = async (req, res) => {
     } = req.body;
 
     const resolvedCheckInDate = inputCheckInDate || req.body.check_in_date || appointmentDate;
-    const resolvedCheckOutDate = inputCheckOutDate || req.body.check_out_date || req.body.checkoutDate || req.body.departureDate || null;
+    const resolvedNightsCount = Number(inputNightsCount || numberOfNights || (appointmentTimeSlot && !isNaN(Number(appointmentTimeSlot)) ? Number(appointmentTimeSlot) : 1));
+    let resolvedCheckOutDate = inputCheckOutDate || req.body.check_out_date || req.body.checkoutDate || req.body.departureDate || null;
+    if (!resolvedCheckOutDate && resolvedCheckInDate && resolvedNightsCount > 0) {
+      const parts = String(resolvedCheckInDate).substring(0, 10).split('-').map(Number);
+      if (parts.length === 3 && !parts.some(isNaN)) {
+        const [y, m, d] = parts;
+        const outD = new Date(y, m - 1, d + resolvedNightsCount);
+        resolvedCheckOutDate = `${outD.getFullYear()}-${String(outD.getMonth() + 1).padStart(2, '0')}-${String(outD.getDate()).padStart(2, '0')}`;
+      }
+    }
     const resolvedCheckInTime = inputCheckInTime || req.body.check_in_time || '12:00 PM';
     const resolvedCheckOutTime = inputCheckOutTime || req.body.check_out_time || req.body.checkoutTime || '11:00 AM';
-    const resolvedNightsCount = Number(inputNightsCount || numberOfNights || 1);
     const resolvedRoomsCount = Number(inputRoomsCount || numberOfRooms || 1);
 
     if (!memberName || !productId || !resolvedCheckInDate) {

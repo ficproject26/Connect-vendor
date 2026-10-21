@@ -269,25 +269,8 @@ export const validateAccountNumber = (accountNo, bankName = '', fieldLabel = 'Ac
   if (/[^\d]/.test(clean)) {
     return `${fieldLabel} must contain numeric digits only`;
   }
-
-  // Check documented bank-specific rule if available
-  const matchedRuleKey = Object.keys(BANK_ACCOUNT_LENGTH_RULES).find(key => 
-    bankName && bankName.toLowerCase().includes(key.toLowerCase())
-  );
-  if (matchedRuleKey) {
-    const rule = BANK_ACCOUNT_LENGTH_RULES[matchedRuleKey];
-    if (rule.exact && !rule.exact.includes(clean.length)) {
-      return `${bankName} account number must be ${rule.exact.join(' or ')} digits (entered: ${clean.length})`;
-    } else if (rule.min === rule.max && clean.length !== rule.min) {
-      return `${bankName} account number must be exactly ${rule.min} digits (entered: ${clean.length})`;
-    } else if (clean.length < rule.min || clean.length > rule.max) {
-      return `${bankName} account number must be between ${rule.min} and ${rule.max} digits (entered: ${clean.length})`;
-    }
-  } else {
-    // Standard Indian banking range: 9 to 18 digits
-    if (clean.length < 9 || clean.length > 18) {
-      return `${fieldLabel} must be between 9 and 18 digits (entered: ${clean.length})`;
-    }
+  if (clean.length !== 18) {
+    return `${fieldLabel} must be exactly 18 digits (entered: ${clean.length})`;
   }
   return '';
 };

@@ -605,6 +605,7 @@ const getCategoryIcon = (category) => {
 const VendorDashboard = () => {
   const dispatch = useDispatch();
   const { user, token, card, sidebarCollapsed, activeBusinessId } = useSelector(state => state.auth);
+  const [switchingBizId, setSwitchingBizId] = useState(null);
   const [, setCategoryTrigger] = useState(0);
   const deadlineInputRef = useRef(null);
 
@@ -2205,7 +2206,7 @@ const VendorDashboard = () => {
 
     // Only derive check-out date if completely missing from booking data AND explicit nights provided
     if (!rawCheckOutDate && rawCheckInDate && rawCheckInDate !== 'Not provided') {
-      const explicitNights = b.nightsCount || b.nights || b.numberOfNights || firstItem.nightsCount || firstItem.nights;
+      const explicitNights = b.nightsCount || b.nights || b.numberOfNights || firstItem.nightsCount || firstItem.nights || (b.appointmentTimeSlot && !isNaN(Number(b.appointmentTimeSlot)) ? Number(b.appointmentTimeSlot) : null);
       if (explicitNights && Number(explicitNights) > 0) {
         const nights = Number(explicitNights);
         const cleanDateStr = String(rawCheckInDate).replace(/^[A-Za-z]+,\s*/, '').trim();
@@ -2817,8 +2818,26 @@ const VendorDashboard = () => {
         })) : [])
       ];
 
+      let calculatedCheckOutDate = null;
+      const nightsCountNum = parseInt(bookingForm.appointmentTimeSlot, 10) || 1;
+      if (bookingForm.appointmentDate) {
+        const parts = bookingForm.appointmentDate.split('-').map(Number);
+        if (parts.length === 3 && !parts.some(isNaN)) {
+          const [y, m, d] = parts;
+          const outD = new Date(y, m - 1, d + nightsCountNum);
+          calculatedCheckOutDate = `${outD.getFullYear()}-${String(outD.getMonth() + 1).padStart(2, '0')}-${String(outD.getDate()).padStart(2, '0')}`;
+        }
+      }
+
       const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/${endpoint}`, {
         ...bookingForm,
+        checkInDate: bookingForm.appointmentDate,
+        check_in_date: bookingForm.appointmentDate,
+        checkOutDate: calculatedCheckOutDate,
+        check_out_date: calculatedCheckOutDate,
+        departureDate: calculatedCheckOutDate,
+        nightsCount: nightsCountNum,
+        numberOfNights: nightsCountNum,
         guestList: guestListPayload,
         guestDetails: guestListPayload,
         guests: guestListPayload.length
@@ -5181,7 +5200,7 @@ const VendorDashboard = () => {
         
         {/* Alerts */}
         {error && (
-          <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 px-5 py-4 rounded-2xl mb-6 text-sm flex items-center gap-2.5 font-medium shadow-sm">
+          <div id="dashboard-error-banner" className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 px-5 py-4 rounded-2xl mb-6 text-sm flex items-center gap-2.5 font-medium shadow-sm">
             <span className="text-lg">⚠️</span> {error}
           </div>
         )}
@@ -8523,7 +8542,7 @@ const VendorDashboard = () => {
                         >
                           <div>
                             {/* Avatar & Header Info */}
-                            <div className="flex items-center gap-3.5 mb-5">
+                            <div className="flex items-center gap-3.5 mb-5 min-w-0">
                               <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 shrink-0 relative group">
                                 <img
                                   src={getCustomerAvatarUrl(c)}
@@ -8531,9 +8550,9 @@ const VendorDashboard = () => {
                                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                 />
                               </div>
-                              <div>
+                              <div className="min-w-0 flex-1">
                                 <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{c.name}</h3>
-                                <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[170px]" title={c.email}>{c.email}</p>
+                                <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1 break-all leading-snug" title={c.email}>{c.email}</p>
                                 <p className="text-[10px] text-slate-400 mt-0.5">ID: {formatCustomerId(c)}</p>
                                 <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Gender: {c.gender || 'Not provided'}</p>
                               </div>
@@ -8826,12 +8845,12 @@ const VendorDashboard = () => {
                         {(() => {
                           const bStatus = (biz.status || '').toLowerCase().trim();
                           const isPending = ['pending', 'pending approval', 'pending_approval', 'under_verification'].includes(bStatus);
-                          const isSuspended = ['suspended', 'inactive', 'rejected'].includes(bStatus) || biz.isActive === false;
+                          const isAdminSuspended = ['suspended', 'banned', 'account suspended'].includes(bStatus) || biz.isSuspendedByAdmin === true;
 
-                          if (isActive) {
+                          if (isAdminSuspended) {
                             return (
-                              <span className="bg-[#faed26] text-slate-950 text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-wider">
-                                Active
+                              <span className="bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider">
+                                ⚫ Suspended by Admin
                               </span>
                             );
                           }
@@ -8844,26 +8863,57 @@ const VendorDashboard = () => {
                             );
                           }
 
-                          if (isSuspended) {
-                            return (
-                              <span className="bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider">
-                                ⚫ Suspended
-                              </span>
-                            );
-                          }
+                          const isSwitching = switchingBizId === (biz._id || biz.id);
 
                           return (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                dispatch(switchBusinessSuccess(biz._id));
-                                setMessage(`Switched business profile to ${biz.vendorType}!`);
-                              }}
-                              className="text-[#faed26] hover:underline font-bold transition-all"
-                            >
-                              Switch Profile &rarr;
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[11px] font-bold ${isActive ? 'text-[#8C532C] dark:text-[#faed26]' : 'text-slate-500 dark:text-slate-400'}`}>
+                                {isActive ? 'Active Profile' : 'Switch Profile'}
+                              </span>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={isActive}
+                                disabled={isActive || isSwitching}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (isActive || isSwitching) return;
+                                  const targetId = biz._id || biz.id;
+                                  setSwitchingBizId(targetId);
+                                  setError('');
+                                  try {
+                                    const updateRes = await axios.put(
+                                      `${getVendorBackendUrl()}/api/vendor/business/${targetId}`,
+                                      { isActive: true, status: 'Active' },
+                                      getAxiosConfig()
+                                    );
+                                    if (updateRes.data.success) {
+                                      dispatch(switchBusinessSuccess(targetId));
+                                      setMessage(`Switched business profile to ${biz.businessName || biz.vendorType}!`);
+                                    } else {
+                                      setError(updateRes.data.message || 'Failed to switch profile');
+                                    }
+                                  } catch (err) {
+                                    setError(err.response?.data?.message || 'Failed to switch profile');
+                                  } finally {
+                                    setSwitchingBizId(null);
+                                  }
+                                }}
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                  isActive ? 'bg-[#8C532C] dark:bg-[#faed26]' : 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400'
+                                } ${isActive ? 'cursor-default opacity-90' : isSwitching ? 'opacity-50 cursor-wait' : ''}`}
+                              >
+                                {isSwitching ? (
+                                  <div className="w-3 h-3 rounded-full border-2 border-slate-600 border-t-transparent animate-spin mx-auto" />
+                                ) : (
+                                  <span
+                                    className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white dark:bg-slate-900 shadow-sm ring-0 transition duration-200 ease-in-out ${
+                                      isActive ? 'translate-x-4' : 'translate-x-0.5'
+                                    }`}
+                                  />
+                                )}
+                              </button>
+                            </div>
                           );
                         })()}
                       </div>
@@ -14718,78 +14768,78 @@ required
                 <h4 className="text-lg font-black uppercase tracking-wider text-slate-900 dark:text-white">
                   {isFoodOrder ? "Food Order Details" : "Order Details"}
                 </h4>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Connect Ecosystem Verified Order</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 font-medium">Connect Ecosystem Verified Order</p>
               </div>
 
               {/* Merchant and Billed-To Info */}
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
-                  <span className="font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-[9px] block">Merchant</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px] block">Merchant</span>
                   <p className="font-extrabold text-slate-900 dark:text-white text-sm mt-0.5">
                     {selectedBillOrder.vendorName || user?.businessName || "Registered Connect Partner"}
                   </p>
-                  <p className="text-slate-500 dark:text-slate-400 mt-0.5">📍 Verified Outlet</p>
+                  <p className="text-slate-600 dark:text-slate-400 mt-0.5 font-medium">📍 Verified Outlet</p>
                 </div>
                 <div>
-                  <span className="font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-[9px] block">Billed To</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px] block">Billed To</span>
                   <p className="font-extrabold text-slate-900 dark:text-white text-sm mt-0.5">{selectedBillOrder.memberName || selectedBillOrder.customer_name}</p>
-                  <p className="text-slate-500 dark:text-slate-400 mt-0.5 font-mono text-[10px] truncate">{getCustomerDisplayId(selectedBillOrder)}</p>
+                  <p className="text-slate-700 dark:text-slate-300 mt-0.5 font-mono text-xs font-semibold truncate">{getCustomerDisplayId(selectedBillOrder)}</p>
                 </div>
               </div>
 
               {/* Billing Identifiers & Timing details */}
               <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800 p-4 rounded-2xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs font-mono">
                 <div className="min-w-0 flex flex-col justify-start">
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">INVOICE ID:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 break-all select-all leading-relaxed text-[11px] mt-0.5">
+                  <span className="text-slate-600 dark:text-slate-300 block text-[11px] font-bold tracking-wider uppercase">INVOICE ID:</span>
+                  <span className="font-bold text-slate-900 dark:text-white break-all select-all leading-relaxed text-xs mt-0.5">
                     {(selectedBillOrder._id || selectedBillOrder.id || '').toUpperCase()}
                   </span>
                 </div>
                 <div className="min-w-0 flex flex-col justify-start">
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">TRANSACTION DATE:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] mt-0.5">
-                    {selectedBillOrder.createdAt || selectedBillOrder.created_at ? new Date(selectedBillOrder.createdAt || selectedBillOrder.created_at).toLocaleDateString() : 'N/A'}
+                  <span className="text-slate-600 dark:text-slate-300 block text-[11px] font-bold tracking-wider uppercase">TRANSACTION DATE:</span>
+                  <span className="font-bold text-slate-900 dark:text-white text-xs mt-0.5">
+                    {selectedBillOrder.createdAt || selectedBillOrder.created_at ? new Date(selectedBillOrder.createdAt || selectedBillOrder.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
                   </span>
                 </div>
                 <div className="min-w-0 flex flex-col justify-start">
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">ORDER STATUS:</span>
-                  <span className="font-extrabold text-emerald-600 dark:text-emerald-400 uppercase text-[11px] mt-0.5">
+                  <span className="text-slate-600 dark:text-slate-300 block text-[11px] font-bold tracking-wider uppercase">ORDER STATUS:</span>
+                  <span className="font-extrabold text-emerald-700 dark:text-emerald-400 uppercase text-xs mt-0.5">
                     {selectedBillOrder.status || 'Order Received'}
                   </span>
                 </div>
                 <div className="min-w-0 flex flex-col justify-start">
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">PAYMENT METHOD:</span>
-                  <span className="font-bold text-primary-600 dark:text-primary-400 text-[11px] mt-0.5">
+                  <span className="text-slate-600 dark:text-slate-300 block text-[11px] font-bold tracking-wider uppercase">PAYMENT METHOD:</span>
+                  <span className="font-bold text-primary-700 dark:text-primary-300 text-xs mt-0.5">
                     {selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || 'Connect Wallet'}
                   </span>
                 </div>
                 <div className="min-w-0 flex flex-col justify-start">
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">PAYMENT STATUS:</span>
-                  <span className={`font-bold text-[11px] mt-0.5 ${
+                  <span className="text-slate-600 dark:text-slate-300 block text-[11px] font-bold tracking-wider uppercase">PAYMENT STATUS:</span>
+                  <span className={`font-extrabold text-xs mt-0.5 ${
                     (selectedBillOrder.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(selectedBillOrder.status) || (!String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cash') && !String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cod')))
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-amber-600 dark:text-amber-400'
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-amber-700 dark:text-amber-400'
                   }`}>
                     {(selectedBillOrder.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(selectedBillOrder.status) || (!String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cash') && !String(selectedBillOrder.paymentMethod || '').toLowerCase().includes('cod'))) ? 'PAID' : 'PENDING'}
                   </span>
                 </div>
                 <div className="min-w-0 flex flex-col justify-start">
-                  <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold tracking-wider">TRANSACTION ID:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 break-all select-all text-[11px] mt-0.5">
+                  <span className="text-slate-600 dark:text-slate-300 block text-[11px] font-bold tracking-wider uppercase">TRANSACTION ID:</span>
+                  <span className="font-bold text-slate-900 dark:text-white break-all select-all text-xs mt-0.5">
                     {(() => {
                       const isCod = String(selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || '').toLowerCase().includes('cash') || String(selectedBillOrder.paymentMethod || selectedBillOrder.payment_method || '').toLowerCase().includes('cod');
                       const isPaid = selectedBillOrder.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(selectedBillOrder.status);
                       const resolvedTxnId = selectedBillOrder.transactionId || selectedBillOrder.razorpayPaymentId || selectedBillOrder.walletTxnId;
                       if (isCod && !isPaid) {
                         return (
-                          <span className="text-amber-600 dark:text-amber-400 italic font-sans font-normal">
+                          <span className="text-amber-700 dark:text-amber-400 font-semibold font-sans">
                             Pending collection
                           </span>
                         );
                       }
                       if (!resolvedTxnId || (isCod && String(resolvedTxnId).startsWith('TXN_'))) {
                         return (
-                          <span className="text-slate-400 italic font-sans font-normal">
+                          <span className="text-slate-600 dark:text-slate-400 font-sans font-medium">
                             {isCod ? (isPaid ? 'Cash collected' : 'Pending collection') : 'Not generated'}
                           </span>
                         );
@@ -14802,8 +14852,8 @@ required
 
               {/* Delivery Address Field */}
               <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-850 p-4 rounded-2xl text-xs">
-                <span className="text-slate-400 dark:text-slate-500 block text-[9px] font-bold uppercase tracking-wider mb-0.5">Delivery Address</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">{getCustomerAddress(selectedBillOrder)}</span>
+                <span className="text-slate-700 dark:text-slate-300 block text-[11px] font-bold uppercase tracking-wider mb-1">Delivery Address</span>
+                <span className="font-semibold text-slate-900 dark:text-white text-xs leading-relaxed">{getCustomerAddress(selectedBillOrder)}</span>
               </div>
 
               {/* Items Listing */}
@@ -16225,10 +16275,18 @@ required
                                 <span className="text-[10px] text-slate-400 block">Payment</span>
                                 <span className={`font-semibold truncate block ${tx.paymentStatus === 'Paid' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{tx.paymentStatus || 'Pending'}</span>
                               </div>
-                              <div>
+                              <div className={isBooking ? "col-span-2 sm:col-span-1" : ""}>
                                 <span className="text-[10px] text-slate-400 block">{isBooking ? 'Schedule' : 'Method'}</span>
-                                <span className="font-semibold text-indigo-600 dark:text-indigo-400 block truncate">
-                                  {isStay && sched ? `${sched.checkInDate} • ${sched.checkInTime}` : (isBooking ? (tx.checkInDate || tx.appointmentDate || tx.travelDate || 'Booked Slot') : (tx.paymentMethod || 'COD / Online'))}
+                                <span className="font-semibold text-indigo-600 dark:text-indigo-400 block break-words whitespace-normal text-xs leading-tight">
+                                  {isStay && sched ? (
+                                    sched.checkOutDate && sched.checkOutDate !== 'Not provided'
+                                      ? `${sched.checkInDate} to ${sched.checkOutDate}`
+                                      : `${sched.checkInDate} • ${sched.checkInTime}`
+                                  ) : (isBooking ? (
+                                    tx.appointmentTimeSlot && tx.appointmentDate
+                                      ? `${tx.appointmentDate} (${tx.appointmentTimeSlot})`
+                                      : (tx.checkInDate || tx.appointmentDate || tx.travelDate || tx.appointmentTimeSlot || 'Booked Slot')
+                                  ) : (tx.paymentMethod || 'COD / Online'))}
                                 </span>
                               </div>
                             </div>

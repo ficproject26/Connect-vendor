@@ -193,6 +193,18 @@ const Profile = () => {
     getAxiosConfig
   } = useDashboard();
 
+  const triggerError = (msg) => {
+    setError(msg);
+    setTimeout(() => {
+      const el = document.getElementById('profile-error-alert') || document.getElementById('dashboard-error-banner');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 50);
+  };
+
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     setError('');
@@ -201,77 +213,77 @@ const Profile = () => {
     if (profileForm.businessName) {
       const bizErr = validateName(profileForm.businessName, 'Business Name');
       if (bizErr) {
-        setError(bizErr);
+        triggerError(bizErr);
         return;
       }
     }
     if (profileForm.name) {
       const nameErr = validateName(profileForm.name, 'Contact Person / Owner Name');
       if (nameErr) {
-        setError(nameErr);
+        triggerError(nameErr);
         return;
       }
     }
     if (profileForm.email) {
       const emailErr = validateEmail(profileForm.email, 'Email Address');
       if (emailErr) {
-        setError(emailErr);
+        triggerError(emailErr);
         return;
       }
     }
     if (profileForm.mobileNumber) {
       const mobileErr = validateIndianMobile(profileForm.mobileNumber, 'Mobile Number');
       if (mobileErr) {
-        setError(mobileErr);
+        triggerError(mobileErr);
         return;
       }
     }
     if (profileForm.alternateNumber) {
       const altErr = validateIndianMobile(profileForm.alternateNumber, 'Alternate Mobile Number', false);
       if (altErr) {
-        setError(altErr);
+        triggerError(altErr);
         return;
       }
     }
     if (profileForm.telephone) {
       const telErr = validateIndianMobile(profileForm.telephone, 'Telephone Number', false);
       if (telErr) {
-        setError(telErr);
+        triggerError(telErr);
         return;
       }
     }
     if (profileForm.panNo) {
       const panErr = validatePAN(profileForm.panNo, 'PAN Number', false);
       if (panErr) {
-        setError(panErr);
+        triggerError(panErr);
         return;
       }
     }
     if (profileForm.aadhaarNo) {
       const aadhaarErr = validateAadhaar(profileForm.aadhaarNo, 'Aadhaar Number', false);
       if (aadhaarErr) {
-        setError(aadhaarErr);
+        triggerError(aadhaarErr);
         return;
       }
     }
     if (profileForm.accountHolderName) {
       const holderErr = validateName(profileForm.accountHolderName, 'Account Holder Name', { required: false });
       if (holderErr) {
-        setError(holderErr);
+        triggerError(holderErr);
         return;
       }
     }
     if (profileForm.accountNo) {
       const accErr = validateAccountNumber(profileForm.accountNo, profileForm.bankName, 'Bank Account Number', false);
       if (accErr) {
-        setError(accErr);
+        triggerError(accErr);
         return;
       }
     }
     if (profileForm.ifscCode) {
       const ifscErr = validateIFSC(profileForm.ifscCode, 'IFSC Code', false);
       if (ifscErr) {
-        setError(ifscErr);
+        triggerError(ifscErr);
         return;
       }
     }
@@ -311,7 +323,7 @@ const Profile = () => {
         }
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Profile update failed');
+      triggerError(err.response?.data?.message || 'Profile update failed');
     }
   };
 
@@ -324,6 +336,13 @@ const Profile = () => {
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">Business Settings & Registration Details</h3>
             <p className="text-slate-800 dark:text-slate-200 text-xs mt-1">Update all your business profile and bank account information</p>
           </div>
+
+          {error && (
+            <div id="profile-error-alert" className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 px-4 py-3 rounded-2xl text-xs flex items-center gap-2.5 font-medium shadow-sm animate-pulse">
+              <span className="text-base shrink-0">⚠️</span>
+              <span>{error}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSaveProfile} className="space-y-6">
             {/* General Info Section */}

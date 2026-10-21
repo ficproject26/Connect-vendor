@@ -66,6 +66,7 @@ import {
 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { ORDER_CATEGORIES, getRecordCategory } from '../../utils/categoryContext';
 
 const Orders = () => {
   const {
@@ -371,6 +372,10 @@ const Orders = () => {
                     const userBizIds = [user?._id, user?.parentUserId, activeBusinessId, savedActiveId, ...(user?.businesses?.map(b => b._id ? b._id.toString() : '') || [])].filter(Boolean);
 
                     const filteredOrders = orders.filter(order => {
+                      // Strict category guard: NEVER show job applications or bookings in Orders
+                      const recCat = getRecordCategory(order);
+                      if (!ORDER_CATEGORIES.includes(recCat)) return false;
+
                       const matchesBusiness = !savedActiveId || order.vendorId === savedActiveId || order.vendor_id === savedActiveId || userBizIds.includes(order.vendorId) || userBizIds.includes(order.vendor_id);
                       const matchesStatus = orderStatusFilter === 'All' || order.status === orderStatusFilter || (orderStatusFilter === 'Pending' && ['Pending', 'Order Received'].includes(order.status));
                       

@@ -20,11 +20,12 @@ const Customers = () => {
 
   const formatCustomerId = (c) => {
     if (!c) return 'N/A';
-    const isCanonical = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-')) && String(id) !== 'FIC-CUST-100001';
+    const isCanonical = (id) => id && (String(id).startsWith('FIC-CUS-') || String(id).startsWith('FIC-CUST-') || String(id).startsWith('REG-')) && String(id) !== 'FIC-CUST-100001';
     if (typeof c === 'object') {
       if (isCanonical(c.customerId)) return String(c.customerId);
       if (isCanonical(c.customerDisplayId)) return String(c.customerDisplayId);
       if (isCanonical(c.registrationId)) return String(c.registrationId);
+      if (isCanonical(c.userRegistrationId)) return String(c.userRegistrationId);
       if (isCanonical(c.memberId)) return String(c.memberId);
       if (isCanonical(c.id)) return String(c.id);
       if (isCanonical(c._id)) return String(c._id);
@@ -102,7 +103,7 @@ const Customers = () => {
                           <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{c.name}</h3>
                           <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1 break-all leading-snug" title={c.email}>{c.email}</p>
                           <p className="text-[10px] text-slate-400 mt-0.5">ID: {formatCustomerId(c)}</p>
-                          <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Gender: {c.gender || 'Not provided'}</p>
+                          <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Gender: {c.gender && c.gender !== 'Not provided' ? c.gender : (c.gender || 'Not specified')}</p>
                         </div>
                       </div>
 

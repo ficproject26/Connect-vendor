@@ -1210,8 +1210,9 @@ export default function VendorPayments() {
           onClose={() => setSelectedSaleDetail(null)}
           title={
             (isBookingCategory(selectedSaleDetail.category) ||
-             ['Stay', 'Services', 'Travel', 'Appointments'].includes(selectedSaleDetail.category) ||
-             (typeof selectedSaleDetail.orderId === 'string' && selectedSaleDetail.orderId.startsWith('BKG')))
+             ['Stay', 'Services', 'Travel', 'Appointments', 'Hotel', 'Hospital'].some(c => (selectedSaleDetail.category || '').toLowerCase().includes(c.toLowerCase())) ||
+             (typeof selectedSaleDetail.orderId === 'string' && selectedSaleDetail.orderId.startsWith('BKG')) ||
+             (selectedSaleDetail.type && ['Stay', 'Services', 'Travel', 'Appointments', 'Hotel', 'Hospital'].some(c => (selectedSaleDetail.type || '').toLowerCase().includes(c.toLowerCase()))))
               ? 'Booking Payment Details'
               : 'Sales Payment Details'
           }
