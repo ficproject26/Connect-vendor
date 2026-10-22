@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 async function testPublicProducts() {
-  const uri = process.env.MONGODB_URI || 'mongodb+srv://Connect-App:Dhanush123@cluster0.riukwbj.mongodb.net/?retryWrites=true&w=majority';
+  const uri = process.env.MONGODB_URI || 'mongodb+srv://Connect-App:Dhanush123@cluster0.riukwbj.mongodb.net/connect_db?retryWrites=true&w=majority';
   await mongoose.connect(uri);
   console.log('Connected to MongoDB');
 
