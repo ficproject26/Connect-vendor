@@ -10,7 +10,13 @@ cloudinary.config({
 
 const uploadToCloudinary = async (fileBuffer, folder = 'connect_uploads', filenameHint = 'image.jpg') => {
   // 1. Try uploading to Cloudinary first if credentials exist
-  if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  if (
+    process.env.CLOUDINARY_CLOUD_NAME && 
+    process.env.CLOUDINARY_API_KEY && 
+    process.env.CLOUDINARY_API_SECRET &&
+    !process.env.CLOUDINARY_API_KEY.includes('your_cloudinary') &&
+    !process.env.CLOUDINARY_CLOUD_NAME.includes('your_cloudinary')
+  ) {
     try {
       const cloudinaryUrl = await new Promise((resolve) => {
         let resolved = false;

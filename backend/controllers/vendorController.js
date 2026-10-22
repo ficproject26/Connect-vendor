@@ -4985,7 +4985,36 @@ const updateBusiness = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
     const businessId = req.params.id;
-    const { businessName, vendorType, address, pincode, phone, category, subcategory, street, city, state, country, panNo, aadhaarNo, companyRegNo, logo, businessLicense, bankName, accountHolderName, accountNo, ifscCode, swiftCode } = req.body;
+    const { 
+      businessName, 
+      vendorType, 
+      address, 
+      pincode, 
+      phone, 
+      category, 
+      subcategory, 
+      street, 
+      city, 
+      state, 
+      country, 
+      panNo, 
+      aadhaarNo, 
+      companyRegNo, 
+      logo, 
+      businessLicense, 
+      bankName, 
+      accountHolderName, 
+      accountNo, 
+      ifscCode, 
+      swiftCode,
+      isActive,
+      status,
+      isSuspendedByAdmin,
+      businessImages,
+      description,
+      gstStatus,
+      msmeStatus
+    } = req.body;
 
     let pinVal = pincode || req.body.pinCode || req.body.postalCode;
     if (pinVal !== undefined && pinVal !== null) {
@@ -5045,6 +5074,10 @@ const updateBusiness = async (req, res) => {
       if (accountNo !== undefined) biz.accountNo = accountNo;
       if (ifscCode !== undefined) biz.ifscCode = ifscCode;
       if (swiftCode !== undefined) biz.swiftCode = swiftCode;
+      if (businessImages !== undefined) biz.businessImages = businessImages;
+      if (description !== undefined) biz.description = description;
+      if (gstStatus !== undefined) biz.gstStatus = gstStatus;
+      if (msmeStatus !== undefined) biz.msmeStatus = msmeStatus;
 
       if (isActive !== undefined) {
         const bStatus = (biz.status || '').toLowerCase().trim();
