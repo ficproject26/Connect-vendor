@@ -138,7 +138,19 @@ const Register = () => {
       }
 
       if (categoriesList.length === 0) {
-        throw new Error('No active main categories currently available from category management.');
+        // Fallback to default system main categories so registration never blocks
+        const defaultMains = ['Products', 'Services', 'Daily Needs', 'Food', 'Stay', 'Travel', 'Jobs'];
+        defaultMains.forEach(name => {
+          if (!seen.has(name.toLowerCase())) {
+            seen.add(name.toLowerCase());
+            categoriesList.push({
+              _id: name,
+              name: name,
+              isActive: true,
+              level: 'main'
+            });
+          }
+        });
       }
 
       setAdminMainCategories(categoriesList);
