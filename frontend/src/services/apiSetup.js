@@ -110,17 +110,23 @@ const sanitizeResponseUrls = (val, backendUrl) => {
     }
     return val;
   }
-  if (Array.isArray(val)) {
-    return val.map(v => sanitizeResponseUrls(v, backendUrl));
+  if (typeof val !== 'object') {
+    return val;
   }
-  if (typeof val === 'object') {
-    if (val.$$typeof || (typeof HTMLElement !== 'undefined' && val instanceof HTMLElement)) return val;
-    for (const k in val) {
-      if (Object.prototype.hasOwnProperty.call(val, k)) {
-        val[k] = sanitizeResponseUrls(val[k], backendUrl);
-      }
+  if (val instanceof Date || val instanceof RegExp || (typeof Blob !== 'undefined' && val instanceof Blob)) {
+    return val;
+  }
+  if (Array.isArray(val)) {
+    for (let i = 0; i < val.length; i++) {
+      val[i] = sanitizeResponseUrls(val[i], backendUrl);
     }
     return val;
+  }
+  if (val.$$typeof || (typeof HTMLElement !== 'undefined' && val instanceof HTMLElement)) {
+    return val;
+  }
+  for (const k of Object.keys(val)) {
+    val[k] = sanitizeResponseUrls(val[k], backendUrl);
   }
   return val;
 };

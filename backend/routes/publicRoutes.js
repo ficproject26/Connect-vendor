@@ -7,6 +7,21 @@ const { publishRealtimeEvent, EVENT_TYPES, ENTITY_NAMES } = require('../realtime
 
 const router = express.Router();
 
+// Memory caches for high-frequency static/infrequently changing category queries
+let cachedDbCategories = null;
+let cachedDbCategoriesExpiresAt = 0;
+const getCachedDbCategories = async () => {
+  if (cachedDbCategories && cachedDbCategoriesExpiresAt > Date.now()) {
+    return cachedDbCategories;
+  }
+  const dbCats = await Category.find({ isDeleted: { $ne: true } }).lean();
+  cachedDbCategories = dbCats || [];
+  cachedDbCategoriesExpiresAt = Date.now() + 60000; // 60-second TTL
+  return cachedDbCategories;
+};
+
+const categoryFieldsCache = new Map();
+
 // Health check endpoint
 router.get('/health', (req, res) => {
   res.status(200).json({
@@ -73,11 +88,20 @@ const getSubNavbarCategory = (baseVendorType, category) => {
   return 'Products';
 };
 
+let cachedPublicProducts = null;
+let cachedPublicProductsExpiresAt = 0;
+
 // GET /api/public/products
 router.get('/products', async (req, res) => {
   try {
-    // 1. Fetch all users from database
-    const allVendorUsers = await User.find({}).lean();
+    if (cachedPublicProducts && cachedPublicProductsExpiresAt > Date.now()) {
+      return res.status(200).json({ success: true, products: cachedPublicProducts, fromCache: true });
+    }
+
+    // 1. Fetch vendor users from database with lean projection
+    const allVendorUsers = await User.find({})
+      .select('status vendorStatus isActive isApproved isLocked isSuspended vendorId registrationId regId id username handle email phone mobileNumber telephone businessName name companyName brand vendorCode businesses city bankCity baseVendorType vendorType category address logo operatingHours')
+      .lean();
 
     const suspendedIds = new Set();
     const suspendedNames = new Set();
@@ -396,6 +420,9 @@ router.get('/products', async (req, res) => {
         delivery: 'Free Delivery'
       };
     });
+
+    cachedPublicProducts = mappedProducts;
+    cachedPublicProductsExpiresAt = Date.now() + 15000; // 15s cache
 
     res.status(200).json({ success: true, products: mappedProducts });
   } catch (error) {
@@ -1028,6 +1055,12 @@ router.get('/categories/subcategories/fields', async (req, res) => {
         return res.json({ success: true, requiredVendorFields: [] });
       }
 
+      const cacheKey = `${mainName}_${subName}_${childName}`.toLowerCase();
+      const cached = categoryFieldsCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return res.json(cached.data);
+      }
+
       // Strategy: Search Child Category first, then Subcategory, then Main. Prioritize non-empty requiredVendorFields.
       if (childName) {
         const escChild = childName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1092,11 +1125,24 @@ router.get('/categories/subcategories/fields', async (req, res) => {
       ? rawFields.map(f => String(f).trim()).filter(Boolean)
       : (typeof rawFields === 'string' ? rawFields.split(',').map(s => s.trim()).filter(Boolean) : []);
 
-    return res.json({
+    const responsePayload = {
       success: true,
       category: catDoc?.subSubcategory || catDoc?.subcategory || catDoc?.name || '',
       requiredVendorFields
-    });
+    };
+
+    if (!subcategoryId) {
+      const childName = (subSubcategory || childCategory || '').trim();
+      const subName = (subcategory || '').trim();
+      const mainName = (name || '').trim();
+      const cacheKey = `${mainName}_${subName}_${childName}`.toLowerCase();
+      categoryFieldsCache.set(cacheKey, {
+        data: responsePayload,
+        expiresAt: Date.now() + 300000 // 5-minute TTL
+      });
+    }
+
+    return res.json(responsePayload);
   } catch (err) {
     console.error('Error fetching category required vendor fields:', err);
     return res.json({ success: true, requiredVendorFields: [] });
@@ -1306,7 +1352,7 @@ router.get('/categories/main', async (req, res) => {
 router.get('/categories', async (req, res) => {
   try {
     const { mainCategory, onlyActive } = req.query;
-    const dbCats = await Category.find({ isDeleted: { $ne: true } }).lean();
+    const dbCats = await getCachedDbCategories();
 
     if (mainCategory) {
       const shouldFilterActive = onlyActive !== 'false';

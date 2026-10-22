@@ -401,6 +401,13 @@ OrderSchema.index({ order_number: 1 });
 OrderSchema.index({ id: 1 });
 OrderSchema.index({ customerId: 1 });
 OrderSchema.index({ customerDisplayId: 1 });
+OrderSchema.index({ productId: 1 });
+OrderSchema.index({ jobId: 1 });
+OrderSchema.index({ 'items.productId': 1 });
+OrderSchema.index({ 'items.vendorId': 1 });
+OrderSchema.index({ 'items.vendor_id': 1 });
+OrderSchema.index({ vendorId: 1, type: 1, status: 1, createdAt: -1 });
+OrderSchema.index({ vendor_id: 1, type: 1, status: 1, createdAt: -1 });
 
 OrderSchema.pre('save', function(next) {
   if (this.type === 'Job') {
@@ -582,6 +589,13 @@ const CategorySchema = new mongoose.Schema({
   isDeleted: { type: Boolean, default: false },
   children: [{ type: mongoose.Schema.Types.Mixed }]
 }, { timestamps: true, strict: false });
+
+CategorySchema.index({ isDeleted: 1, isActive: 1 });
+CategorySchema.index({ mainCategory: 1, isDeleted: 1 });
+CategorySchema.index({ parentId: 1 });
+CategorySchema.index({ name: 1, level: 1 });
+CategorySchema.index({ subSubcategory: 1 });
+CategorySchema.index({ subcategory: 1 });
 
 // --- VENDOR SUBSCRIPTION SCHEMA ---
 const SubscriptionSchema = new mongoose.Schema({
@@ -797,6 +811,7 @@ const SupportTicketSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 SupportTicketSchema.index({ vendorId: 1, status: 1 });
+SupportTicketSchema.index({ vendorId: 1, createdAt: -1 });
 
 // Compile and export models using the getModel wrapper
 module.exports = {

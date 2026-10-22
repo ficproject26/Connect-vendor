@@ -387,7 +387,7 @@ const runAuditTests = async () => {
         panNo: 'ABCDE1234F',
         msmeStatus: 'Non-MSME',
         accountHolderName: 'Hacker',
-        accountNo: '1234567890',
+        accountNo: '123456789012345678',
         ifscCode: 'HDFC0001234'
       }
     });

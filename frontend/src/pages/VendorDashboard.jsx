@@ -10,7 +10,6 @@ import {
   Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink, Activity, Search,
   LayoutGrid, List, Camera, Image as ImageIcon, Menu, X, Sparkles, AlertCircle
 } from 'lucide-react';
-import { ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Legend, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
 import NotificationDropdown from '../components/common/NotificationDropdown';
@@ -42,6 +41,7 @@ import {
 const SubscriptionManagement = lazy(() => import('./business/SubscriptionManagement'));
 const VendorPayments = lazy(() => import('./payments/VendorPayments'));
 const AddBusinessModal = lazy(() => import('../components/business/AddBusinessModal'));
+const DashboardAnalyticsCharts = lazy(() => import('../components/dashboard/DashboardAnalyticsCharts'));
 
 const LazyTabLoader = () => (
   <div className="flex items-center justify-center p-12 min-h-[250px]">
@@ -609,6 +609,7 @@ const VendorDashboard = () => {
   const { user, token, card, sidebarCollapsed, activeBusinessId } = useSelector(state => state.auth);
   const [switchingBizId, setSwitchingBizId] = useState(null);
   const [, setCategoryTrigger] = useState(0);
+  const [dbCategories, setDbCategories] = useState([]);
   const deadlineInputRef = useRef(null);
 
   useEffect(() => {
@@ -731,6 +732,7 @@ const VendorDashboard = () => {
               COMPLETE_CAT_TAXONOMY[main] = dbCatsByMain[main];
             }
           });
+          setDbCategories(dbCats);
           setCategoryTrigger(prev => prev + 1);
         }
       } catch (err) {
@@ -1146,7 +1148,6 @@ const VendorDashboard = () => {
   const [routePointError, setRoutePointError] = useState('');
   const [selectedMainCat, setSelectedMainCat] = useState('');
   const [selectedSubcat, setSelectedSubcat] = useState('');
-  const [dbCategories, setDbCategories] = useState([]);
   const [stayHierarchy, setStayHierarchy] = useState({ subcategories: [] });
   const [loadingStayCategories, setLoadingStayCategories] = useState(false);
   const [dynamicCategoryFields, setDynamicCategoryFields] = useState([]);
@@ -1179,7 +1180,11 @@ const VendorDashboard = () => {
   }, []);
 
   // Real-time fetch for Stay module categories directly from database
-  const fetchStayCategories = async () => {
+  const isFetchingStayRef = useRef(false);
+  const fetchStayCategories = async (force = false) => {
+    if (isFetchingStayRef.current) return;
+    if (!force && Array.isArray(stayHierarchy?.subcategories) && stayHierarchy.subcategories.length > 0) return;
+    isFetchingStayRef.current = true;
     setLoadingStayCategories(true);
     try {
       const res = await axios.get(`${getBackendUrl()}/api/public/categories?mainCategory=Stay&onlyActive=true`);
@@ -1194,6 +1199,7 @@ const VendorDashboard = () => {
       console.error('Categories fetch error for Stay:', err);
     } finally {
       setLoadingStayCategories(false);
+      isFetchingStayRef.current = false;
     }
   };
 
@@ -1224,17 +1230,6 @@ const VendorDashboard = () => {
   }, [isItemModalOpen, itemForm.category, itemForm.subcategory, itemForm.subSubcategory, itemForm.childCategory, itemForm.mainCategory, selectedMainCat]);
 
   useEffect(() => {
-    const fetchDynamicCategories = async () => {
-      try {
-        const res = await axios.get(`${getBackendUrl()}/api/public/categories`);
-        if (res.data && res.data.success && Array.isArray(res.data.data)) {
-          setDbCategories(res.data.data);
-        }
-      } catch (err) {
-        console.log('Categories fetch error:', err);
-      }
-    };
-    fetchDynamicCategories();
     fetchStayCategories();
   }, []);
 
@@ -2989,13 +2984,21 @@ const VendorDashboard = () => {
     }
   };
 
-  // Load Tab Data
+  // Load Tab Data with intelligent short-lived cache to avoid redundant network overhead during navigation
+  const lastFetchedTabRef = useRef({});
   useEffect(() => {
     const fetchTabData = async () => {
+      const tabCacheKey = `${activeTab}_${activeBusinessId || 'all'}_${currentCategoryContext || 'all'}_${orderCategoryFilter || 'all'}_${bookingCategoryFilter || 'all'}`;
+      const now = Date.now();
+      if (lastFetchedTabRef.current[tabCacheKey] && (now - lastFetchedTabRef.current[tabCacheKey] < 15000)) {
+        return;
+      }
+
       setLoading(true);
       setError('');
       setMessage('');
       try {
+        lastFetchedTabRef.current[tabCacheKey] = now;
         if (activeTab === 'dashboard') {
           let res;
           if (user?.role === 'Admin') {
@@ -3227,6 +3230,7 @@ const VendorDashboard = () => {
   // Clear cached data only when user session changes
   useEffect(() => {
     prevOrdersRef.current = [];
+    lastFetchedTabRef.current = {};
   }, [user?._id]);
 
   // Reset category filter if it doesn't match the current food type filter
@@ -5401,162 +5405,6 @@ const VendorDashboard = () => {
           const pendingOrders = currentBizRecords.filter(o => ['Pending', 'Accepted', 'Out for Delivery', 'Checked In', 'Shortlisted', 'Interviewing', 'Approved'].includes(o.status));
           const cancelledOrders = currentBizRecords.filter(o => ['Cancelled', 'Rejected'].includes(o.status));
 
-          // Orders Trend (last 7 calendar days)
-          const getOrdersTrendData = () => {
-            const map = {};
-            for (let i = 6; i >= 0; i--) {
-              const d = new Date();
-              d.setDate(d.getDate() - i);
-              const key = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-              map[key] = 0;
-            }
-            currentBizRecords.forEach(o => {
-              const dateVal = o.appointmentDate || o.checkInDate || o.travelDate || o.createdAt || o.created_at || o.orderDate;
-              const key = new Date(dateVal).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-              if (map[key] !== undefined) {
-                map[key] += 1;
-              }
-            });
-            return Object.keys(map).map(date => ({ date, count: map[date] }));
-          };
-          const ordersTrendData = getOrdersTrendData();
-
-          // Top Selling Items (max 5)
-          const getTopSellingData = () => {
-            if (isJobBiz) {
-              const jobAppMap = {};
-              currentBizRecords.forEach(o => {
-                if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
-                  const catMatch = catalog.find(c => 
-                    (o.jobId && String(c._id) === String(o.jobId)) ||
-                    (o.job_id && String(c._id) === String(o.job_id)) ||
-                    (o.productId && String(c._id) === String(o.productId)) ||
-                    (o.jobTitle && c.title && c.title.toLowerCase() === o.jobTitle.toLowerCase()) ||
-                    (o.jobTitle && c.name && c.name.toLowerCase() === o.jobTitle.toLowerCase()) ||
-                    (o.title && c.title && c.title.toLowerCase() === o.title.toLowerCase())
-                  );
-                  const title = catMatch?.title || catMatch?.name || o.jobTitle || o.title || o.position || 'Job Posting';
-                  jobAppMap[title] = (jobAppMap[title] || 0) + 1;
-                }
-              });
-              return Object.keys(jobAppMap)
-                .map(name => ({ name, sales: jobAppMap[name] }))
-                .sort((a, b) => b.sales - a.sales)
-                .slice(0, 5);
-            }
-
-            if (isTravelBiz) {
-              const travelMap = {};
-              currentBizRecords.forEach(o => {
-                if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
-                  const catMatch = catalog.find(c => 
-                    (o.productId && String(c._id) === String(o.productId)) ||
-                    (o.product_details && c.name && c.name.toLowerCase() === o.product_details.toLowerCase()) ||
-                    (o.vehicleType && c.category && c.category.toLowerCase() === o.vehicleType.toLowerCase())
-                  );
-                  let routeOpt = catMatch?.category || catMatch?.name || o.vehicleType || o.product_details || 'Travel Route';
-                  if (/car/i.test(routeOpt)) routeOpt = 'Car';
-                  else if (/bus/i.test(routeOpt)) routeOpt = 'Bus';
-                  else if (/bike/i.test(routeOpt)) routeOpt = 'Bike';
-                  travelMap[routeOpt] = (travelMap[routeOpt] || 0) + 1;
-                }
-              });
-              return Object.keys(travelMap)
-                .map(name => ({ name, sales: travelMap[name] }))
-                .sort((a, b) => b.sales - a.sales)
-                .slice(0, 5);
-            }
-
-            const itemMap = {};
-            currentBizRecords.forEach(o => {
-              if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
-                const itemList = (o.items && Array.isArray(o.items) && o.items.length > 0) ? o.items : [];
-                if (itemList.length > 0) {
-                  itemList.forEach(item => {
-                    const catMatch = catalog.find(c => 
-                      (item.productId && String(c._id) === String(item.productId)) ||
-                      (item.id && String(c._id) === String(item.id)) ||
-                      (item.name && c.name && c.name.toLowerCase() === item.name.toLowerCase())
-                    );
-                    const name = catMatch ? catMatch.name : (item.name || o.serviceName || (o.doctorName ? `Dr. ${o.doctorName}` : null) || o.product_details || o.itemName || 'Item');
-                    if (name && name !== 'Unknown Item') {
-                      itemMap[name] = (itemMap[name] || 0) + (Number(item.quantity) || 1);
-                    }
-                  });
-                } else {
-                  const singleName = o.serviceName ||
-                    (o.doctorName ? `Dr. ${o.doctorName}` : null) ||
-                    (o.roomNumber ? `Room ${o.roomNumber}` : null) ||
-                    o.product_details ||
-                    o.itemName ||
-                    o.name ||
-                    o.title;
-
-                  const catMatch = catalog.find(c => 
-                    (o.productId && String(c._id) === String(o.productId)) ||
-                    (singleName && c.name && c.name.toLowerCase() === singleName.toLowerCase())
-                  );
-                  const resolvedName = catMatch ? catMatch.name : (singleName || (isServicesBiz ? 'General Service' : isStayBiz ? 'Room Booking' : 'Order Item'));
-                  if (resolvedName) {
-                    itemMap[resolvedName] = (itemMap[resolvedName] || 0) + 1;
-                  }
-                }
-              }
-            });
-            return Object.keys(itemMap)
-              .map(name => ({ name, sales: itemMap[name] }))
-              .sort((a, b) => b.sales - a.sales)
-              .slice(0, 5);
-          };
-          const topSellingData = getTopSellingData();
-
-          // Membership Growth (last 7 days cumulative)
-          const getMembershipGrowthData = () => {
-            const map = {};
-            for (let i = 6; i >= 0; i--) {
-              const d = new Date();
-              d.setDate(d.getDate() - i);
-              const key = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-              map[key] = 0;
-            }
-            customers.forEach(c => {
-              const key = new Date(c.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-              if (map[key] !== undefined) {
-                map[key] += 1;
-              }
-            });
-            let cumulative = Math.max(0, customers.length - Object.values(map).reduce((sum, v) => sum + v, 0));
-            return Object.keys(map).map(date => {
-              cumulative += map[date];
-              return { date, members: cumulative };
-            });
-          };
-          const membershipGrowthData = getMembershipGrowthData();
-
-          // Helper for deterministic card type for membership analytics
-          const getCardTypeForMember = (memberId) => {
-            if (!memberId) return 'Silver';
-            let sum = 0;
-            for (let i = 0; i < memberId.length; i++) {
-              sum += memberId.charCodeAt(i);
-            }
-            const tiers = ['Silver', 'Gold', 'Diamond'];
-            return tiers[sum % tiers.length];
-          };
-
-          // Revenue by Card Tier (Silver, Gold, Diamond)
-          const getRevenueByCardTierData = () => {
-            const map = { Silver: 0, Gold: 0, Diamond: 0 };
-            currentBizRecords.forEach(o => {
-              if (o.status !== 'Cancelled') {
-                const tier = getCardTypeForMember(o.memberId);
-                map[tier] += o.finalAmount || 0;
-              }
-            });
-            return Object.keys(map).map(tier => ({ name: tier, revenue: map[tier] }));
-          };
-          const revenueByCardTierData = getRevenueByCardTierData();
-
           const totalMembersCount = customers.length;
           const activeMemberships = analytics.activeMembershipsCount || 0;
           const expiredMemberships = Math.max(0, totalMembersCount - activeMemberships);
@@ -5679,141 +5527,23 @@ const VendorDashboard = () => {
               </div>
 
               {/* Analytics Charts Grid */}
-              <div className="space-y-4 md:space-y-6">
-                {/* Charts Row 1: Revenue & Orders trends */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                  {/* Revenue Trend Line Chart */}
-                  <div className="bg-white dark:bg-slate-900/80 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 tracking-tight">Revenue Trend</h3>
-                    {analytics.recentRevenue?.length === 0 ? (
-                      <p className="text-slate-400 dark:text-slate-500 text-center py-12 font-medium">No completed transactions to graph</p>
-                    ) : (
-                      <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={analytics.recentRevenue}>
-                            <defs>
-                              <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
-                                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.08)" />
-                            <XAxis dataKey="date" stroke="#64748b" fontSize={11} fontWeight={500} />
-                            <YAxis stroke="#64748b" fontSize={11} fontWeight={500} />
-                            <Tooltip 
-                              contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#f8fafc', borderRadius: '16px', backdropFilter: 'blur(10px)' }} 
-                              formatter={(value) => [`₹${value}`, 'Amount']}
-                            />
-                            <Line type="monotone" dataKey="amount" stroke="#8b5cf6" strokeWidth={3} activeDot={{ r: 8 }} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Orders Trend Chart */}
-                  <div className="bg-white dark:bg-slate-900/80 p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 tracking-tight">Orders Trend</h3>
-                    {ordersTrendData.length === 0 ? (
-                      <p className="text-slate-400 dark:text-slate-500 text-center py-12 font-medium">No orders recorded</p>
-                    ) : (
-                      <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={ordersTrendData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.08)" />
-                            <XAxis dataKey="date" stroke="#64748b" fontSize={11} fontWeight={500} />
-                            <YAxis stroke="#64748b" fontSize={11} fontWeight={500} allowDecimals={false} />
-                            <Tooltip 
-                              contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#f8fafc', borderRadius: '16px', backdropFilter: 'blur(10px)' }} 
-                              formatter={(value) => [`${value}`, 'Count']}
-                            />
-                            <Line type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={3} activeDot={{ r: 8 }} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                  </div>
+              <Suspense fallback={
+                <div className="bg-white/40 dark:bg-slate-900/40 p-8 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 flex items-center justify-center min-h-[300px]">
+                  <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
-
-                {/* Charts Row 2: Top Selling & Membership Growth */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Top Selling Dishes/Products */}
-                  <div className="bg-white dark:bg-slate-900/80 p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 tracking-tight">Top {isJobBiz ? 'Applied' : 'Selling'} {terms.catalogName}</h3>
-                    {topSellingData.length === 0 ? (
-                      <p className="text-slate-400 dark:text-slate-500 text-center py-12 font-medium">{isJobBiz ? 'No job applications to graph' : 'No sales details to graph'}</p>
-                    ) : (
-                      <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={topSellingData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.08)" />
-                            <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontWeight={500} />
-                            <YAxis stroke="#64748b" fontSize={11} fontWeight={500} allowDecimals={false} />
-                            <Tooltip 
-                              contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#f8fafc', borderRadius: '16px', backdropFilter: 'blur(10px)' }} 
-                              formatter={(value) => [`${value}`, isJobBiz ? 'Applications' : (isTravelBiz || isStayBiz || isServicesBiz) ? 'Bookings' : 'Units Sold']}
-                            />
-                            <Bar dataKey="sales" fill="#fbbf24" radius={[8, 8, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Membership Growth Chart */}
-                  <div className="bg-white dark:bg-slate-900/80 p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 tracking-tight">Membership Growth</h3>
-                    {membershipGrowthData.length === 0 ? (
-                      <p className="text-slate-400 dark:text-slate-500 text-center py-12 font-medium">No memberships to graph</p>
-                    ) : (
-                      <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={membershipGrowthData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.08)" />
-                            <XAxis dataKey="date" stroke="#64748b" fontSize={11} fontWeight={500} />
-                            <YAxis stroke="#64748b" fontSize={11} fontWeight={500} allowDecimals={false} />
-                            <Tooltip 
-                              contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#f8fafc', borderRadius: '16px', backdropFilter: 'blur(10px)' }} 
-                              formatter={(value) => [`${value}`, 'Active Members']}
-                            />
-                            <Line type="monotone" dataKey="members" stroke="#10b981" strokeWidth={3} activeDot={{ r: 8 }} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Charts Row 3: Revenue by Card Tier */}
-                <div className="bg-white dark:bg-slate-900/80 p-6 rounded-3xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 tracking-tight">Revenue by Card Tier</h3>
-                  {revenueByCardTierData.every(d => d.revenue === 0) ? (
-                    <p className="text-slate-400 dark:text-slate-500 text-center py-12 font-medium">No membership tier revenue recorded yet</p>
-                  ) : (
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={revenueByCardTierData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.08)" />
-                          <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontWeight={500} />
-                          <YAxis stroke="#64748b" fontSize={11} fontWeight={500} />
-                          <Tooltip 
-                            contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255, 255, 255, 0.15)', color: '#ffffff', borderRadius: '16px', backdropFilter: 'blur(10px)', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }} 
-                            labelStyle={{ color: '#ffffff', fontWeight: 700, marginBottom: '4px' }}
-                            itemStyle={{ color: '#ffffff', fontWeight: 600 }}
-                            formatter={(value) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Revenue']}
-                          />
-                          <Bar dataKey="revenue" radius={[10, 10, 0, 0]}>
-                            {revenueByCardTierData.map((entry, index) => {
-                              const colors = ['#94a3b8', '#fbbf24', '#38bdf8']; // Silver, Gold, Diamond
-                              return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
-                            })}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </div>
-              </div>
+              }>
+                <DashboardAnalyticsCharts
+                  analytics={analytics}
+                  currentBizRecords={currentBizRecords}
+                  catalog={catalog}
+                  customers={customers}
+                  isJobBiz={isJobBiz}
+                  isTravelBiz={isTravelBiz}
+                  isStayBiz={isStayBiz}
+                  isServicesBiz={isServicesBiz}
+                  terms={terms}
+                />
+              </Suspense>
 
               {/* Recent Orders, Members, and Products Section */}
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

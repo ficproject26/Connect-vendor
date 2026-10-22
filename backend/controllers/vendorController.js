@@ -252,6 +252,15 @@ const getVendorAnalytics = async (req, res) => {
       }
     }
 
+    const analyticsCacheKey = `${parentUserId}_${req.query.businessId || 'all'}_${req.query.category || 'all'}`;
+    const cachedAnalytics = await cacheManager.get('analytics', analyticsCacheKey);
+    if (cachedAnalytics) {
+      return res.status(200).json({
+        success: true,
+        data: cachedAnalytics
+      });
+    }
+
     // Fetch vendor orders with projection and lean() for fast query execution
     const orderFilter = {
       $or: [
@@ -459,7 +468,6 @@ const getVendorAnalytics = async (req, res) => {
     };
 
     // Store in cache with 120s TTL (automatically invalidated upon any order/item mutation)
-    const analyticsCacheKey = `${parentUserId}_${req.query.businessId || 'all'}_${req.query.category || 'all'}`;
     await cacheManager.set('analytics', analyticsCacheKey, analyticsData, 120);
 
     res.status(200).json({
