@@ -5,7 +5,7 @@ let settlementsSeeded = false;
 
 // Helper to seed mock settlements if none exist
 const seedMockSettlementsIfNeeded = async () => {
-  if (settlementsSeeded) return;
+  return; // Auto-seeding disabled
   try {
     const count = await Settlement.countDocuments();
     if (count > 0) {
@@ -66,7 +66,7 @@ const seedMockSettlementsIfNeeded = async () => {
 // @access  Private (Vendor)
 const getVendorSettlements = async (req, res) => {
   try {
-    await seedMockSettlementsIfNeeded();
+    // Mock seeding disabled: Production reads strictly use MongoDB Atlas as single source of truth
     
     const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
     const user = await User.findById(parentUserId).select('-password').lean();
