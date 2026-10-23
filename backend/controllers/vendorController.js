@@ -4640,8 +4640,11 @@ const addBusiness = async (req, res) => {
         normalizedCatDocs.permitNo = cleanNum;
       }
       if (/bis_?cert|^bis/i.test(cleanType)) {
-        normalizedCatDocs.bisDoc = cleanUrl;
-        normalizedCatDocs.bisNo = cleanNum;
+        if (cleanUrl) normalizedCatDocs.bisDoc = cleanUrl;
+        if (cleanNum) {
+          normalizedCatDocs.bisNo = cleanNum;
+          normalizedCatDocs.bisCertificateNo = cleanNum;
+        }
       }
 
       catDocsArray.push(docObj);
@@ -4656,8 +4659,11 @@ const addBusiness = async (req, res) => {
         const label = item.label || type;
         registerDoc(type, url, num, label);
       });
-    } else if (typeof rawCatDocs === 'object') {
-      Object.entries(rawCatDocs).forEach(([key, val]) => {
+    }
+
+    // Also register any entries in req.body.categoryDocs object if provided
+    if (req.body.categoryDocs && typeof req.body.categoryDocs === 'object' && !Array.isArray(req.body.categoryDocs)) {
+      Object.entries(req.body.categoryDocs).forEach(([key, val]) => {
         if (!val) return;
         if (typeof val === 'object') {
           registerDoc(key, val.docUrl || val.url || val.documentUrl || val.fileUrl || val.doc, val.docNumber || val.number, val.label);
@@ -4667,44 +4673,75 @@ const addBusiness = async (req, res) => {
       });
     }
 
+    // Also check direct top-level fields from req.body
+    if (req.body.bisDoc || req.body.bisNo || req.body.bisCertificateNo) {
+      registerDoc('bis_certificate', req.body.bisDoc || normalizedCatDocs.bisDoc, req.body.bisNo || req.body.bisCertificateNo || normalizedCatDocs.bisNo, 'BIS / CRS Registration Certificate');
+    }
+    if (req.body.foodSafetyDoc || req.body.foodSafetyLicenseNo) {
+      registerDoc('fssai_license', req.body.foodSafetyDoc || normalizedCatDocs.foodSafetyDoc, req.body.foodSafetyLicenseNo || normalizedCatDocs.foodSafetyLicenseNo, 'Food Safety License (FSSAI)');
+    }
+
     const catDocs = normalizedCatDocs;
     const catLower = finalCategory.toLowerCase();
 
-    // Food / Grocery / Daily Needs
-    if (['food', 'restaurant', 'grocery', 'daily needs'].some(c => catLower.includes(c))) {
-      if (!catDocs.foodSafetyDoc || !String(catDocs.foodSafetyDoc).trim()) {
+    // Food / Restaurant (Mandatory FSSAI)
+    if (['food', 'restaurant'].some(c => catLower.includes(c))) {
+      const foodDoc = String(catDocs.foodSafetyDoc || catDocs.fssai_licenseUrl || req.body.foodSafetyDoc || '').trim();
+      const foodNo = String(catDocs.foodSafetyLicenseNo || catDocs.fssai_licenseNo || req.body.foodSafetyLicenseNo || '').trim();
+
+      if (!foodNo) {
+        return res.status(400).json({ success: false, message: 'Food Safety License Number is required.' });
+      }
+      if (!foodDoc) {
         return res.status(400).json({ success: false, message: 'Food Safety License Document is required.' });
       }
-      if (!catDocs.foodSafetyLicenseNo || !String(catDocs.foodSafetyLicenseNo).trim()) {
-        return res.status(400).json({ success: false, message: 'Food Safety License Number is required.' });
+    }
+
+    // Daily Needs / Grocery (Optional FSSAI)
+    if (['daily needs', 'grocery'].some(c => catLower.includes(c))) {
+      const foodDoc = String(catDocs.foodSafetyDoc || catDocs.fssai_licenseUrl || req.body.foodSafetyDoc || '').trim();
+      const foodNo = String(catDocs.foodSafetyLicenseNo || catDocs.fssai_licenseNo || req.body.foodSafetyLicenseNo || '').trim();
+
+      if (foodNo && !foodDoc) {
+        return res.status(400).json({ success: false, message: 'Food Safety License Document is required when license number is provided.' });
+      }
+      if (foodDoc && !foodNo) {
+        return res.status(400).json({ success: false, message: 'Food Safety License Number is required when license document is uploaded.' });
       }
     }
 
     // Travel
     if (catLower.includes('travel')) {
-      if (!catDocs.rcDoc || !String(catDocs.rcDoc).trim()) {
+      const rcDoc = String(catDocs.rcDoc || req.body.rcDoc || '').trim();
+      const rcNo = String(catDocs.rcNo || req.body.rcNo || '').trim();
+      const fitnessDoc = String(catDocs.fitnessDoc || req.body.fitnessDoc || '').trim();
+      const fitnessNo = String(catDocs.fitnessNo || req.body.fitnessNo || '').trim();
+      const permitDoc = String(catDocs.permitDoc || req.body.permitDoc || '').trim();
+      const permitNo = String(catDocs.permitNo || req.body.permitNo || '').trim();
+
+      if (!rcNo) {
+        return res.status(400).json({ success: false, message: 'Vehicle RC Number is required.' });
+      }
+      if (!rcDoc) {
         return res.status(400).json({ success: false, message: 'Vehicle RC is required.' });
       }
-      if (!catDocs.fitnessDoc || !String(catDocs.fitnessDoc).trim()) {
-        return res.status(400).json({ success: false, message: 'Vehicle Fitness Certificate is required.' });
-      }
-      const fitnessNo = String(catDocs.fitnessNo || '').trim();
       if (!fitnessNo) {
         return res.status(400).json({ success: false, message: 'Vehicle Fitness Certificate Number is required.' });
       }
       if (fitnessNo.length < 15 || fitnessNo.length > 16 || !/^[A-Za-z0-9-]+$/.test(fitnessNo)) {
         return res.status(400).json({ success: false, message: 'Vehicle Fitness Certificate number must be between 15 and 16 characters.' });
       }
-
-      if (!catDocs.permitDoc || !String(catDocs.permitDoc).trim()) {
-        return res.status(400).json({ success: false, message: 'Transport Permit is required.' });
+      if (!fitnessDoc) {
+        return res.status(400).json({ success: false, message: 'Vehicle Fitness Certificate is required.' });
       }
-      const permitNo = String(catDocs.permitNo || '').trim();
       if (!permitNo) {
         return res.status(400).json({ success: false, message: 'Transport / Route Permit Number is required.' });
       }
       if (permitNo.length < 13 || permitNo.length > 16 || !/^[A-Za-z0-9/-]+$/.test(permitNo)) {
         return res.status(400).json({ success: false, message: 'Transport / Route Permit number must be between 13 and 16 characters.' });
+      }
+      if (!permitDoc) {
+        return res.status(400).json({ success: false, message: 'Transport Permit is required.' });
       }
     }
 
@@ -4719,14 +4756,26 @@ const addBusiness = async (req, res) => {
 
     // Job
     if (catLower.includes('job')) {
-      if (!catDocs.companyRegDoc || !String(catDocs.companyRegDoc).trim()) {
+      const companyRegDoc = String(catDocs.companyRegDoc || req.body.companyRegDoc || '').trim();
+      const companyRegNo = String(catDocs.companyRegNo || req.body.companyRegNo || '').trim();
+
+      if (!companyRegNo) {
+        return res.status(400).json({ success: false, message: 'Company Registration Certificate Number is required.' });
+      }
+      if (!companyRegDoc) {
         return res.status(400).json({ success: false, message: 'Company Registration Certificate is required.' });
       }
     }
 
     // Electronics
     if (catLower.includes('electronic')) {
-      if (!catDocs.bisDoc || !String(catDocs.bisDoc).trim()) {
+      const bisDocUrl = String(catDocs.bisDoc || catDocs.bis_certificateUrl || req.body.bisDoc || '').trim();
+      const bisNumber = String(catDocs.bisNo || catDocs.bisCertificateNo || catDocs.bis_certificateNo || req.body.bisNo || req.body.bisCertificateNo || '').trim();
+
+      if (!bisNumber) {
+        return res.status(400).json({ success: false, message: 'BIS / CRS Certificate Number is required.' });
+      }
+      if (!bisDocUrl) {
         return res.status(400).json({ success: false, message: 'BIS / CRS Certificate Document is required.' });
       }
     }

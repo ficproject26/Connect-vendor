@@ -23,9 +23,24 @@ const CATEGORY_DOC_CONFIG = {
   Food: [
     { key: 'fssai_license', label: 'Food Safety License (FSSAI)', required: true, numberPlaceholder: 'e.g. 10012345678901' }
   ],
+  Restaurant: [
+    { key: 'fssai_license', label: 'Food Safety License (FSSAI)', required: true, numberPlaceholder: 'e.g. 10012345678901' }
+  ],
   'Daily Needs': [
     { key: 'fssai_license', label: 'Food Safety License (if applicable)', required: false, numberPlaceholder: 'e.g. 10012345678901' },
     { key: 'trade_license', label: 'Trade / Shop License', required: false, numberPlaceholder: 'e.g. TR-987654' }
+  ],
+  Grocery: [
+    { key: 'fssai_license', label: 'Food Safety License (if applicable)', required: false, numberPlaceholder: 'e.g. 10012345678901' },
+    { key: 'trade_license', label: 'Trade / Shop License', required: false, numberPlaceholder: 'e.g. TR-987654' }
+  ],
+  Electronics: [
+    { key: 'bis_certificate', label: 'BIS / CRS Registration Certificate', required: true, numberPlaceholder: 'e.g. BIS-REG-1234' },
+    { key: 'trade_license', label: 'Trade / Shop License', required: false, numberPlaceholder: 'e.g. TRD-45678' }
+  ],
+  Electronic: [
+    { key: 'bis_certificate', label: 'BIS / CRS Registration Certificate', required: true, numberPlaceholder: 'e.g. BIS-REG-1234' },
+    { key: 'trade_license', label: 'Trade / Shop License', required: false, numberPlaceholder: 'e.g. TRD-45678' }
   ],
   Product: [
     { key: 'bis_certificate', label: 'BIS / CRS / Product Certificate', required: false, numberPlaceholder: 'e.g. BIS-REG-1234' },
@@ -57,9 +72,6 @@ const CATEGORY_DOC_CONFIG = {
   ],
   Service: [
     { key: 'service_cert', label: 'Service / Professional Certification', required: false, numberPlaceholder: 'e.g. CERT-SERVICE-12' }
-  ],
-  Electronics: [
-    { key: 'trade_license', label: 'Trade / Shop License', required: false, numberPlaceholder: 'e.g. TRD-45678' }
   ]
 };
 
@@ -97,7 +109,18 @@ export default function AddBusinessModal({
   const [submitting, setSubmitting] = useState(false);
   const [uploadingField, setUploadingField] = useState(null);
   const [formError, setFormError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [successInfo, setSuccessInfo] = useState(null);
+
+  const clearFieldError = (key) => {
+    setFieldErrors(prev => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setFormError('');
+  };
 
   // Persistent state & ref for currently selected category to prevent any transient wipe or unselect
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -214,22 +237,31 @@ export default function AddBusinessModal({
     setSelectedCategory(selectedType);
     selectedCategoryRef.current = selectedType;
     const docRules = getCategoryDocRules(selectedType);
-    const initialDocs = {};
-    docRules.forEach(rule => {
-      initialDocs[rule.key] = {
-        docNumber: '',
-        docUrl: '',
-        label: rule.label,
-        required: rule.required
+
+    setFormData(prev => {
+      const isSameCategory = (prev.vendorType || '').toLowerCase() === selectedType.toLowerCase();
+      const nextDocs = {};
+      docRules.forEach(rule => {
+        const existing = isSameCategory ? (prev.categoryDocs?.[rule.key] || {}) : {};
+        nextDocs[rule.key] = {
+          docNumber: existing.docNumber || '',
+          docUrl: existing.docUrl || '',
+          fileName: existing.fileName || '',
+          label: rule.label,
+          required: rule.required
+        };
+      });
+
+      return {
+        ...prev,
+        vendorType: selectedType,
+        category: selectedType,
+        categoryDocs: nextDocs
       };
     });
 
-    setFormData(prev => ({
-      ...prev,
-      vendorType: selectedType,
-      category: selectedType,
-      categoryDocs: initialDocs
-    }));
+    setFieldErrors({});
+    setFormError('');
   };
 
   // Upload handler for document files
@@ -266,6 +298,7 @@ export default function AddBusinessModal({
             [fieldName]: fileUrl,
             [`${fieldName}Name`]: file.name
           }));
+          clearFieldError(fieldName);
         } else {
           // Dynamic category doc
           setFormData(prev => ({
@@ -279,6 +312,8 @@ export default function AddBusinessModal({
               }
             }
           }));
+          clearFieldError(`${fieldName}_file`);
+          clearFieldError(fieldName);
         }
         setFormError(''); // Clear error immediately when document is uploaded successfully
       } else {
@@ -294,6 +329,8 @@ export default function AddBusinessModal({
 
   const validateStep = (currentStep) => {
     setFormError('');
+    const newErrors = {};
+
     if (currentStep === 1) {
       const active = selectedCategory || formData.vendorType || selectedCategoryRef.current;
       if (!active) {
@@ -303,66 +340,69 @@ export default function AddBusinessModal({
       if (!formData.vendorType) {
         setFormData(prev => ({ ...prev, vendorType: active, category: active }));
       }
+      setFieldErrors({});
       return true;
     }
 
     if (currentStep === 2) {
       if (!formData.doorNo.trim()) {
-        setFormError('Door Number / Building Number is required');
-        return false;
+        newErrors.doorNo = 'Door Number / Building Number is required';
       }
       if (!formData.village.trim()) {
-        setFormError('Village / Locality is required');
-        return false;
+        newErrors.village = 'Village / Locality is required';
       }
       if (!formData.taluk.trim()) {
-        setFormError('Taluk is required');
-        return false;
+        newErrors.taluk = 'Taluk is required';
       }
       if (!formData.district.trim()) {
-        setFormError('District is required');
-        return false;
+        newErrors.district = 'District is required';
       }
       if (!formData.state.trim()) {
-        setFormError('State is required');
-        return false;
+        newErrors.state = 'State is required';
       }
       if (!formData.pincode || !/^\d{6}$/.test(formData.pincode.trim())) {
-        setFormError('Please enter a valid 6-digit Pincode (e.g. 636112)');
-        return false;
+        newErrors.pincode = 'Please enter a valid 6-digit Pincode (e.g. 636112)';
       }
       const phoneErr = validateIndianMobile(formData.phone, 'Phone Number');
       if (phoneErr) {
-        setFormError(phoneErr);
+        newErrors.phone = phoneErr;
+      }
+
+      if (Object.keys(newErrors).length > 0) {
+        setFieldErrors(newErrors);
+        setFormError(Object.values(newErrors)[0]);
         return false;
       }
+      setFieldErrors({});
       return true;
     }
 
     if (currentStep === 3) {
       const panErr = validatePAN(formData.panNo, 'PAN Card Number');
       if (panErr) {
-        setFormError(panErr);
-        return false;
+        newErrors.panNo = panErr;
       }
       if (!formData.panDoc) {
-        setFormError('PAN Card Document is required. Please upload a copy.');
-        return false;
+        newErrors.panDoc = 'PAN Card Document is required. Please upload a copy.';
       }
       const aadhaarErr = validateAadhaar(formData.aadhaarNo, 'Aadhaar Number');
       if (aadhaarErr) {
-        setFormError(aadhaarErr);
-        return false;
+        newErrors.aadhaarNo = aadhaarErr;
       }
       if (!formData.aadhaarDoc) {
-        setFormError('Aadhaar Document is required. Please upload a copy.');
-        return false;
+        newErrors.aadhaarDoc = 'Aadhaar Document is required. Please upload a copy.';
       }
       // GST is optional. If provided, check certificate
       if (formData.gstNumber.trim() && !formData.gstDoc) {
-        setFormError('Please upload the GST Certificate if GST Number is provided');
+        newErrors.gstDoc = 'Please upload the GST Certificate if GST Number is provided';
+      }
+
+      if (Object.keys(newErrors).length > 0) {
+        setFieldErrors(newErrors);
+        setFormError(Object.values(newErrors)[0]);
         return false;
       }
+      setFieldErrors({});
       return true;
     }
 
@@ -378,55 +418,36 @@ export default function AddBusinessModal({
         const isPropertyIdDoc = /property_id|^property id/i.test(rule.key || rule.label || '');
 
         const rawDocNum = (docItem?.docNumber || '').trim();
+        const hasDocUrl = Boolean(docItem?.docUrl && String(docItem.docUrl).trim());
 
         if (rawDocNum) {
           if (is14DigitDoc && rawDocNum.replace(/\D/g, '').length > 14) {
-            setFormError(`${rule.label} cannot exceed 14 digits.`);
-            return false;
-          }
-          if (isFitnessDoc) {
-            if (rawDocNum.length < 15 || rawDocNum.length > 16 || !/^[A-Za-z0-9-]+$/.test(rawDocNum)) {
-              setFormError('Vehicle Fitness Certificate number must be between 15 and 16 characters.');
-              return false;
-            }
-          }
-          if (isPermitDoc) {
-            if (rawDocNum.length < 13 || rawDocNum.length > 16 || !/^[A-Za-z0-9/-]+$/.test(rawDocNum)) {
-              setFormError('Transport / Route Permit number must be between 13 and 16 characters.');
-              return false;
-            }
-          }
-          if (isPropertyIdDoc) {
-            if (!/^\d{13}$/.test(rawDocNum)) {
-              setFormError('Property ID must be exactly 13 numeric digits.');
-              return false;
-            }
+            newErrors[`${rule.key}_number`] = `${rule.label} cannot exceed 14 digits.`;
+          } else if (isFitnessDoc && (rawDocNum.length < 15 || rawDocNum.length > 16 || !/^[A-Za-z0-9-]+$/.test(rawDocNum))) {
+            newErrors[`${rule.key}_number`] = 'Vehicle Fitness Certificate number must be between 15 and 16 characters.';
+          } else if (isPermitDoc && (rawDocNum.length < 13 || rawDocNum.length > 16 || !/^[A-Za-z0-9/-]+$/.test(rawDocNum))) {
+            newErrors[`${rule.key}_number`] = 'Transport / Route Permit number must be between 13 and 16 characters.';
+          } else if (isPropertyIdDoc && !/^\d{13}$/.test(rawDocNum)) {
+            newErrors[`${rule.key}_number`] = 'Property ID must be exactly 13 numeric digits.';
           }
         }
 
         if (rule.required) {
           if (!rawDocNum) {
-            setFormError(`${rule.label} Number is required.`);
-            return false;
+            newErrors[`${rule.key}_number`] = `${rule.label} Number is required.`;
           }
-          if (isFitnessDoc && (rawDocNum.length < 15 || rawDocNum.length > 16)) {
-            setFormError('Vehicle Fitness Certificate number must be between 15 and 16 characters.');
-            return false;
-          }
-          if (isPermitDoc && (rawDocNum.length < 13 || rawDocNum.length > 16)) {
-            setFormError('Transport / Route Permit number must be between 13 and 16 characters.');
-            return false;
-          }
-          if (isPropertyIdDoc && !/^\d{13}$/.test(rawDocNum)) {
-            setFormError('Property ID must be exactly 13 numeric digits.');
-            return false;
-          }
-          if (!docItem?.docUrl) {
-            setFormError(`${rule.label} Document upload is required.`);
-            return false;
+          if (!hasDocUrl) {
+            newErrors[`${rule.key}_file`] = `${rule.label} Document upload is required.`;
           }
         }
       }
+
+      if (Object.keys(newErrors).length > 0) {
+        setFieldErrors(newErrors);
+        setFormError(Object.values(newErrors)[0]);
+        return false;
+      }
+      setFieldErrors({});
       return true;
     }
 
@@ -441,6 +462,7 @@ export default function AddBusinessModal({
 
   const handlePrev = () => {
     setFormError('');
+    setFieldErrors({});
     setStep(s => Math.max(1, s - 1));
   };
 
@@ -483,9 +505,10 @@ export default function AddBusinessModal({
             categoryDocsMap.foodSafetyDoc = doc.docUrl;
             categoryDocsMap.foodSafetyLicenseNo = doc.docNumber;
           }
-          if (key === 'bis_certificate') {
+          if (key === 'bis_certificate' || key === 'bisDoc') {
             categoryDocsMap.bisDoc = doc.docUrl;
             categoryDocsMap.bisNo = doc.docNumber;
+            categoryDocsMap.bisCertificateNo = doc.docNumber;
           }
           return {
             type: key,
@@ -513,6 +536,9 @@ export default function AddBusinessModal({
         aadhaarDoc: formData.aadhaarDoc,
         gstNumber: formData.gstNumber.trim().toUpperCase(),
         gstDoc: formData.gstDoc,
+        bisDoc: formData.categoryDocs?.bis_certificate?.docUrl || '',
+        bisNo: formData.categoryDocs?.bis_certificate?.docNumber || '',
+        bisCertificateNo: formData.categoryDocs?.bis_certificate?.docNumber || '',
         categoryDocuments,
         categoryDocs: categoryDocsMap
       };
@@ -843,9 +869,20 @@ export default function AddBusinessModal({
                       type="text"
                       placeholder="e.g. 12/4, Shop #3"
                       value={formData.doorNo}
-                      onChange={(e) => setFormData({ ...formData, doorNo: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none"
+                      onChange={(e) => {
+                        setFormData({ ...formData, doorNo: e.target.value });
+                        clearFieldError('doorNo');
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border ${
+                        fieldErrors.doorNo ? 'border-rose-500 ring-1 ring-rose-500/30' : 'border-slate-200 dark:border-slate-800'
+                      } text-slate-900 dark:text-white text-sm focus:outline-none`}
                     />
+                    {fieldErrors.doorNo && (
+                      <p className="text-[11px] text-rose-500 font-semibold flex items-center gap-1">
+                        <AlertCircle size={12} className="shrink-0" />
+                        <span>{fieldErrors.doorNo}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* Village / Locality */}
@@ -857,9 +894,20 @@ export default function AddBusinessModal({
                       type="text"
                       placeholder="e.g. Kaveripattinam, Main Bazaar"
                       value={formData.village}
-                      onChange={(e) => setFormData({ ...formData, village: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none"
+                      onChange={(e) => {
+                        setFormData({ ...formData, village: e.target.value });
+                        clearFieldError('village');
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border ${
+                        fieldErrors.village ? 'border-rose-500 ring-1 ring-rose-500/30' : 'border-slate-200 dark:border-slate-800'
+                      } text-slate-900 dark:text-white text-sm focus:outline-none`}
                     />
+                    {fieldErrors.village && (
+                      <p className="text-[11px] text-rose-500 font-semibold flex items-center gap-1">
+                        <AlertCircle size={12} className="shrink-0" />
+                        <span>{fieldErrors.village}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* Taluk */}
@@ -871,9 +919,20 @@ export default function AddBusinessModal({
                       type="text"
                       placeholder="e.g. Krishnagiri Taluk"
                       value={formData.taluk}
-                      onChange={(e) => setFormData({ ...formData, taluk: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none"
+                      onChange={(e) => {
+                        setFormData({ ...formData, taluk: e.target.value });
+                        clearFieldError('taluk');
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border ${
+                        fieldErrors.taluk ? 'border-rose-500 ring-1 ring-rose-500/30' : 'border-slate-200 dark:border-slate-800'
+                      } text-slate-900 dark:text-white text-sm focus:outline-none`}
                     />
+                    {fieldErrors.taluk && (
+                      <p className="text-[11px] text-rose-500 font-semibold flex items-center gap-1">
+                        <AlertCircle size={12} className="shrink-0" />
+                        <span>{fieldErrors.taluk}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* District */}
@@ -885,9 +944,20 @@ export default function AddBusinessModal({
                       type="text"
                       placeholder="e.g. Krishnagiri"
                       value={formData.district}
-                      onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none"
+                      onChange={(e) => {
+                        setFormData({ ...formData, district: e.target.value });
+                        clearFieldError('district');
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border ${
+                        fieldErrors.district ? 'border-rose-500 ring-1 ring-rose-500/30' : 'border-slate-200 dark:border-slate-800'
+                      } text-slate-900 dark:text-white text-sm focus:outline-none`}
                     />
+                    {fieldErrors.district && (
+                      <p className="text-[11px] text-rose-500 font-semibold flex items-center gap-1">
+                        <AlertCircle size={12} className="shrink-0" />
+                        <span>{fieldErrors.district}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* State */}
@@ -899,9 +969,20 @@ export default function AddBusinessModal({
                       type="text"
                       placeholder="e.g. Tamil Nadu"
                       value={formData.state}
-                      onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none"
+                      onChange={(e) => {
+                        setFormData({ ...formData, state: e.target.value });
+                        clearFieldError('state');
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border ${
+                        fieldErrors.state ? 'border-rose-500 ring-1 ring-rose-500/30' : 'border-slate-200 dark:border-slate-800'
+                      } text-slate-900 dark:text-white text-sm focus:outline-none`}
                     />
+                    {fieldErrors.state && (
+                      <p className="text-[11px] text-rose-500 font-semibold flex items-center gap-1">
+                        <AlertCircle size={12} className="shrink-0" />
+                        <span>{fieldErrors.state}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* Pincode */}
@@ -914,9 +995,20 @@ export default function AddBusinessModal({
                       maxLength={6}
                       placeholder="e.g. 636112"
                       value={formData.pincode}
-                      onChange={(e) => setFormData({ ...formData, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-mono text-sm focus:outline-none"
+                      onChange={(e) => {
+                        setFormData({ ...formData, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) });
+                        clearFieldError('pincode');
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border ${
+                        fieldErrors.pincode ? 'border-rose-500 ring-1 ring-rose-500/30' : 'border-slate-200 dark:border-slate-800'
+                      } text-slate-900 dark:text-white font-mono text-sm focus:outline-none`}
                     />
+                    {fieldErrors.pincode && (
+                      <p className="text-[11px] text-rose-500 font-semibold flex items-center gap-1">
+                        <AlertCircle size={12} className="shrink-0" />
+                        <span>{fieldErrors.pincode}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -930,9 +1022,20 @@ export default function AddBusinessModal({
                     maxLength={10}
                     placeholder="e.g. 9876543210"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none"
+                    onChange={(e) => {
+                      setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) });
+                      clearFieldError('phone');
+                    }}
+                    className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border ${
+                      fieldErrors.phone ? 'border-rose-500 ring-1 ring-rose-500/30' : 'border-slate-200 dark:border-slate-800'
+                    } text-slate-900 dark:text-white text-sm focus:outline-none`}
                   />
+                  {fieldErrors.phone && (
+                    <p className="text-[11px] text-rose-500 font-semibold flex items-center gap-1">
+                      <AlertCircle size={12} className="shrink-0" />
+                      <span>{fieldErrors.phone}</span>
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -960,17 +1063,34 @@ export default function AddBusinessModal({
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input
-                      type="text"
-                      maxLength={10}
-                      placeholder="PAN Number (e.g. ABCDE1234F)"
-                      value={formData.panNo}
-                      onChange={(e) => setFormData({ ...formData, panNo: e.target.value.toUpperCase() })}
-                      className="w-full px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-mono"
-                    />
+                    <div>
+                      <input
+                        type="text"
+                        maxLength={10}
+                        placeholder="PAN Number (e.g. ABCDE1234F)"
+                        value={formData.panNo}
+                        onChange={(e) => {
+                          setFormData({ ...formData, panNo: e.target.value.toUpperCase() });
+                          clearFieldError('panNo');
+                        }}
+                        className={`w-full px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border ${
+                          fieldErrors.panNo ? 'border-rose-500 ring-1 ring-rose-500/30' : 'border-slate-200 dark:border-slate-800'
+                        } text-slate-900 dark:text-white font-mono`}
+                      />
+                      {fieldErrors.panNo && (
+                        <p className="text-[11px] text-rose-500 font-semibold mt-1 flex items-center gap-1">
+                          <AlertCircle size={12} className="shrink-0" />
+                          <span>{fieldErrors.panNo}</span>
+                        </p>
+                      )}
+                    </div>
 
                     <div>
-                      <label className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-amber-400 cursor-pointer">
+                      <label className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed ${
+                        fieldErrors.panDoc
+                          ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-300 hover:border-amber-400'
+                      } text-xs font-semibold cursor-pointer`}>
                         <Upload size={14} />
                         {uploadingField === 'panDoc' ? 'Uploading...' : formData.panDoc ? 'Replace PAN Doc' : 'Upload PAN (PDF / Image)'}
                         <input
@@ -980,6 +1100,12 @@ export default function AddBusinessModal({
                           onChange={(e) => handleFileUpload('panDoc', e.target.files?.[0])}
                         />
                       </label>
+                      {fieldErrors.panDoc && (
+                        <p className="text-[11px] text-rose-500 font-semibold mt-1 flex items-center gap-1">
+                          <AlertCircle size={12} className="shrink-0" />
+                          <span>{fieldErrors.panDoc}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1002,17 +1128,34 @@ export default function AddBusinessModal({
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input
-                      type="text"
-                      maxLength={12}
-                      placeholder="12-digit Aadhaar Number"
-                      value={formData.aadhaarNo}
-                      onChange={(e) => setFormData({ ...formData, aadhaarNo: e.target.value.replace(/\D/g, '').slice(0, 12) })}
-                      className="w-full px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-mono"
-                    />
+                    <div>
+                      <input
+                        type="text"
+                        maxLength={12}
+                        placeholder="12-digit Aadhaar Number"
+                        value={formData.aadhaarNo}
+                        onChange={(e) => {
+                          setFormData({ ...formData, aadhaarNo: e.target.value.replace(/\D/g, '').slice(0, 12) });
+                          clearFieldError('aadhaarNo');
+                        }}
+                        className={`w-full px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border ${
+                          fieldErrors.aadhaarNo ? 'border-rose-500 ring-1 ring-rose-500/30' : 'border-slate-200 dark:border-slate-800'
+                        } text-slate-900 dark:text-white font-mono`}
+                      />
+                      {fieldErrors.aadhaarNo && (
+                        <p className="text-[11px] text-rose-500 font-semibold mt-1 flex items-center gap-1">
+                          <AlertCircle size={12} className="shrink-0" />
+                          <span>{fieldErrors.aadhaarNo}</span>
+                        </p>
+                      )}
+                    </div>
 
                     <div>
-                      <label className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-amber-400 cursor-pointer">
+                      <label className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed ${
+                        fieldErrors.aadhaarDoc
+                          ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-300 hover:border-amber-400'
+                      } text-xs font-semibold cursor-pointer`}>
                         <Upload size={14} />
                         {uploadingField === 'aadhaarDoc' ? 'Uploading...' : formData.aadhaarDoc ? 'Replace Aadhaar Doc' : 'Upload Aadhaar (PDF / Image)'}
                         <input
@@ -1022,6 +1165,12 @@ export default function AddBusinessModal({
                           onChange={(e) => handleFileUpload('aadhaarDoc', e.target.files?.[0])}
                         />
                       </label>
+                      {fieldErrors.aadhaarDoc && (
+                        <p className="text-[11px] text-rose-500 font-semibold mt-1 flex items-center gap-1">
+                          <AlertCircle size={12} className="shrink-0" />
+                          <span>{fieldErrors.aadhaarDoc}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1042,17 +1191,26 @@ export default function AddBusinessModal({
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input
-                      type="text"
-                      maxLength={15}
-                      placeholder="15-digit GSTIN (Optional)"
-                      value={formData.gstNumber}
-                      onChange={(e) => setFormData({ ...formData, gstNumber: e.target.value.toUpperCase() })}
-                      className="w-full px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-mono"
-                    />
+                    <div>
+                      <input
+                        type="text"
+                        maxLength={15}
+                        placeholder="15-digit GSTIN (Optional)"
+                        value={formData.gstNumber}
+                        onChange={(e) => {
+                          setFormData({ ...formData, gstNumber: e.target.value.toUpperCase() });
+                          clearFieldError('gstDoc');
+                        }}
+                        className="w-full px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-mono"
+                      />
+                    </div>
 
                     <div>
-                      <label className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-amber-400 cursor-pointer">
+                      <label className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed ${
+                        fieldErrors.gstDoc
+                          ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-300 hover:border-amber-400'
+                      } text-xs font-semibold cursor-pointer`}>
                         <Upload size={14} />
                         {uploadingField === 'gstDoc' ? 'Uploading...' : formData.gstDoc ? 'Replace GST Doc' : 'Upload GST Certificate (Optional)'}
                         <input
@@ -1062,6 +1220,12 @@ export default function AddBusinessModal({
                           onChange={(e) => handleFileUpload('gstDoc', e.target.files?.[0])}
                         />
                       </label>
+                      {fieldErrors.gstDoc && (
+                        <p className="text-[11px] text-rose-500 font-semibold mt-1 flex items-center gap-1">
+                          <AlertCircle size={12} className="shrink-0" />
+                          <span>{fieldErrors.gstDoc}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1135,42 +1299,59 @@ export default function AddBusinessModal({
                             }
 
                             return (
-                              <input
-                                type="text"
-                                placeholder={placeholder}
-                                value={docState.docNumber || ''}
-                                maxLength={maxL}
-                                onChange={(e) => {
-                                  let val = e.target.value;
-                                  if (isFitnessDoc) {
-                                    val = val.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 16).toUpperCase();
-                                  } else if (isPermitDoc) {
-                                    val = val.replace(/[^a-zA-Z0-9/-]/g, '').slice(0, 16).toUpperCase();
-                                  } else if (isPropertyIdDoc) {
-                                    val = val.replace(/\D/g, '').slice(0, 13);
-                                  } else if (is14DigitDoc) {
-                                    val = val.replace(/\D/g, '').slice(0, 14);
-                                  }
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    categoryDocs: {
-                                      ...prev.categoryDocs,
-                                      [rule.key]: {
-                                        ...(prev.categoryDocs[rule.key] || {}),
-                                        docNumber: val,
-                                        label: rule.label,
-                                        required: rule.required
-                                      }
+                              <div>
+                                <input
+                                  type="text"
+                                  placeholder={placeholder}
+                                  value={docState.docNumber || ''}
+                                  maxLength={maxL}
+                                  onChange={(e) => {
+                                    let val = e.target.value;
+                                    if (isFitnessDoc) {
+                                      val = val.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 16).toUpperCase();
+                                    } else if (isPermitDoc) {
+                                      val = val.replace(/[^a-zA-Z0-9/-]/g, '').slice(0, 16).toUpperCase();
+                                    } else if (isPropertyIdDoc) {
+                                      val = val.replace(/\D/g, '').slice(0, 13);
+                                    } else if (is14DigitDoc) {
+                                      val = val.replace(/\D/g, '').slice(0, 14);
                                     }
-                                  }));
-                                }}
-                                className="w-full px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
-                              />
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      categoryDocs: {
+                                        ...prev.categoryDocs,
+                                        [rule.key]: {
+                                          ...(prev.categoryDocs[rule.key] || {}),
+                                          docNumber: val,
+                                          label: rule.label,
+                                          required: rule.required
+                                        }
+                                      }
+                                    }));
+                                    clearFieldError(`${rule.key}_number`);
+                                  }}
+                                  className={`w-full px-3.5 py-2 text-sm rounded-xl bg-white dark:bg-slate-950 border ${
+                                    fieldErrors[`${rule.key}_number`]
+                                      ? 'border-rose-500 ring-1 ring-rose-500/30'
+                                      : 'border-slate-200 dark:border-slate-800'
+                                  } text-slate-900 dark:text-white`}
+                                />
+                                {fieldErrors[`${rule.key}_number`] && (
+                                  <p className="text-[11px] text-rose-500 font-semibold mt-1 flex items-center gap-1">
+                                    <AlertCircle size={12} className="shrink-0" />
+                                    <span>{fieldErrors[`${rule.key}_number`]}</span>
+                                  </p>
+                                )}
+                              </div>
                             );
                           })()}
 
                           <div>
-                            <label className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-amber-400 cursor-pointer">
+                            <label className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed ${
+                              fieldErrors[`${rule.key}_file`]
+                                ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400'
+                                : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-300 hover:border-amber-400'
+                            } text-xs font-semibold cursor-pointer`}>
                               <Upload size={14} />
                               {uploadingField === rule.key ? 'Uploading...' : docState.docUrl ? `✓ ${docState.fileName || 'Document Uploaded'} (Replace)` : 'Upload Document (PDF / Image)'}
                               <input
@@ -1180,6 +1361,12 @@ export default function AddBusinessModal({
                                 onChange={(e) => handleFileUpload(rule.key, e.target.files?.[0])}
                               />
                             </label>
+                            {fieldErrors[`${rule.key}_file`] && (
+                              <p className="text-[11px] text-rose-500 font-semibold mt-1 flex items-center gap-1">
+                                <AlertCircle size={12} className="shrink-0" />
+                                <span>{fieldErrors[`${rule.key}_file`]}</span>
+                              </p>
+                            )}
                           </div>
                         </div>
                       </div>
