@@ -8,7 +8,7 @@ import {
   Plus, Edit2, Trash2, MapPin, ShieldAlert, CheckCircle2, TrendingUp, IndianRupee, ListFilter, Eye,
   LogOut, Sun, Moon, Bell, HelpCircle, Globe, ChevronDown, ChevronLeft, ChevronRight, Settings, CreditCard, Store, Clock,
   Home, HeartHandshake, Utensils, Hotel, Briefcase, Layers, Package, Star, Calendar, Download, FileText, ExternalLink, Activity, Search,
-  LayoutGrid, List, Camera, Image as ImageIcon, Menu, X, Sparkles, AlertCircle
+  LayoutGrid, List, Camera, Image as ImageIcon, Menu, X, Sparkles, AlertCircle, Loader2
 } from 'lucide-react';
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
