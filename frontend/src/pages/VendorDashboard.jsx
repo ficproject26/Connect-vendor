@@ -3306,7 +3306,7 @@ const VendorDashboard = () => {
     };
 
     fetchOrders();
-    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 15000;
+    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 30000;
     const interval = setInterval(fetchOrders, syncInterval);
     const handleVis = () => {
       if (document.visibilityState === 'visible') {

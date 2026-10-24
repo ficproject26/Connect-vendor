@@ -43,6 +43,8 @@ const Login = () => {
   const navigate = useNavigate();
   const { loading, error, isAuthenticated, user } = useSelector((state) => state.auth);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   useEffect(() => {
     // Clear redux errors on mount
     dispatch(clearError());
@@ -57,13 +59,17 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading || isSubmitting) return;
+
     setLocalError('');
+    dispatch(clearError());
 
     if (!email || !password) {
       setLocalError('Please fill in all fields');
       return;
     }
 
+    setIsSubmitting(true);
     dispatch(loginStart());
 
     try {
@@ -80,9 +86,17 @@ const Login = () => {
         dispatch(loginFailure(response.data.message || 'Login failed'));
       }
     } catch (err) {
-      console.error('Login error details:', err);
-      const msg = err.response?.data?.message || 'Invalid email or password. Please try again.';
-      dispatch(loginFailure(msg));
+      if (err.response?.status === 429) {
+        const rateLimitMsg = err.response?.data?.message || 'Too many login attempts from this IP. Please wait a few minutes before trying again.';
+        dispatch(loginFailure(rateLimitMsg));
+      } else if (err.response?.status === 401) {
+        dispatch(loginFailure(err.response?.data?.message || 'Invalid email or password. Please try again.'));
+      } else {
+        const msg = err.response?.data?.message || err.message || 'Unable to connect to the server. Please try again.';
+        dispatch(loginFailure(msg));
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -181,10 +195,15 @@ const Login = () => {
                     type="text"
                     required
                     autoComplete="off"
+                    disabled={loading || isSubmitting}
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (localError) setLocalError('');
+                      if (error) dispatch(clearError());
+                    }}
                     placeholder="Email or Mobile Number"
-                    className="w-full bg-[#111827]/60 border border-white/5 rounded-2xl pl-11 pr-4 py-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-yellow-500/50 focus:bg-[#111827]/80 hover:bg-[#111827]/80 transition-all duration-300 shadow-inner shadow-black/20"
+                    className="w-full bg-[#111827]/60 border border-white/5 rounded-2xl pl-11 pr-4 py-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-yellow-500/50 focus:bg-[#111827]/80 hover:bg-[#111827]/80 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-inner shadow-black/20"
                   />
                 </div>
               </div>
@@ -197,15 +216,21 @@ const Login = () => {
                     type={showPassword ? "text" : "password"}
                     required
                     autoComplete="new-password"
+                    disabled={loading || isSubmitting}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (localError) setLocalError('');
+                      if (error) dispatch(clearError());
+                    }}
                     placeholder="Password"
-                    className="w-full bg-[#111827]/60 border border-white/5 rounded-2xl pl-11 pr-12 py-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-yellow-500/50 focus:bg-[#111827]/80 hover:bg-[#111827]/80 transition-all duration-300 shadow-inner shadow-black/20"
+                    className="w-full bg-[#111827]/60 border border-white/5 rounded-2xl pl-11 pr-12 py-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-yellow-500/50 focus:bg-[#111827]/80 hover:bg-[#111827]/80 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-inner shadow-black/20"
                   />
                   <button 
                     type="button"
+                    disabled={loading || isSubmitting}
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-yellow-500 transition-colors focus:outline-none"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-yellow-500 transition-colors focus:outline-none disabled:opacity-50"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
@@ -227,11 +252,11 @@ const Login = () => {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 disabled:from-yellow-800/40 disabled:to-yellow-700/40 disabled:text-slate-400 text-[#000d20] font-bold py-4 rounded-2xl shadow-[0_0_20px_-5px_rgba(234,179,8,0.4)] hover:shadow-[0_0_25px_-5px_rgba(234,179,8,0.6)] flex items-center justify-center gap-2 group transition-all duration-300 transform active:scale-[0.98] mt-6"
+                disabled={loading || isSubmitting}
+                className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 disabled:from-yellow-800/40 disabled:to-yellow-700/40 disabled:text-slate-400 disabled:cursor-not-allowed text-[#000d20] font-bold py-4 rounded-2xl shadow-[0_0_20px_-5px_rgba(234,179,8,0.4)] hover:shadow-[0_0_25px_-5px_rgba(234,179,8,0.6)] flex items-center justify-center gap-2 group transition-all duration-300 transform active:scale-[0.98] mt-6"
               >
-                {loading ? 'Authenticating...' : 'Login'}
-                {!loading && <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform duration-300" />}
+                {loading || isSubmitting ? 'Authenticating...' : 'Login'}
+                {!(loading || isSubmitting) && <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform duration-300" />}
               </button>
 
               <div className="mt-4 text-center text-sm text-slate-400 font-medium">

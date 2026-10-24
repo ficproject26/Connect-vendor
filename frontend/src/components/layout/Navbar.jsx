@@ -80,8 +80,12 @@ const Navbar = () => {
       }
     };
     fetchOrders();
-    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 8000;
-    const interval = setInterval(fetchOrders, syncInterval);
+    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 30000;
+    const interval = setInterval(() => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        fetchOrders();
+      }
+    }, syncInterval);
     return () => clearInterval(interval);
   }, [isAuthenticated, token, user, activeBusinessId]);
 
