@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const qrcode = require('qrcode');
 const { User, MembershipPlan, MembershipCard } = require('../models/Schemas');
-const { uploadToCloudinary } = require('../config/cloudinary');
+const { uploadToS3 } = require('../config/s3');
 const {
   normalizeName,
   validateName,
@@ -265,18 +265,18 @@ const registerVendor = async (req, res) => {
     let businessLicense = '';
     if (req.files && req.files['businessLicense'] && req.files['businessLicense'][0]) {
       try {
-        businessLicense = await uploadToCloudinary(req.files['businessLicense'][0].buffer, 'licenses');
+        businessLicense = await uploadToS3(req.files['businessLicense'][0].buffer, 'licenses');
       } catch (err) {
-        console.error('Failed to upload businessLicense to Cloudinary:', err);
+        console.error('Failed to upload businessLicense to AWS S3:', err);
       }
     }
 
     let logo = '';
     if (req.files && req.files['logo'] && req.files['logo'][0]) {
       try {
-        logo = await uploadToCloudinary(req.files['logo'][0].buffer, 'logos');
+        logo = await uploadToS3(req.files['logo'][0].buffer, 'logos');
       } catch (err) {
-        console.error('Failed to upload logo to Cloudinary:', err);
+        console.error('Failed to upload logo to AWS S3:', err);
       }
     }
 
@@ -284,10 +284,10 @@ const registerVendor = async (req, res) => {
     if (req.files && req.files['businessImages'] && req.files['businessImages'].length > 0) {
       try {
         businessImages = await Promise.all(
-          req.files['businessImages'].map(file => uploadToCloudinary(file.buffer, 'business_images'))
+          req.files['businessImages'].map(file => uploadToS3(file.buffer, 'business_images'))
         );
       } catch (err) {
-        console.error('Failed to upload businessImages to Cloudinary:', err);
+        console.error('Failed to upload businessImages to AWS S3:', err);
       }
     }
 

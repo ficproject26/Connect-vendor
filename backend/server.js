@@ -48,8 +48,8 @@ app.use(
           "'self'",
           "data:",
           "blob:", // Used for local preview of images/files before upload
-          "https://res.cloudinary.com",
-          "https://*.cloudinary.com",
+          "https://*.amazonaws.com", "https://*.s3.amazonaws.com",
+          "https://*.s3.ap-south-1.amazonaws.com",
           "https://vendor.ficapp.in",
           "https://*.ficapp.in"
         ],
@@ -70,7 +70,7 @@ app.use(
           "https://*.vercel.app",
           "https://api.razorpay.com",
           "https://*.razorpay.com",
-          "https://res.cloudinary.com"
+          "https://*.amazonaws.com"
         ],
         frameSrc: [
           "'self'",

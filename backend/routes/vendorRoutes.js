@@ -44,7 +44,7 @@ const {
   updateTicketStatusForbidden
 } = require('../controllers/vendorController');
 
-const { uploadToCloudinary } = require('../config/cloudinary');
+const { uploadToS3 } = require('../config/s3');
 
 // Multer Config for Product/Document Uploads using Memory Storage
 const upload = multer({
@@ -85,7 +85,7 @@ router.post('/upload', (req, res) => {
     }
     try {
       const filenameHint = req.file.originalname || 'upload.jpg';
-      const imageUrl = await uploadToCloudinary(req.file.buffer, 'product_images', filenameHint);
+      const imageUrl = await uploadToS3(req.file.buffer, 'product_images', filenameHint);
       return res.status(200).json({
         success: true,
         imageUrl: imageUrl

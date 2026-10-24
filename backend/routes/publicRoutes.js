@@ -306,7 +306,7 @@ router.get('/products', async (req, res) => {
           rawImg = rawImg.replace(/^https?:\/\/[^/]+/, baseUrl);
         }
       }
-      if (rawImg && rawImg.startsWith('http://res.cloudinary.com')) {
+      if (rawImg && (rawImg.startsWith('http://res.cloudinary.com') || rawImg.includes('amazonaws.com'))) {
         rawImg = rawImg.replace(/^http:\/\//, 'https://');
       }
       const finalImg = rawImg 
@@ -321,7 +321,7 @@ router.get('/products', async (req, res) => {
             if (cleanImg.includes('vercel.app') || cleanImg.includes('trycloudflare.com') || cleanImg.includes(':8000') || cleanImg.includes(':8001') || cleanImg.includes('43.204.141.105')) {
               cleanImg = cleanImg.replace(/^https?:\/\/[^/]+/, baseUrl);
             }
-            if (cleanImg.startsWith('http://res.cloudinary.com')) {
+            if (cleanImg.startsWith('http://res.cloudinary.com') || cleanImg.includes('amazonaws.com')) {
               cleanImg = cleanImg.replace(/^http:\/\//, 'https://');
             }
             return cleanImg.startsWith('/uploads') ? `${baseUrl}${cleanImg}` : cleanImg;
