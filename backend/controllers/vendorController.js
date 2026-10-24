@@ -2958,12 +2958,20 @@ const updateOrderStatus = async (req, res) => {
         if (order.status === 'Accepted') custStatus = 'Preparing';
         else if (order.status === 'Out for Delivery') custStatus = 'Out For Delivery';
 
-        const syncUrl = `http://localhost:8002/api/orders/${order._id}/status`;
+        const custBackendUrl = process.env.CUSTOMER_BACKEND_URL || 'http://localhost:5000';
+        const syncUrl = `${custBackendUrl}/api/orders/${order._id}/status`;
         await fetch(syncUrl, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: custStatus })
-        }).then(r => r.json()).catch(err => console.warn('Customer backend status sync failed:', err.message));
+        }).then(async r => {
+          if (!r.ok) return null;
+          const contentType = r.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            return await r.json();
+          }
+          return null;
+        }).catch(err => console.warn('[Customer Sync]:', err.message));
       } catch (err) {
         console.warn('Failed to sync order status to customer backend:', err.message);
       }
