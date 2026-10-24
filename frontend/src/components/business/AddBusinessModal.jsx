@@ -284,8 +284,7 @@ export default function AddBusinessModal({
       const activeToken = localStorage.getItem('vendor_token') || sessionStorage.getItem('vendor_token') || localStorage.getItem('token');
       const res = await axios.post(`${getVendorBackendUrl()}/api/vendor/upload`, uploadData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
-          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {})
+                    ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {})
         }
       });
 

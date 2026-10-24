@@ -3150,6 +3150,24 @@ const getOrderResume = async (req, res) => {
       return res.sendFile(path.resolve(foundFilePath));
     }
 
+    // Check if rawResume is stored in AWS S3 (durable URL or key)
+    const { extractS3Key, getObjectStream } = require('../config/s3');
+    const s3ResumeKey = extractS3Key(rawResume) || (rawResume.includes('resumes/') ? rawResume.replace(/^\/+/, '') : null);
+    if (s3ResumeKey) {
+      try {
+        const streamRes = await getObjectStream(s3ResumeKey);
+        if (streamRes.success && streamRes.body) {
+          const disposition = isDownload ? 'attachment' : 'inline';
+          res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+          res.setHeader('Content-Type', streamRes.contentType || 'application/pdf');
+          if (streamRes.contentLength) res.setHeader('Content-Length', streamRes.contentLength);
+          return streamRes.body.pipe(res);
+        }
+      } catch (s3StreamErr) {
+        console.warn('[Vendor Resume S3 Stream Warning]:', s3StreamErr.message);
+      }
+    }
+
     // 2. Generate valid PDF from candidate application details if physical file is absent on ephemeral disk
     const { generateCandidateResumePdf } = require('../utils/pdfGenerator');
     const pdfBuffer = generateCandidateResumePdf({

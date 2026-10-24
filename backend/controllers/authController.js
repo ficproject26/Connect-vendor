@@ -261,22 +261,26 @@ const registerVendor = async (req, res) => {
       });
     }
 
-    // Get files if uploaded and upload to Cloudinary
+    // Get files if uploaded and upload to AWS S3 with original filenames preserved
     let businessLicense = '';
     if (req.files && req.files['businessLicense'] && req.files['businessLicense'][0]) {
+      const f = req.files['businessLicense'][0];
       try {
-        businessLicense = await uploadToS3(req.files['businessLicense'][0].buffer, 'licenses');
+        const res = await uploadToS3(f.buffer, 'licenses', f.originalname);
+        businessLicense = res.url || res.secure_url || String(res);
       } catch (err) {
-        console.error('Failed to upload businessLicense to AWS S3:', err);
+        console.error('Failed to upload businessLicense to AWS S3:', err.message);
       }
     }
 
     let logo = '';
     if (req.files && req.files['logo'] && req.files['logo'][0]) {
+      const f = req.files['logo'][0];
       try {
-        logo = await uploadToS3(req.files['logo'][0].buffer, 'logos');
+        const res = await uploadToS3(f.buffer, 'logos', f.originalname);
+        logo = res.url || res.secure_url || String(res);
       } catch (err) {
-        console.error('Failed to upload logo to AWS S3:', err);
+        console.error('Failed to upload logo to AWS S3:', err.message);
       }
     }
 
@@ -284,10 +288,13 @@ const registerVendor = async (req, res) => {
     if (req.files && req.files['businessImages'] && req.files['businessImages'].length > 0) {
       try {
         businessImages = await Promise.all(
-          req.files['businessImages'].map(file => uploadToS3(file.buffer, 'business_images'))
+          req.files['businessImages'].map(async (file) => {
+            const res = await uploadToS3(file.buffer, 'business_images', file.originalname);
+            return res.url || res.secure_url || String(res);
+          })
         );
       } catch (err) {
-        console.error('Failed to upload businessImages to AWS S3:', err);
+        console.error('Failed to upload businessImages to AWS S3:', err.message);
       }
     }
 

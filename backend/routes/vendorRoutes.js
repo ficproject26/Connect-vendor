@@ -49,15 +49,14 @@ const { uploadToS3 } = require('../config/s3');
 // Multer Config for Product/Document Uploads using Memory Storage
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit
   fileFilter: (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|webp|gif|pdf/;
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = filetypes.test(file.mimetype) || file.mimetype === 'application/pdf';
-    if (extname && mimetype) {
+    const allowed = /jpeg|jpg|png|webp|gif|avif|svg|pdf|doc|docx|xls|xlsx|csv|txt|webm|mp3|wav|m4a|ogg|aac/i;
+    const ext = path.extname(file.originalname).replace('.', '').toLowerCase();
+    if (allowed.test(ext) || allowed.test(file.mimetype)) {
       return cb(null, true);
     }
-    cb(new Error('Only images (JPEG/PNG/WEBP/GIF) and PDF documents are allowed'));
+    cb(new Error(`File format '${file.mimetype || ext}' is not supported.`));
   }
 });
 
@@ -70,41 +69,39 @@ router.use(authorize('Vendor'));
 // Role-based Onboarding Status Endpoint (Requirement 5)
 router.get('/onboarding-status', getOnboardingStatus);
 
-// Upload Endpoint using Cloudinary
+// Upload Endpoint for Images, Documents, and Files to AWS S3
 router.post('/upload', (req, res) => {
-  upload.single('image')(req, res, async (err) => {
+  upload.any()(req, res, async (err) => {
     if (err) {
-      // Multer errors (file size, file type, etc.)
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ success: false, message: 'File is too large. Maximum size is 10MB.' });
+        return res.status(400).json({ success: false, message: 'File is too large. Maximum size is 25MB.' });
       }
-      return res.status(400).json({ success: false, message: err.message || 'Failed to upload image' });
+      return res.status(400).json({ success: false, message: err.message || 'Failed to upload file' });
     }
-    if (!req.file) {
+    const uploadedFile = (req.files && req.files.length > 0) ? req.files[0] : req.file;
+    if (!uploadedFile) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
     try {
-      const filenameHint = req.file.originalname || 'upload.jpg';
-      const imageUrl = await uploadToS3(req.file.buffer, 'product_images', filenameHint);
+      const filenameHint = uploadedFile.originalname || 'upload.jpg';
+      const targetFolder = (req.body && req.body.folder) ? req.body.folder : 'product_images';
+      const uploadRes = await uploadToS3(uploadedFile.buffer, targetFolder, filenameHint);
+      const url = uploadRes.url || uploadRes.secure_url || String(uploadRes);
       return res.status(200).json({
         success: true,
-        imageUrl: imageUrl
+        imageUrl: url,
+        url: url,
+        key: uploadRes.key || uploadRes.publicId,
+        file: {
+          name: filenameHint,
+          url: url,
+          key: uploadRes.key,
+          size: uploadedFile.size
+        }
       });
     } catch (uploadErr) {
-      console.error('Image Upload Error:', uploadErr);
-      try {
-        const uploadsDir = path.join(__dirname, '..', 'uploads');
-        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-        const ext = path.extname(req.file.originalname || '') || '.jpg';
-        const filename = `img_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
-        fs.writeFileSync(path.join(uploadsDir, filename), req.file.buffer);
-        return res.status(200).json({
-          success: true,
-          imageUrl: `/api/uploads/${filename}`
-        });
-      } catch (localSaveErr) {
-        return res.status(500).json({ success: false, message: 'Failed to save image' });
-      }
+      console.error('[Vendor S3 Upload Route Error]:', uploadErr.message);
+      return res.status(500).json({ success: false, message: uploadErr.message || 'Failed to upload file to AWS S3' });
     }
   });
 });
