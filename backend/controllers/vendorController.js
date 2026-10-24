@@ -2951,29 +2951,33 @@ const updateOrderStatus = async (req, res) => {
       data: order
     }).catch(err => console.warn('[Realtime] Order status publish warning:', err.message));
 
-    // Sync order status back to customer backend (Connect App)
-    if (order.status !== oldStatus) {
+    // Sync order status back to customer backend (Connect App) if configured
+    if (order.status !== oldStatus && process.env.CUSTOMER_BACKEND_URL) {
       try {
-        let custStatus = order.status;
-        if (order.status === 'Accepted') custStatus = 'Preparing';
-        else if (order.status === 'Out for Delivery') custStatus = 'Out For Delivery';
+        const custBackendUrl = process.env.CUSTOMER_BACKEND_URL.trim().replace(/\/+$/, '');
+        // Prevent recursive loop or self-call on the vendor backend port
+        const myPort = String(process.env.PORT || 8002);
+        if (!custBackendUrl.includes(`:${myPort}`)) {
+          let custStatus = order.status;
+          if (order.status === 'Accepted') custStatus = 'Preparing';
+          else if (order.status === 'Out for Delivery') custStatus = 'Out For Delivery';
 
-        const custBackendUrl = process.env.CUSTOMER_BACKEND_URL || 'http://localhost:5000';
-        const syncUrl = `${custBackendUrl}/api/orders/${order._id}/status`;
-        await fetch(syncUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: custStatus })
-        }).then(async r => {
-          if (!r.ok) return null;
-          const contentType = r.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            return await r.json();
-          }
-          return null;
-        }).catch(err => console.warn('[Customer Sync]:', err.message));
+          const syncUrl = `${custBackendUrl}/api/orders/${order._id}/status`;
+          await fetch(syncUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: custStatus })
+          }).then(async r => {
+            if (!r.ok) return null;
+            const contentType = r.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+              return await r.json();
+            }
+            return null;
+          }).catch(() => {});
+        }
       } catch (err) {
-        console.warn('Failed to sync order status to customer backend:', err.message);
+        // Ignore optional external customer sync error
       }
     }
     if (order.status !== oldStatus && ['Completed', 'Delivered'].includes(order.status)) {

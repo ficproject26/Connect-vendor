@@ -333,6 +333,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/vendor/subscriptions', subscriptionRoutes);
 app.use('/api/vendor', vendorRoutes);
+app.put('/api/orders/:id/status', require('./controllers/vendorController').updateOrderStatus);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/member', memberRoutes);
 app.use('/api/public', publicRoutes);
