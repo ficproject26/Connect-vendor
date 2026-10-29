@@ -19,7 +19,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     'kyc_rejected', 'additional_information_required'
   ];
 
-  const isApproved = (['active', 'approved', 'assigned'].includes(statusLower) || !statusLower || user?.isApproved === true) && user?.isApproved !== false && user?.isLocked !== true;
+  const isApproved = ['active', 'approved', 'assigned'].includes(statusLower) && user?.isApproved !== false && user?.isLocked !== true;
   const isOnboarding = isVendorUser && !isApproved && (onboardingStatuses.includes(statusLower) || user?.isApproved === false);
   const isSuspended = isVendorUser && (statusLower === 'suspended' || statusLower === 'inactive' || user?.isLocked === true);
   const isRejected = isVendorUser && (statusLower === 'rejected');
