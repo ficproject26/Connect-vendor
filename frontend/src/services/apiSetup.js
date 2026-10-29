@@ -39,7 +39,7 @@ export const getBackendUrl = () => {
 axios.interceptors.request.use(
   (config) => {
     if (!config.timeout) {
-      config.timeout = 45000; // 45-second timeout to accommodate Render sleeping cold starts
+      config.timeout = 25000; // 25-second timeout for responsive failure handling
     }
 
     const backendUrl = getBackendUrl();
@@ -93,10 +93,52 @@ axios.interceptors.request.use(
   }
 );
 
-// --- RETRY LOGIC for sleeping Render backend ---
-// Retry up to 3 times with increasing delay when backend is waking up
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 3000; // start with 3 seconds
+// --- In-Flight Deduplication & Read-Through Client Cache ---
+const inFlightGetRequests = new Map();
+const apiGetCache = new Map();
+const DEFAULT_CACHE_TTL_MS = 25000; // 25s safe TTL for read-only GET endpoints
+
+export const clearApiCache = (pattern) => {
+  if (!pattern) {
+    apiGetCache.clear();
+  } else {
+    for (const key of apiGetCache.keys()) {
+      if (key.includes(pattern)) {
+        apiGetCache.delete(key);
+      }
+    }
+  }
+};
+
+export const cachedGet = async (url, config = {}) => {
+  const cacheKey = `${url}:${JSON.stringify(config.params || {})}:${config.headers?.['x-business-id'] || 'default'}`;
+  const now = Date.now();
+  const cached = apiGetCache.get(cacheKey);
+  if (cached && cached.expiry > now) {
+    return cached.data;
+  }
+
+  if (inFlightGetRequests.has(cacheKey)) {
+    return inFlightGetRequests.get(cacheKey);
+  }
+
+  const reqPromise = axios.get(url, config)
+    .then(res => {
+      apiGetCache.set(cacheKey, { data: res, expiry: Date.now() + DEFAULT_CACHE_TTL_MS });
+      return res;
+    })
+    .finally(() => {
+      inFlightGetRequests.delete(cacheKey);
+    });
+
+  inFlightGetRequests.set(cacheKey, reqPromise);
+  return reqPromise;
+};
+
+// --- RETRY LOGIC for sleeping or transient network blips ---
+// Bounded retries: max 2 retries with fast 1s, 2s delays (total max delay 3s)
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 1000;
 
 const sanitizeResponseUrls = (val, backendUrl) => {
   if (!val) return val;
@@ -136,6 +178,30 @@ axios.interceptors.response.use(
     if (response && response.data) {
       const activeBackend = getBackendUrl();
       response.data = sanitizeResponseUrls(response.data, activeBackend);
+
+      // Automatic cache invalidation on mutations
+      const method = (response.config?.method || '').toLowerCase();
+      if (['post', 'put', 'delete', 'patch'].includes(method)) {
+        const url = response.config?.url || '';
+        if (url.includes('/products')) {
+          clearApiCache('/products');
+          clearApiCache('/analytics');
+        } else if (url.includes('/orders') || url.includes('/bookings')) {
+          clearApiCache('/orders');
+          clearApiCache('/bookings');
+          clearApiCache('/analytics');
+        } else if (url.includes('/customers')) {
+          clearApiCache('/customers');
+        } else if (url.includes('/delivery-partners')) {
+          clearApiCache('/delivery-partners');
+        } else if (url.includes('/business')) {
+          clearApiCache('/business');
+          clearApiCache('/profile');
+          clearApiCache('/analytics');
+        } else if (url.includes('/profile')) {
+          clearApiCache('/profile');
+        }
+      }
     }
     return response;
   },
@@ -210,14 +276,19 @@ axios.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Increment retry count and expand timeout on retries to allow sleeping backend to start
+    // Increment retry count with bounded 15s timeout
     config.__retryCount = (config.__retryCount || 0) + 1;
-    config.timeout = 60000; // 60s timeout for retries
-    const delay = RETRY_DELAY_MS * config.__retryCount; // 3s, 6s, 9s
+    config.timeout = 15000; // 15s timeout for fast, bounded recovery
+    const delay = RETRY_DELAY_MS * config.__retryCount; // 1s, 2s
 
-    // On network error retry, fallback relative URL to explicit remote backend
-    if (isNetworkError && config.url && config.url.startsWith('/api')) {
-      config.url = `https://vendor.ficapp.in${config.url}`;
+    // On network error retry, correctly rewrite failed local URL to remote production backend
+    if (isNetworkError && config.url) {
+      if (config.url.startsWith('/api')) {
+        config.url = `https://vendor.ficapp.in${config.url}`;
+      } else if (config.url.includes('/api/')) {
+        const apiPath = config.url.substring(config.url.indexOf('/api/'));
+        config.url = `https://vendor.ficapp.in${apiPath}`;
+      }
     }
 
     console.warn(
@@ -230,21 +301,6 @@ axios.interceptors.response.use(
     return axios(config);
   }
 );
-
-// --- WAKE-UP PING ---
-// Send a lightweight ping to guaranteed public health endpoint
-const wakeUpBackend = async () => {
-  try {
-    const backendUrl = getBackendUrl();
-    if (!backendUrl) return;
-    await fetch(`${backendUrl}/api/public/health`, { method: 'GET', mode: 'no-cors' }).catch(() => {});
-  } catch (err) {
-    // Ignore initial wake-up ping errors
-  }
-};
-
-// Fire the wake-up ping immediately on import
-wakeUpBackend();
 
 export const getAdminBackendUrl = () => {
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -262,12 +318,12 @@ export const getAdminBackendUrl = () => {
   let adminUrl = import.meta.env.VITE_ADMIN_BACKEND_URL;
   if (adminUrl && typeof adminUrl === 'string') {
     adminUrl = adminUrl.trim().replace(/\/+$/, '');
-    if (!adminUrl.includes('trycloudflare.com')) {
+    if (!adminUrl.includes('trycloudflare.com') && !adminUrl.includes('onrender.com')) {
       return adminUrl;
     }
   }
 
-  return 'https://connect-admin-96pc.onrender.com';
+  return getBackendUrl();
 };
 
 export const getVendorBackendUrl = () => {
@@ -284,10 +340,11 @@ export const formatImageUrl = (url) => {
   }
 
   if (clean.includes('res.cloudinary.com')) {
-    if (clean.startsWith('http://res.cloudinary.com')) {
-      return clean.replace(/^http:\/\//, 'https://');
+    let cUrl = clean.startsWith('http://res.cloudinary.com') ? clean.replace(/^http:\/\//, 'https://') : clean;
+    if (cUrl.includes('/upload/') && !cUrl.includes('/upload/f_auto') && !cUrl.includes('/upload/q_auto') && !cUrl.includes('/upload/w_')) {
+      cUrl = cUrl.replace('/upload/', '/upload/f_auto,q_auto,w_500,c_limit/');
     }
-    return clean;
+    return cUrl;
   }
 
   let backend = getBackendUrl();

@@ -1351,7 +1351,7 @@ router.get('/categories/main', async (req, res) => {
 // @desc    Get dynamic admin categories and base taxonomy, with strict mainCategory filtering support
 router.get('/categories', async (req, res) => {
   try {
-    const { mainCategory, onlyActive } = req.query;
+    const { mainCategory, onlyActive, taxonomy, includeTaxonomy } = req.query;
     const dbCats = await getCachedDbCategories();
 
     if (mainCategory) {
@@ -1362,15 +1362,18 @@ router.get('/categories', async (req, res) => {
         mainCategory: hierarchy.mainCategory,
         mainCategoryId: hierarchy.mainCategoryId,
         subcategories: hierarchy.subcategories,
-        data: dbCats || [],
-        hierarchy
+        data: hierarchy.subcategories || []
       });
     }
 
-    res.status(200).json({ success: true, data: dbCats || [], taxonomy: COMPLETE_CAT_TAXONOMY });
+    const payload = { success: true, data: dbCats || [] };
+    if (taxonomy === 'true' || includeTaxonomy === 'true') {
+      payload.taxonomy = COMPLETE_CAT_TAXONOMY;
+    }
+    res.status(200).json(payload);
   } catch (error) {
     console.error('Get Public Categories Error:', error);
-    res.status(500).json({ success: false, message: 'Server error fetching categories', taxonomy: COMPLETE_CAT_TAXONOMY });
+    res.status(500).json({ success: false, message: 'Server error fetching categories' });
   }
 });
 

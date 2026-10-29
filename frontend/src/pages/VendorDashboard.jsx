@@ -13,7 +13,7 @@ import {
 import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } from '../store/authSlice';
 import Modal from '../components/common/Modal';
 import NotificationDropdown from '../components/common/NotificationDropdown';
-import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl, formatImageUrl } from '../services/apiSetup';
+import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl, formatImageUrl, cachedGet, clearApiCache } from '../services/apiSetup';
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 import { compressImage } from '../utils/imageCompressor';
@@ -330,6 +330,8 @@ const CatalogCardImage = ({ item, isOutOfStock, isService, mainCat, vendorType }
     <img
       src={formattedUrl}
       alt=""
+      loading="lazy"
+      decoding="async"
       onError={() => setImgError(true)}
       className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
         isOutOfStock ? 'grayscale opacity-60' : ''
@@ -618,22 +620,12 @@ const VendorDashboard = () => {
         let dbCats = [];
         try {
           const vendorBackendUrl = getBackendUrl();
-          const res = await axios.get(`${vendorBackendUrl}/api/public/categories`, { timeout: 10000 });
+          const res = await cachedGet(`${vendorBackendUrl}/api/public/categories`, { timeout: 8000 });
           if (res.data) {
             dbCats = Array.isArray(res.data) ? res.data : (res.data.data || []);
           }
         } catch (e) {
-          try {
-            const adminUrl = getAdminBackendUrl();
-            if (adminUrl && !adminUrl.includes('trycloudflare.com')) {
-              const res = await axios.get(`${adminUrl}/api/admin/categories`, { timeout: 8000 });
-              if (res.data) {
-                dbCats = Array.isArray(res.data) ? res.data : (res.data.data || []);
-              }
-            }
-          } catch (adminErr) {
-            // Quiet fallback to static taxonomy
-          }
+          // Fallback to static COMPLETE_CAT_TAXONOMY gracefully
         }
 
         if (Array.isArray(dbCats) && dbCats.length > 0) {
@@ -745,7 +737,8 @@ const VendorDashboard = () => {
   const isCheckingStatusRef = useRef(false);
   useEffect(() => {
     const checkStatus = async () => {
-      if (!user || user.role !== 'Vendor' || isCheckingStatusRef.current) return;
+      const userRoleLower = (user?.role || '').toLowerCase().trim();
+      if (!user || userRoleLower !== 'vendor' || isCheckingStatusRef.current) return;
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       isCheckingStatusRef.current = true;
       try {
@@ -761,8 +754,8 @@ const VendorDashboard = () => {
           window.location.href = '/';
         }
       } catch (err) {
-        if (err.response?.status === 403 || err.response?.data?.isTerminated) {
-          alert(err.response?.data?.message || 'Your vendor account has been suspended. Please contact the administrator.');
+        if (err.response?.status === 401 || err.response?.data?.isTerminated) {
+          alert(err.response?.data?.message || 'Your session has expired. Please log in again.');
           dispatch(logout());
           window.location.href = '/';
         }
@@ -1047,7 +1040,6 @@ const VendorDashboard = () => {
     } else if (itemId === 'bookings') {
       navigateToBookings();
     } else {
-      setActiveTab(itemId);
       const params = { tab: itemId };
       if (currentCategoryContext && currentCategoryContext !== CATEGORY_ALL) {
         params.category = categoryToSlug(currentCategoryContext);
@@ -1187,7 +1179,7 @@ const VendorDashboard = () => {
     isFetchingStayRef.current = true;
     setLoadingStayCategories(true);
     try {
-      const res = await axios.get(`${getBackendUrl()}/api/public/categories?mainCategory=Stay&onlyActive=true`);
+      const res = await cachedGet(`${getBackendUrl()}/api/public/categories?mainCategory=Stay&onlyActive=true`);
       if (res.data && res.data.success) {
         setStayHierarchy({
           mainCategory: res.data.mainCategory || 'Stay',
@@ -1620,22 +1612,6 @@ const VendorDashboard = () => {
   const [downloadingResumeId, setDownloadingResumeId] = useState(null);
   const [updatingStatusIds, setUpdatingStatusIds] = useState(new Set());
 
-  // Sync profile on mount to get latest user categories/businesses from DB
-  useEffect(() => {
-    const syncProfile = async () => {
-      try {
-        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/profile`, getAxiosConfig());
-        if (res.data.success) {
-          dispatch(updateUser(res.data.user));
-        }
-      } catch (err) {
-        console.error('Failed to sync profile on mount:', err);
-      }
-    };
-    if (token) {
-      syncProfile();
-    }
-  }, [dispatch, token]);
 
   // Authenticated resume preview management with cleanup
   useEffect(() => {
@@ -3002,7 +2978,7 @@ const VendorDashboard = () => {
         if (activeTab === 'dashboard') {
           let res;
           if (user?.role === 'Admin') {
-            res = await axios.get(`${getVendorBackendUrl()}/api/admin/stats`, getAxiosConfig());
+            res = await cachedGet(`${getVendorBackendUrl()}/api/admin/stats`, getAxiosConfig());
             if (res.data.success) {
               setAnalytics({
                 customersCount: res.data.data.totalMembers,
@@ -3022,12 +2998,12 @@ const VendorDashboard = () => {
             const qStr = queryParams.toString() ? `?${queryParams.toString()}` : '';
 
             const [analyticsRes, ordersRes, bookingsRes, productsRes, customersRes, appsRes] = await Promise.allSettled([
-              axios.get(`${getVendorBackendUrl()}/api/vendor/analytics${qStr}`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/orders${qStr}`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/bookings${qStr}`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/products${qStr}`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/customers${qStr}`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/applications${qStr}`, getAxiosConfig())
+              cachedGet(`${getVendorBackendUrl()}/api/vendor/analytics${qStr}`, getAxiosConfig()),
+              cachedGet(`${getVendorBackendUrl()}/api/vendor/orders${qStr}`, getAxiosConfig()),
+              cachedGet(`${getVendorBackendUrl()}/api/vendor/bookings${qStr}`, getAxiosConfig()),
+              cachedGet(`${getVendorBackendUrl()}/api/vendor/products${qStr}`, getAxiosConfig()),
+              cachedGet(`${getVendorBackendUrl()}/api/vendor/customers${qStr}`, getAxiosConfig()),
+              cachedGet(`${getVendorBackendUrl()}/api/vendor/applications${qStr}`, getAxiosConfig())
             ]);
             if (analyticsRes.status === 'fulfilled' && analyticsRes.value.data.success) {
               setAnalytics(analyticsRes.value.data.data);
@@ -3053,23 +3029,9 @@ const VendorDashboard = () => {
           const targetCategoryType = (currentCategoryContext && currentCategoryContext !== 'All')
             ? currentCategoryContext
             : getProductMainCategory('', activeBiz?.vendorType || user?.vendorType || '');
-          const [prodRes, ordersRes, bookingsRes, appsRes] = await Promise.allSettled([
-            axios.get(`${getVendorBackendUrl()}/api/vendor/products?type=${encodeURIComponent(targetCategoryType)}`, getAxiosConfig()),
-            axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
-            axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig()),
-            axios.get(`${getVendorBackendUrl()}/api/vendor/applications`, getAxiosConfig())
-          ]);
-          if (prodRes.status === 'fulfilled' && prodRes.value.data.success) {
-            setCatalog(prodRes.value.data.data);
-          }
-          if (ordersRes.status === 'fulfilled' && ordersRes.value.data.success) {
-            setOrders(ordersRes.value.data.data);
-          }
-          if (bookingsRes.status === 'fulfilled' && bookingsRes.value.data.success) {
-            setBookings(bookingsRes.value.data.data);
-          }
-          if (appsRes.status === 'fulfilled' && appsRes.value.data.success) {
-            setApplications(appsRes.value.data.data);
+          const prodRes = await cachedGet(`${getVendorBackendUrl()}/api/vendor/products?type=${encodeURIComponent(targetCategoryType)}`, getAxiosConfig());
+          if (prodRes?.data?.success) {
+            setCatalog(prodRes.data.data);
           }
         } else if (activeTab === 'orders') {
           const catParam = orderCategoryFilter && orderCategoryFilter !== 'All'
@@ -3077,11 +3039,11 @@ const VendorDashboard = () => {
             : (currentCategoryContext && currentCategoryContext !== 'All' && isOrderCategory(currentCategoryContext)
               ? `?category=${encodeURIComponent(categoryToSlug(currentCategoryContext))}`
               : '');
-          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders${catParam}`, getAxiosConfig());
+          const res = await cachedGet(`${getVendorBackendUrl()}/api/vendor/orders${catParam}`, getAxiosConfig());
           if (res.data.success) setOrders(res.data.data);
           
-          // Fetch delivery partners non-blockingly
-          axios.get(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig())
+          // Fetch delivery partners non-blockingly with cache
+          cachedGet(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig())
             .then(partnersRes => {
               if (partnersRes.data.success) setPartners(partnersRes.data.data);
             })
@@ -3092,30 +3054,32 @@ const VendorDashboard = () => {
             : (currentCategoryContext && currentCategoryContext !== 'All' && isBookingCategory(currentCategoryContext)
               ? `?category=${encodeURIComponent(categoryToSlug(currentCategoryContext))}`
               : '');
-          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/bookings${catParam}`, getAxiosConfig());
+          const res = await cachedGet(`${getVendorBackendUrl()}/api/vendor/bookings${catParam}`, getAxiosConfig());
           if (res.data.success) setBookings(res.data.data);
         } else if (activeTab === 'applications') {
-          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/applications`, getAxiosConfig());
+          const res = await cachedGet(`${getVendorBackendUrl()}/api/vendor/applications`, getAxiosConfig());
           if (res.data.success) setApplications(res.data.data);
         } else if (activeTab === 'delivery') {
-          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig());
+          const res = await cachedGet(`${getVendorBackendUrl()}/api/vendor/delivery-partners`, getAxiosConfig());
           if (res.data.success) setPartners(res.data.data);
         } else if (activeTab === 'customers') {
-          const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig());
+          const res = await cachedGet(`${getVendorBackendUrl()}/api/vendor/customers`, getAxiosConfig());
           if (res.data.success) setCustomers(res.data.data);
-          try {
-            const [ordersRes, bookingsRes] = await Promise.allSettled([
-              axios.get(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
-              axios.get(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig())
-            ]);
-            if (ordersRes.status === 'fulfilled' && ordersRes.value.data.success) {
-              setOrders(ordersRes.value.data.data);
+          if (orders.length === 0 || bookings.length === 0) {
+            try {
+              const [ordersRes, bookingsRes] = await Promise.allSettled([
+                cachedGet(`${getVendorBackendUrl()}/api/vendor/orders`, getAxiosConfig()),
+                cachedGet(`${getVendorBackendUrl()}/api/vendor/bookings`, getAxiosConfig())
+              ]);
+              if (ordersRes.status === 'fulfilled' && ordersRes.value.data.success) {
+                setOrders(ordersRes.value.data.data);
+              }
+              if (bookingsRes.status === 'fulfilled' && bookingsRes.value.data.success) {
+                setBookings(bookingsRes.value.data.data);
+              }
+            } catch (err) {
+              console.error('Failed to load orders/bookings for customers tab:', err);
             }
-            if (bookingsRes.status === 'fulfilled' && bookingsRes.value.data.success) {
-              setBookings(bookingsRes.value.data.data);
-            }
-          } catch (err) {
-            console.error('Failed to load orders/bookings for customers tab:', err);
           }
         } else if (activeTab === 'card') {
           try {
@@ -3151,7 +3115,7 @@ const VendorDashboard = () => {
           } else if (user?.role === 'Member') {
             url = `${getVendorBackendUrl()}/api/member/orders`;
           }
-          const res = await axios.get(url, getAxiosConfig());
+          const res = await cachedGet(url, getAxiosConfig());
           if (res.data.success) setOrders(res.data.data);
 
           // Fetch settlements data
@@ -3160,7 +3124,7 @@ const VendorDashboard = () => {
               const settUrl = user?.role === 'Admin'
                 ? `${getVendorBackendUrl()}/api/admin/settlements`
                 : `${getVendorBackendUrl()}/api/vendor/settlements`;
-              const settRes = await axios.get(settUrl, getAxiosConfig());
+              const settRes = await cachedGet(settUrl, getAxiosConfig());
               if (settRes.data.success) {
                 setSettlements(settRes.data.data);
               }
@@ -3174,7 +3138,7 @@ const VendorDashboard = () => {
             const configUrl = user?.role === 'Admin'
               ? `${getVendorBackendUrl()}/api/admin/commission-config`
               : `${getVendorBackendUrl()}/api/vendor/commission-config`;
-            const configRes = await axios.get(configUrl, getAxiosConfig());
+            const configRes = await cachedGet(configUrl, getAxiosConfig());
             if (configRes.data.success) {
               setCommissionConfig(configRes.data.data);
             }
@@ -8277,7 +8241,7 @@ const VendorDashboard = () => {
               </div>
             </div>
 
-            {loading ? <p className="text-slate-800 dark:text-slate-200">Loading {terms.customersName.toLowerCase()}...</p> : customers.length === 0 ? (
+            {loading && customers.length === 0 ? <p className="text-slate-800 dark:text-slate-200">Loading {terms.customersName.toLowerCase()}...</p> : customers.length === 0 ? (
               <div className="glass-card p-12 text-center rounded-3xl">
                 <p className="text-slate-800 dark:text-slate-200 font-medium">No {terms.customersName.toLowerCase()} registered in transaction logs.</p>
               </div>
@@ -8477,7 +8441,7 @@ const VendorDashboard = () => {
                 </div>
               </div>
 
-              {loading ? (
+              {loading && partners.length === 0 ? (
                 <p className="text-slate-800 dark:text-slate-200">Loading...</p>
               ) : partners.length === 0 ? (
                 <div className="glass-card p-12 text-center rounded-3xl">

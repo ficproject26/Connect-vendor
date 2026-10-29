@@ -32,11 +32,11 @@ try {
 }
 
 // Override user properties on initial load if they are a Vendor
-if (user && user.role === 'Vendor' && user.businesses && user.businesses.length > 0) {
-  const activeId = activeBusinessId || user.primaryBusinessId || user.businesses[0]._id;
-  const activeBiz = user.businesses.find(b => b._id === activeId) || user.businesses[0];
+if (user && (user.role || '').toLowerCase() === 'vendor' && user.businesses && user.businesses.length > 0) {
+  const activeId = activeBusinessId || user.primaryBusinessId || (user.businesses[0]._id || user.businesses[0].id);
+  const activeBiz = user.businesses.find(b => (b._id || b.id) === activeId || String(b._id || b.id) === String(activeId)) || user.businesses[0];
   if (activeBiz) {
-    activeBusinessId = activeBiz._id;
+    activeBusinessId = activeBiz._id || activeBiz.id;
     user.vendorType = activeBiz.vendorType;
     user.category = activeBiz.category;
     user.subcategory = activeBiz.subcategory;
