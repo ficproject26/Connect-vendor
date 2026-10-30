@@ -35,6 +35,35 @@ export const getBackendUrl = () => {
   return 'https://vendor.ficapp.in';
 };
 
+export const getWebSocketUrl = () => {
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isLocalHost = !hostname || 
+    hostname === 'localhost' || 
+    hostname === '127.0.0.1' || 
+    hostname.startsWith('192.168.') || 
+    hostname.startsWith('10.') ||
+    hostname.startsWith('172.');
+
+  // 1. Check environment variables first if specified
+  let envWs = import.meta.env.VITE_WS_URL || import.meta.env.VITE_SOCKET_URL;
+  if (envWs && typeof envWs === 'string') {
+    envWs = envWs.trim().replace(/\/+$/, '');
+    if (isLocalHost || (!envWs.includes('localhost') && !envWs.includes('127.0.0.1'))) {
+      return envWs;
+    }
+  }
+
+  // 2. If running locally, connect directly to local backend on port 8002
+  if (isLocalHost) {
+    return `http://${hostname || 'localhost'}:8002`;
+  }
+
+  // 3. Fallback to production ecosystem WebSocket cluster
+  // vendor.ficapp.in reverse proxy hosts the frontend and proxies /api/ only (returns 200 HTML on /socket.io/).
+  // The shared real-time Socket.IO gateway is hosted on https://api.ficapp.in with shared Redis.
+  return 'https://api.ficapp.in';
+};
+
 // Set up Axios request interceptor to dynamically rewrite backend URLs and inject headers
 axios.interceptors.request.use(
   (config) => {

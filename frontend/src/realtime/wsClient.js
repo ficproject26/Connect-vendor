@@ -4,12 +4,12 @@
  */
 
 import { io } from 'socket.io-client';
-import { getBackendUrl } from '../services/apiSetup';
+import { getWebSocketUrl } from '../services/apiSetup';
 
 const HEARTBEAT_INTERVAL_MS = 20000;
-const MAX_RECONNECT_ATTEMPTS = Infinity;
-const RECONNECT_BASE_DELAY_MS = 1000;
-const MAX_RECONNECT_DELAY_MS = 30000;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_BASE_DELAY_MS = 2000;
+const MAX_RECONNECT_DELAY_MS = 10000;
 
 class WebSocketClient {
   constructor() {
@@ -42,10 +42,11 @@ class WebSocketClient {
     this.token = token;
     this.disconnect(); // Clean up existing connection
 
-    const backendUrl = getBackendUrl() || 'https://vendor.ficapp.in';
+    const socketUrl = getWebSocketUrl();
 
-    this.socket = io(backendUrl, {
-      auth: { token },
+    this.socket = io(socketUrl, {
+      auth: { token, role: 'Vendor' },
+      query: { token, role: 'Vendor' },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
@@ -85,7 +86,13 @@ class WebSocketClient {
     });
 
     this.socket.on('connect_error', (err) => {
-      console.warn(`⚠️ [WebSocket] Connection error: ${err.message}`);
+      this.reconnectAttempts++;
+      if (this.reconnectAttempts <= 2) {
+        console.warn(`⚠️ [WebSocket] Connection attempt failed (${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}): ${err.message}`);
+      } else if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.warn(`⚠️ [WebSocket] Maximum reconnect attempts reached. Continuing with HTTP background sync.`);
+        this.disconnect();
+      }
       this._dispatch('connection_error', { message: err.message });
     });
 

@@ -2,6 +2,33 @@
 
 All notable changes, task-by-task implementations, audits, and performance test results are documented in this file in chronological order.
 
+## [Fix WebSocket Handshake 200 Error & Route Resolution] - 2026-10-30
+
+### Scope
+Resolve browser console error `WebSocket connection to 'wss://vendor.ficapp.in/socket.io/?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 200` and infinite connection error retry storm.
+
+### Root Cause
+`https://vendor.ficapp.in` is an Nginx reverse proxy configured to serve the frontend static SPA build on `/` (`try_files $uri $uri/ /index.html;`) and reverse proxy only `/api/` to the backend. Because `/socket.io/` is not proxied by Nginx on `vendor.ficapp.in`, WebSocket upgrade requests fall through to `index.html`, which returns HTTP 200 OK (HTML text) instead of HTTP 101 Switching Protocols. The browser rejects the handshake with status 200, and infinite client retries flooded the console.
+
+### Implementations
+1. **Dedicated WebSocket URL Resolver (`frontend/src/services/apiSetup.js`):**
+   - Added `getWebSocketUrl()`:
+     - Local development: connects to `http://localhost:8002` (direct to Express/Socket.IO backend).
+     - Production: routes to `https://api.ficapp.in`, where the live ecosystem Socket.IO cluster is actively running and connected to the shared Redis instance.
+     - Environment variable override supported via `VITE_WS_URL` or `VITE_SOCKET_URL`.
+   - Preserves `getBackendUrl()` for standard HTTP REST API endpoints (`https://vendor.ficapp.in`).
+2. **Bounded Reconnection & Graceful Fallback (`frontend/src/realtime/wsClient.js`):**
+   - Bound reconnection attempts (`MAX_RECONNECT_ATTEMPTS = 5`) with 2s to 10s backoff, eliminating infinite reconnect storms.
+   - On connection failure, automatically falls back to background HTTP synchronization without polluting the console.
+3. **CSP Whitelist (`backend/server.js`):**
+   - Added `wss://*.ficapp.in` to Content-Security-Policy `connectSrc`.
+
+### Verification Results
+- Verified direct WebSocket connection to `https://api.ficapp.in` succeeds with HTTP 101 Switching Protocols and valid Socket ID.
+- `npm run build --prefix frontend`: Vite v5.4.21 built cleanly in 20.87s with 0 errors.
+
+---
+
 ## [Real-Time WebSocket Synchronization for Orders, Bookings & Applications] - 2026-10-30
 
 ### Scope

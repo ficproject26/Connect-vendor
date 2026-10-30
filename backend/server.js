@@ -66,6 +66,7 @@ app.use(
           "https://vendor.ficapp.in",
           "https://*.ficapp.in",
           "wss://vendor.ficapp.in",
+          "wss://*.ficapp.in",
           "https://connect-vendor.vercel.app",
           "https://*.vercel.app",
           "https://api.razorpay.com",
