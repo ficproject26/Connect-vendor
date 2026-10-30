@@ -175,6 +175,10 @@ class SocketServer {
 
         // Vendor rooms
         if (role === 'Vendor') {
+          if (socket.user.id) {
+            socket.join(`vendor:${socket.user.id}`);
+            socket.join(socket.user.id);
+          }
           if (socket.user.vendorId) {
             socket.join(`vendor:${socket.user.vendorId}`);
           }
@@ -245,6 +249,7 @@ class SocketServer {
           const targetId = cleanTopic.includes(':') ? cleanTopic.split(':')[1] : '';
           const isOwner = socket.user && !socket.user.isGuest && (
             socket.user.role === 'Admin' ||
+            String(socket.user.id) === String(targetId) ||
             String(socket.user.vendorId) === String(targetId) ||
             String(socket.user.primaryBusinessId) === String(targetId) ||
             (Array.isArray(socket.user.businesses) && socket.user.businesses.includes(String(targetId)))
@@ -289,7 +294,8 @@ class SocketServer {
     if (!this.io) return;
 
     this.stats.eventsDispatched++;
-    const { target, event: eventName, entity, entityId } = event;
+    const { target, entity, entityId } = event;
+    const eventName = event.event || event.eventName;
 
     // 1. Global events
     if (target?.isGlobal) {
