@@ -90,3 +90,23 @@ This document serves as the persistent source of project memory, architecture bo
   - Preserved all existing detail modals, status update actions, and bus seat allocation flows.
 
 
+
+
+### 4. Real-Time Cross-Platform Ecosystem Synchronization (Vendor Web & Mobile)
+- **Status:** Completed & Verified (2026-10-30)
+- **Exact Files Modified:**
+  - `backend/websocket/socketServer.js`
+  - `backend/eventSubscriber/subscriber.js`
+  - `backend/routes/publicRoutes.js`
+  - `backend/events/eventTypes.js`
+  - `frontend/src/pages/VendorDashboard.jsx`
+  - `CHANGELOG.md`
+  - `AGENT.md`
+- **Key Enhancements Implemented:**
+  1. **WebSocket Client Integration in Vendor Dashboard (`VendorDashboard.jsx`):** Connected `wsClient.connect(token)` with live listeners for `ORDER_CREATED`, `BOOKING_CREATED`, `APPLICATION_CREATED`, `ORDER_STATUS_CHANGED`, and related events. New records are prepended immediately with ID deduplication, GET cache is invalidated, and analytics KPIs are refreshed in background.
+  2. **Multi-Channel Redis Subscription (`subscriber.js`):** Subscribed to `connect:realtime:events` (Customer App channel) alongside `connect:events:global` and `connect:events:orders`, mapping incoming transaction payloads to WebSocket broadcaster.
+  3. **Multi-ID Vendor Scoping & Named Event Broadcasting (`socketServer.js`):** Auto-joins `vendor:<user.id>` and authorizes subscriptions matching both Mongo `_id` and alphanumeric `vendorId`. Emits both `realtime_event` and canonical named events (`ORDER_CREATED`, etc.) to targeted vendor rooms.
+  4. **Public Order Route Event Forwarding (`publicRoutes.js`):** Synchronized order creation/updates to trigger real-time events even when updating pre-existing records.
+- **Verification Results:**
+  - Automated E2E verification test suite (`verify_realtime_e2e.js`) confirmed 100% real-time packet delivery across orders, bookings, job applications, and status updates with 0 manual refresh.
+  - Production build compiled cleanly with 0 errors.

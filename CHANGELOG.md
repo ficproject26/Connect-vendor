@@ -137,3 +137,36 @@ Address critical performance bottlenecks, eliminate repeated backend retry loops
 - **Backend Route Loading:** Verified clean module loading for `backend/routes/publicRoutes.js` and taxonomy data structures.
 - **Live Fallback Verification:** Tested failover routing from local port to production backend `https://vendor.ficapp.in` within bounded 1s/2s retry window.
 
+
+
+## [2026-10-30] - Real-Time Cross-Platform Ecosystem Synchronization (Vendor Web & Vendor Mobile)
+
+### Added & Enhanced
+1. **Centralized Real-Time Event Reception (`frontend/src/pages/VendorDashboard.jsx`):**
+   - Connected `wsClient` using active vendor authentication token to `http://localhost:8002` (and production fallback).
+   - Subscribed to real-time events: `ORDER_CREATED`, `BOOKING_CREATED`, `APPLICATION_CREATED`, `new_order`, `new_order_placed`, `new_order_received`, `ORDER_STATUS_CHANGED`, and `ORDER_UPDATED`.
+   - Incoming orders, bookings, and applications are immediately prepended to state (`orders`, `bookings`, `applications`) with strict ID deduplication (`_id`, `order_number`, `booking_number`, `applicationId`).
+   - Clears GET API cache for affected endpoints (`clearApiCache('/orders')`, `clearApiCache('/bookings')`, `clearApiCache('/applications')`) so tab switches fetch fresh state.
+   - Non-blocking background analytics refresh keeps KPI cards in sync.
+   - Dynamic in-place status updates applied on `ORDER_STATUS_CHANGED` without list rebuilding or screen flickers.
+
+2. **Backend Redis Pub/Sub Multi-Channel Subscription (`backend/eventSubscriber/subscriber.js`):**
+   - Subscribed to `connect:realtime:events` alongside `connect:events:global` and `connect:events:orders` to capture transaction events originating from Customer Backend.
+   - Inferred target vendor ID and business ID from payload attributes (`vendorId`, `vendor_id`, `businessId`).
+
+3. **WebSocket Server Scoping & Delivery (`backend/websocket/socketServer.js`):**
+   - Enhanced vendor room join to automatically join `vendor:<user.id>` alongside `vendor:<user.vendorId>`, `vendor:<primaryBusinessId>`, and all outlet business IDs.
+   - Authorized explicit room subscriptions for both Mongo `_id` and registration `vendorId`.
+   - Dual-emitted both structured `realtime_event` and named event (`ORDER_CREATED`, `BOOKING_CREATED`, `APPLICATION_CREATED`, `ORDER_STATUS_CHANGED`) to all matching vendor rooms.
+
+4. **Public Order Route Forwarding (`backend/routes/publicRoutes.js`):**
+   - Updated `POST /api/public/orders` to ensure that incoming orders matching existing records also publish real-time events (`BOOKING_CREATED`, `APPLICATION_CREATED`, or `ORDER_CREATED`) instead of silently returning early without WebSocket notification.
+
+### Verification Results
+- **E2E Real-Time Test Suite:** Verified 100% pass rate in `verify_realtime_e2e.js`:
+  - `ORDER_CREATED`: Delivered in real time to connected vendor socket.
+  - `BOOKING_CREATED`: Delivered in real time to connected vendor socket.
+  - `APPLICATION_CREATED`: Delivered in real time to connected vendor socket.
+  - `ORDER_STATUS_CHANGED`: Delivered in real time to connected vendor socket.
+  - Verified instant data fetch and descending latest-first order on `GET /api/vendor/orders`, `/api/vendor/bookings`, and `/api/vendor/applications`.
+- **Production Build:** Vite production build passed cleanly with zero errors.
