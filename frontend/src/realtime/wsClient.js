@@ -46,8 +46,8 @@ class WebSocketClient {
 
     this.socket = io(socketUrl, {
       auth: { token, role: 'Vendor' },
-      query: { token, role: 'Vendor' },
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
+      upgrade: true,
       reconnection: true,
       reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
       reconnectionDelay: RECONNECT_BASE_DELAY_MS,
@@ -67,7 +67,14 @@ class WebSocketClient {
       this.reconnectAttempts = 0;
       this.startHeartbeat();
 
-      console.log(`⚡ [WebSocket] Connected: ${this.socket.id}`);
+      console.log(`⚡ [WebSocket] Connected: ${this.socket.id} (${this.socket.io?.engine?.transport?.name || 'polling'})`);
+
+      // Track upgrade to websocket
+      if (this.socket.io?.engine) {
+        this.socket.io.engine.on('upgrade', () => {
+          console.log(`🚀 [WebSocket] Upgraded transport to: ${this.socket.io.engine.transport.name}`);
+        });
+      }
 
       // Emit reconnect sync request for delta updates
       if (this.lastSyncTimestamp) {
