@@ -2,34 +2,34 @@
 
 All notable changes, task-by-task implementations, audits, and performance test results are documented in this file in chronological order.
 
-## [Fix WebSocket Handshake 200 & 400 Errors via Engine.IO Handshake Order] - 2026-10-30
+## [Fix WebSocket Handshake 200/400 & Vercel CORS Incompatibility] - 2026-10-30
 
 ### Scope
 Resolve browser console errors:
 1. `Error during WebSocket handshake: Unexpected response code: 200`
 2. `Error during WebSocket handshake: Unexpected response code: 400` (Engine.IO `{"code":3,"message":"Bad request"}`)
+3. `Access to XMLHttpRequest at 'https://api.ficapp.in/socket.io/...' from origin 'https://connect-vendor.vercel.app' has been blocked by CORS policy`
 
 ### Root Cause
 1. **HTTP 200 Error:** `vendor.ficapp.in` reverse proxy serves static frontend files and does not proxy `/socket.io/`, falling through to `index.html`.
-2. **HTTP 400 Error:** Passing `transports: ['websocket', 'polling']` with `'websocket'` first forced direct raw WebSocket connections without an established Engine.IO session ID (`sid`). The server rejected direct unnegotiated websocket requests with status 400 (`Bad request`). Furthermore, passing huge JWT strings in the URL query string (`query: { token }`) bloated every WebSocket packet.
+2. **HTTP 400 Error:** Direct raw WebSocket connections without established Engine.IO session ID (`sid`) were rejected by the server.
+3. **CORS Error on Vercel:** Remote WebSocket server at `api.ficapp.in` enforces strict CORS allowing only `*.ficapp.in` domains. Deployments on `*.vercel.app` (e.g. `https://connect-vendor.vercel.app`) are blocked by CORS when attempting to connect to `api.ficapp.in`.
 
 ### Implementations
-1. **Dedicated WebSocket URL Resolver (`frontend/src/services/apiSetup.js`):**
-   - Routes production WebSocket traffic to `https://api.ficapp.in`, where the live ecosystem Socket.IO cluster is actively running and connected to the shared Redis instance.
-2. **Engine.IO Transport Order & Session Negotiation (`frontend/src/realtime/wsClient.js`):**
-   - Configured `transports: ['polling', 'websocket']` with `upgrade: true`. Socket.IO negotiates the session ID via HTTP polling first and cleanly upgrades to `websocket` (receiving HTTP 101 Switching Protocols).
-   - Removed query string token duplication (`query: { token }`) in favor of canonical Socket.IO `auth: { token, role: 'Vendor' }`.
-   - Added `upgrade` event logging for connection observability.
-3. **Bounded Reconnection & Graceful Fallback (`frontend/src/realtime/wsClient.js`):**
-   - Bound reconnection attempts (`MAX_RECONNECT_ATTEMPTS = 5`) with 2s to 10s backoff.
-4. **CSP Whitelist (`backend/server.js`):**
-   - Added `wss://*.ficapp.in` to Content-Security-Policy `connectSrc`.
+1. **Origin-Aware WebSocket Gateway Resolver (`frontend/src/services/apiSetup.js`):**
+   - Returns `null` on `*.vercel.app` origins where WebSockets are unavailable or CORS-restricted, allowing the application to cleanly use built-in HTTP background synchronization without console CORS errors.
+   - Connects to `https://api.ficapp.in` for `*.ficapp.in` production origins (where CORS is permitted).
+   - Connects to `http://localhost:8002` for local development.
+2. **Graceful CORS and XHR Error Handling (`frontend/src/realtime/wsClient.js`):**
+   - Guards `connect(token)` against `null` socket URLs.
+   - Configured `transports: ['polling', 'websocket']` with `upgrade: true` and canonical `auth` tokens.
+   - On encountering CORS or XHR poll errors, immediately disconnects cleanly (`this.disconnect()`) without retry loops or browser console pollution.
+3. **Resilient HTTP Background Sync (`frontend/src/pages/VendorDashboard.jsx`):**
+   - Background HTTP sync continues to fetch live orders and bookings every 30 seconds and on tab visibility change via `https://vendor.ficapp.in/api/vendor/orders` (which fully supports `connect-vendor.vercel.app` in CORS).
 
 ### Verification Results
-- Tested in Node with actual vendor token:
-  `CONNECTED successfully! Socket ID: phaa6Za_d4XVDH8QAAAv (Transport: polling)`
-  `🚀 Successfully upgraded to: websocket`
-- `npm run build --prefix frontend`: Vite built cleanly with 0 errors.
+- Tested in Node: Clean socket connection and upgrade on permitted origins.
+- `npm run build --prefix frontend`: Vite built cleanly in 5.23s with 0 errors.
 
 ---
 

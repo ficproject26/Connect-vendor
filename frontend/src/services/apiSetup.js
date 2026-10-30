@@ -44,7 +44,7 @@ export const getWebSocketUrl = () => {
     hostname.startsWith('10.') ||
     hostname.startsWith('172.');
 
-  // 1. Check environment variables first if specified
+  // 1. Explicit environment variable override
   let envWs = import.meta.env.VITE_WS_URL || import.meta.env.VITE_SOCKET_URL;
   if (envWs && typeof envWs === 'string') {
     envWs = envWs.trim().replace(/\/+$/, '');
@@ -58,10 +58,21 @@ export const getWebSocketUrl = () => {
     return `http://${hostname || 'localhost'}:8002`;
   }
 
-  // 3. Fallback to production ecosystem WebSocket cluster
-  // vendor.ficapp.in reverse proxy hosts the frontend and proxies /api/ only (returns 200 HTML on /socket.io/).
-  // The shared real-time Socket.IO gateway is hosted on https://api.ficapp.in with shared Redis.
-  return 'https://api.ficapp.in';
+  // 3. Vercel deployments (e.g. connect-vendor.vercel.app):
+  // The remote api.ficapp.in WebSocket CORS policy strictly restricts origins to *.ficapp.in.
+  // Static Vercel deployments do not have CORS access to api.ficapp.in and cannot host WebSockets.
+  // Returning null allows the application to cleanly use HTTP background synchronization without console CORS errors.
+  if (hostname.endsWith('vercel.app')) {
+    return null;
+  }
+
+  // 4. Production ficapp.in domains (e.g. vendor.ficapp.in):
+  // Connect to the ecosystem Socket.IO cluster on https://api.ficapp.in (allowed by api.ficapp.in CORS policy)
+  if (hostname.endsWith('.ficapp.in') || hostname === 'ficapp.in') {
+    return 'https://api.ficapp.in';
+  }
+
+  return null;
 };
 
 // Set up Axios request interceptor to dynamically rewrite backend URLs and inject headers

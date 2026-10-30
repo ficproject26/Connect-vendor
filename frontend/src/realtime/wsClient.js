@@ -43,6 +43,11 @@ class WebSocketClient {
     this.disconnect(); // Clean up existing connection
 
     const socketUrl = getWebSocketUrl();
+    if (!socketUrl) {
+      // WebSocket server is not available or origin is blocked by CORS (e.g. Vercel deployments).
+      // Background HTTP sync handles data synchronization cleanly.
+      return;
+    }
 
     this.socket = io(socketUrl, {
       auth: { token, role: 'Vendor' },
@@ -94,11 +99,16 @@ class WebSocketClient {
 
     this.socket.on('connect_error', (err) => {
       this.reconnectAttempts++;
-      if (this.reconnectAttempts <= 2) {
-        console.warn(`⚠️ [WebSocket] Connection attempt failed (${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}): ${err.message}`);
-      } else if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.warn(`⚠️ [WebSocket] Maximum reconnect attempts reached. Continuing with HTTP background sync.`);
+      const isCorsOrPollFailure = 
+        err.message?.includes('xhr poll error') || 
+        err.message?.includes('CORS') || 
+        err.message?.includes('websocket error');
+
+      if (isCorsOrPollFailure || this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        // Disconnect immediately on CORS or poll failures to prevent browser console spam
         this.disconnect();
+      } else {
+        console.warn(`⚠️ [WebSocket] Connection attempt failed (${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}): ${err.message}`);
       }
       this._dispatch('connection_error', { message: err.message });
     });
