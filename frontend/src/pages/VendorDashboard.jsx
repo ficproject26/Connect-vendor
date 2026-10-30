@@ -3247,123 +3247,175 @@ const VendorDashboard = () => {
     }
   };
 
-  // Real-Time WebSocket Synchronization for Orders, Bookings & Applications
+  // Real-Time WebSocket & Fallback Sync for Vendor role (Orders, Bookings & Applications)
   useEffect(() => {
     if (!token || user?.role !== 'Vendor') {
       return;
     }
 
-    // Connect WebSocket client
-    wsClient.connect(token);
+    const isRelevantToThisVendor = (item, target) => {
+      if (!item) return false;
+      const targetVid = target?.vendorId || item.vendorId || item.vendor_id || item.businessId;
+      if (!targetVid) return true; // Global / unassigned
 
-    const myVendorIds = new Set([
-      user?._id?.toString(),
-      user?.id?.toString(),
-      user?.vendorId?.toString(),
-      user?.primaryBusinessId?.toString(),
-      ...(user?.businesses || []).map(b => (b?._id || b?.id || b?.vendorId || '').toString())
-    ].filter(Boolean).map(s => s.toLowerCase()));
+      const myIds = new Set([
+        user?._id?.toString(),
+        user?.id?.toString(),
+        user?.vendorId?.toString(),
+        user?.primaryBusinessId?.toString(),
+        user?.registrationId?.toString(),
+        activeBusinessId?.toString(),
+        ...(user?.businesses || []).map(b => (b?._id || b?.id || b?.businessId || b?.vendorId || '').toString())
+      ].filter(Boolean));
 
-    const isRelevantToVendor = (event) => {
-      const targetVid = String(event?.target?.vendorId || event?.data?.vendorId || event?.data?.vendor_id || '').toLowerCase();
-      const targetBiz = String(event?.target?.businessId || event?.data?.businessId || '').toLowerCase();
-      if (!targetVid && !targetBiz) return true; // Global / untargeted
-      return myVendorIds.has(targetVid) || myVendorIds.has(targetBiz);
+      return myIds.has(String(targetVid));
     };
 
-    const handleIncomingTransaction = (event) => {
-      if (!isRelevantToVendor(event) || !event.data) return;
-      const item = event.data;
-      const itemId = String(item._id || item.id || item.order_number || '');
+    const isJobApplication = (it) => {
+      if (!it) return false;
+      const t = String(it.type || '').toLowerCase();
+      const c = String(it.category || '').toLowerCase();
+      return Boolean(it.jobId || it.jobTitle || it.candidateEmail || it.candidateResume || it.applicationId) ||
+        t.startsWith('job') || t.includes('application') || c.startsWith('job');
+    };
 
-      const catStr = String(item.category || item.type || '').trim().toLowerCase();
-      const isJob = ['job', 'jobs', 'application', 'job application'].includes(catStr) ||
-                    Boolean(item.applicationId || item.jobTitle || item.candidateName || item.candidateResume);
-      const isBooking = !isJob && (
-        isBookingCategory(item.category || item.type) ||
-        ['stay', 'services', 'travel', 'appointment', 'hotel', 'hospital', 'booking'].includes(catStr) ||
-        Boolean(item.appointmentDate || item.checkInDate || item.roomNumber || item.boardingPoint || item.vehicleType)
-      );
+    const isBookingTransaction = (it) => {
+      if (!it || isJobApplication(it)) return false;
+      const t = String(it.type || '').toLowerCase();
+      const c = String(it.category || '').toLowerCase();
+      return ['booking', 'appointment', 'stay', 'travel', 'services', 'service'].some(k => t.includes(k) || c.includes(k)) ||
+        Boolean(it.checkInDate) || Boolean(it.appointmentDate) || Boolean(it.travelDate) || Boolean(it.boardingPoint) || Boolean(it.serviceName) || Boolean(it.bus_name);
+    };
 
-      if (isJob) {
+    const handleIncomingTransaction = (payload) => {
+      const raw = payload?.data || payload?.order || payload;
+      if (!raw) return;
+
+      const target = payload?.target;
+      if (!isRelevantToThisVendor(raw, target)) return;
+
+      const itemId = String(raw._id || raw.id || raw.order_number || raw.applicationId || '');
+      if (!itemId) return;
+
+      if (isJobApplication(raw)) {
         setApplications(prev => {
-          if (!Array.isArray(prev)) return [item];
-          const exists = prev.some(a => String(a._id || a.id || a.applicationId || a.order_number) === itemId);
-          if (exists) return prev;
-          return [item, ...prev];
+          const list = Array.isArray(prev) ? prev : [];
+          if (list.some(a => String(a._id || a.id || a.order_number || a.applicationId) === itemId)) return list;
+          return [raw, ...list];
         });
         clearApiCache('/applications');
-      } else if (isBooking) {
+        setNotifications(prev => [{
+          id: Date.now() + Math.random(),
+          text: `New Candidate Application: ${raw.candidateName || 'Candidate'} applied for ${raw.jobTitle || 'Job'}`
+        }, ...(prev || []).slice(0, 49)]);
+      } else if (isBookingTransaction(raw)) {
         setBookings(prev => {
-          if (!Array.isArray(prev)) return [item];
-          const exists = prev.some(b => String(b._id || b.id || b.order_number) === itemId);
-          if (exists) return prev;
-          return [item, ...prev];
+          const list = Array.isArray(prev) ? prev : [];
+          if (list.some(b => String(b._id || b.id || b.order_number) === itemId)) return list;
+          return [raw, ...list];
         });
         clearApiCache('/bookings');
+        setNotifications(prev => [{
+          id: Date.now() + Math.random(),
+          text: `New ${raw.doctorName ? 'Appointment' : 'Booking'} from ${raw.memberName || raw.customer_name || 'Customer'} (₹${raw.finalAmount ?? raw.totalAmount ?? 0})`
+        }, ...(prev || []).slice(0, 49)]);
       } else {
         setOrders(prev => {
-          if (!Array.isArray(prev)) return [item];
-          const exists = prev.some(o => String(o._id || o.id || o.order_number) === itemId);
-          if (exists) return prev;
-          return [item, ...prev];
+          const list = Array.isArray(prev) ? prev : [];
+          if (list.some(o => String(o._id || o.id || o.order_number) === itemId)) return list;
+          return [raw, ...list];
         });
         clearApiCache('/orders');
+        setNotifications(prev => [{
+          id: Date.now() + Math.random(),
+          text: `New Order from ${raw.memberName || raw.customer_name || 'Customer'} (₹${raw.finalAmount ?? raw.totalAmount ?? 0})`
+        }, ...(prev || []).slice(0, 49)]);
       }
 
-      clearApiCache('/analytics');
-
-      // Update KPI counters
-      setAnalytics(prev => ({
-        ...prev,
-        ordersCount: (prev?.ordersCount || 0) + 1,
-        pendingOrdersCount: (prev?.pendingOrdersCount || 0) + 1,
-        totalRevenue: (prev?.totalRevenue || 0) + Number(item.finalAmount || item.totalAmount || item.amount || 0)
-      }));
-
-      // Add toast notification
-      const label = isJob ? 'Job Application' : (isBooking ? 'Booking' : 'Order');
-      const custName = item.memberName || item.customer_name || item.candidateName || 'Customer';
-      const amountStr = item.finalAmount ? ` (₹${item.finalAmount})` : '';
-      setNotifications(prev => [
-        { id: Date.now() + Math.random(), text: `New ${label} from ${custName}${amountStr}` },
-        ...prev.slice(0, 49)
-      ]);
+      // Non-blocking refresh of dashboard KPI counts
+      cachedGet(`${getVendorBackendUrl()}/api/vendor/analytics`, getAxiosConfig())
+        .then(res => {
+          if (res?.data?.success) setAnalytics(res.data.data);
+        })
+        .catch(() => {});
     };
 
-    const handleStatusUpdate = (event) => {
-      if (!isRelevantToVendor(event) || !event.data) return;
-      const updatedItem = event.data;
-      const updatedId = String(updatedItem._id || updatedItem.id || updatedItem.order_number || '');
-      const newStatus = updatedItem.status || 'Updated';
+    const handleStatusUpdate = (payload) => {
+      const raw = payload?.data || payload?.order || payload;
+      if (!raw) return;
+      const targetId = String(raw._id || raw.id || raw.order_number || raw.applicationId || payload?.entityId || '');
+      const newStatus = raw.status || raw.orderStatus || payload?.data?.status;
+      if (!targetId || !newStatus) return;
 
-      setOrders(prev => (prev || []).map(o => String(o._id || o.id || o.order_number) === updatedId ? { ...o, ...updatedItem, status: newStatus } : o));
-      setBookings(prev => (prev || []).map(b => String(b._id || b.id || b.order_number) === updatedId ? { ...b, ...updatedItem, status: newStatus } : b));
-      setApplications(prev => (prev || []).map(a => String(a._id || a.id || a.applicationId || a.order_number) === updatedId ? { ...a, ...updatedItem, status: newStatus } : a));
+      const updateInList = (item) => {
+        if (String(item._id || item.id || item.order_number || item.applicationId) === targetId) {
+          return { ...item, status: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return item;
+      };
 
+      setOrders(prev => (Array.isArray(prev) ? prev : []).map(updateInList));
+      setBookings(prev => (Array.isArray(prev) ? prev : []).map(updateInList));
+      setApplications(prev => (Array.isArray(prev) ? prev : []).map(updateInList));
       clearApiCache('/orders');
       clearApiCache('/bookings');
       clearApiCache('/applications');
-      clearApiCache('/analytics');
     };
 
+    // 1. Connect real-time WebSocket client
+    wsClient.connect(token);
     const unsubs = [
       wsClient.on('ORDER_CREATED', handleIncomingTransaction),
       wsClient.on('BOOKING_CREATED', handleIncomingTransaction),
-      wsClient.on('APPOINTMENT_CREATED', handleIncomingTransaction),
       wsClient.on('APPLICATION_CREATED', handleIncomingTransaction),
-      wsClient.on('ORDER_UPDATED', handleStatusUpdate),
+      wsClient.on('new_order', handleIncomingTransaction),
+      wsClient.on('new_order_received', handleIncomingTransaction),
+      wsClient.on('new_order_placed', handleIncomingTransaction),
       wsClient.on('ORDER_STATUS_CHANGED', handleStatusUpdate),
-      wsClient.on('BOOKING_UPDATED', handleStatusUpdate),
-      wsClient.on('APPLICATION_UPDATED', handleStatusUpdate)
+      wsClient.on('ORDER_UPDATED', handleStatusUpdate),
+      wsClient.on('order:status_changed', handleStatusUpdate)
     ];
+
+    // 2. Fallback polling for when WebSocket disconnects or tab visibility resumes
+    const fetchOrdersFallback = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      try {
+        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders?limit=10&page=1`, getAxiosConfig());
+        if (res.data.success && Array.isArray(res.data.data)) {
+          const newOrders = res.data.data;
+          if (prevOrdersRef.current.length === 0) {
+            prevOrdersRef.current = newOrders;
+            return;
+          }
+          const existingIds = new Set(prevOrdersRef.current.map(o => o._id));
+          const actualNewOrders = newOrders.filter(o => !existingIds.has(o._id));
+          if (actualNewOrders.length > 0) {
+            actualNewOrders.forEach(o => handleIncomingTransaction({ data: o }));
+          }
+          prevOrdersRef.current = newOrders;
+        }
+      } catch (err) {
+        console.warn('Fallback sync check warning:', err?.message);
+      }
+    };
+
+    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 30000;
+    const interval = setInterval(fetchOrdersFallback, syncInterval);
+    const handleVis = () => {
+      if (document.visibilityState === 'visible') {
+        fetchOrdersFallback();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
 
     return () => {
       unsubs.forEach(unsub => {
-        if (typeof unsub === 'function') unsub();
+        try { unsub(); } catch (e) {}
       });
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVis);
     };
-  }, [token, user?._id, user?.role, user?.businesses]);
+  }, [token, user?._id, user?.role, activeBusinessId]);
 
   const DEFAULT_TIME_SLOTS = [
     '09:00 AM - 09:30 AM',

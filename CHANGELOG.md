@@ -8,20 +8,22 @@ All notable changes, task-by-task implementations, audits, and performance test 
 Replace 30-second interval HTTP polling in the Vendor Website with instant real-time WebSocket event listeners. Synchronize newly received orders, stay/travel/service bookings, and job applications instantly with live toast notifications, KPI badge updates, and automatic cache invalidation.
 
 ### Implementations
-1. **Redis Ecosystem Channel & Event Deduplication (`backend/eventSubscriber/subscriber.js`):**
-   - Subscribed to `connect:realtime:events` cross-platform ecosystem channel alongside `REDIS_CHANNELS.GLOBAL`.
-   - Added canonical dedup key resolution (`dedupId`) tracking processed events to prevent duplicate broadcasts.
-2. **Event Type Declarations (`backend/events/eventTypes.js` & `frontend/src/realtime/eventTypes.js`):**
-   - Added `BOOKING_CREATED`, `BOOKING_UPDATED`, `APPLICATION_CREATED`, `APPLICATION_UPDATED` event constants.
+1. **Multi-Channel Redis Ecosystem & Deduplication (`backend/eventSubscriber/subscriber.js`):**
+   - Subscribed to `connect:realtime:events`, `connect:events:orders`, `connect:events:global`, and `REDIS_CHANNELS.GLOBAL`.
+   - Added canonical dedup key resolution tracking processed events across multiple envelopes and payloads.
+   - Added automatic vendor ID and business ID targeting inference when embedded in payload data.
+2. **WebSocket Named Event Forwarding (`backend/websocket/socketServer.js`):**
+   - Added dual emission: emits both standard `realtime_event` and explicit event names (`ORDER_CREATED`, `BOOKING_CREATED`, etc.) directly to vendor rooms.
 3. **Public Order Route Event Broadcasting (`backend/routes/publicRoutes.js`):**
    - Dispatches `publishRealtimeEvent` on order/booking/job creation with vendor, user, and business targeting.
-4. **Frontend Real-Time Listener (`frontend/src/pages/VendorDashboard.jsx`):**
-   - Subscribes via `wsClient` to `ORDER_CREATED`, `BOOKING_CREATED`, `APPOINTMENT_CREATED`, `APPLICATION_CREATED`, `ORDER_UPDATED`, `ORDER_STATUS_CHANGED`, `BOOKING_UPDATED`, `APPLICATION_UPDATED`.
+4. **Frontend Real-Time Listener & Resilient Fallback (`frontend/src/pages/VendorDashboard.jsx`):**
+   - Subscribes via `wsClient` to `ORDER_CREATED`, `BOOKING_CREATED`, `APPLICATION_CREATED`, `new_order`, `new_order_received`, `new_order_placed`, `ORDER_STATUS_CHANGED`, `ORDER_UPDATED`, `order:status_changed`.
    - Filters events for relevance against authenticated vendor and associated outlet business IDs.
    - Prepends new transactions directly to React state with automatic API cache invalidation (`clearApiCache`), real-time toast alert banners, and live KPI metric increments.
+   - Added gentle 30s background fallback polling (`fetchOrdersFallback`) for cases where WebSocket disconnects or tab visibility resumes.
 
 ### Verification Results
-- `npm run build --prefix frontend`: Vite v5.4.21 built cleanly in 9.98s with 0 errors.
+- `npm run build --prefix frontend`: Vite v5.4.21 built cleanly in 12.02s with 0 errors.
 
 ---
 

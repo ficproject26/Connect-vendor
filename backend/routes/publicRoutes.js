@@ -899,46 +899,58 @@ router.post('/orders', async (req, res) => {
       );
       await reduceStockForOrder(existing, vendorId);
 
-      // Fetch fresh merged document to broadcast to WebSocket clients
-      const freshOrder = await Order.findById(existing._id).lean();
-      const broadcastEvent = isJob
-        ? (EVENT_TYPES.APPLICATION_CREATED || 'APPLICATION_CREATED')
-        : (isBooking ? (EVENT_TYPES.BOOKING_CREATED || 'BOOKING_CREATED') : EVENT_TYPES.ORDER_CREATED);
+      const isBookingType = ['Booking', 'Appointment', 'Stay', 'Travel', 'Services'].includes(orderType);
+      const broadcastEventName = isJob
+        ? 'APPLICATION_CREATED'
+        : (isBookingType ? 'BOOKING_CREATED' : EVENT_TYPES.ORDER_CREATED);
+      const broadcastEntityName = isJob
+        ? 'job'
+        : (isBookingType ? 'booking' : ENTITY_NAMES.ORDER);
+
+      const mergedOrder = {
+        ...(existing.toObject ? existing.toObject() : existing),
+        ...updateFields,
+        _id: existing._id
+      };
 
       publishRealtimeEvent({
-        event: broadcastEvent,
-        entity: isJob ? 'job' : (isBooking ? 'booking' : ENTITY_NAMES.ORDER),
-        entityId: (freshOrder?._id || existing._id).toString(),
+        event: broadcastEventName,
+        entity: broadcastEntityName,
+        entityId: existing._id ? existing._id.toString() : existing.id,
         action: 'created',
         target: {
-          vendorId: (freshOrder?.vendorId || freshOrder?.vendor_id || vendorId || '').toString(),
-          userId: (freshOrder?.memberId || freshOrder?.userId || freshOrder?.customerId || '').toString(),
-          businessId: (freshOrder?.businessId || freshOrder?.primaryBusinessId || req.body.businessId || '').toString(),
+          vendorId: (vendorId || existing.vendorId || '').toString(),
+          userId: (existing.memberId || existing.userId || existing.user_id || '').toString(),
+          businessId: (existing.businessId || existing.primaryBusinessId || req.body.businessId || '').toString(),
           role: 'Vendor'
         },
-        data: freshOrder || existing
+        data: mergedOrder
       }).catch(err => console.warn('[Realtime] Public order sync publish warning:', err.message));
 
-      return res.status(200).json({ success: true, message: 'Order updated in vendor dashboard successfully', data: freshOrder || existing });
+      return res.status(200).json({ success: true, message: 'Order updated in vendor dashboard successfully', data: existing });
     }
 
     const order = await Order.create(orderData);
     await reduceStockForOrder(order, vendorId);
 
-    // Broadcast Real-time Order Created Event
-    const broadcastEventNew = isJob
-      ? (EVENT_TYPES.APPLICATION_CREATED || 'APPLICATION_CREATED')
-      : (isBooking ? (EVENT_TYPES.BOOKING_CREATED || 'BOOKING_CREATED') : EVENT_TYPES.ORDER_CREATED);
+    const isBookingType = ['Booking', 'Appointment', 'Stay', 'Travel', 'Services'].includes(orderType);
+    const broadcastEventName = isJob
+      ? 'APPLICATION_CREATED'
+      : (isBookingType ? 'BOOKING_CREATED' : EVENT_TYPES.ORDER_CREATED);
+    const broadcastEntityName = isJob
+      ? 'job'
+      : (isBookingType ? 'booking' : ENTITY_NAMES.ORDER);
 
+    // Broadcast Real-time Order Created Event
     publishRealtimeEvent({
-      event: broadcastEventNew,
-      entity: isJob ? 'job' : (isBooking ? 'booking' : ENTITY_NAMES.ORDER),
+      event: broadcastEventName,
+      entity: broadcastEntityName,
       entityId: order._id ? order._id.toString() : order.id,
       action: 'created',
       target: {
-        vendorId: (order.vendorId || order.vendor_id || vendorId || '').toString(),
+        vendorId: (order.vendorId || order.vendor_id || '').toString(),
         userId: (order.memberId || order.userId || order.user_id || '').toString(),
-        businessId: (order.businessId || order.primaryBusinessId || req.body.businessId || '').toString(),
+        businessId: (order.businessId || order.primaryBusinessId || '').toString(),
         role: 'Vendor'
       },
       data: order

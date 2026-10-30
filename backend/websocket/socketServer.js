@@ -330,6 +330,9 @@ class SocketServer {
 
     for (const room of roomsToNotify) {
       this.io.to(room).emit('realtime_event', event);
+      if (eventName) {
+        this.io.to(room).emit(eventName, event);
+      }
     }
   }
 
