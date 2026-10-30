@@ -2,6 +2,61 @@
 
 All notable changes, task-by-task implementations, audits, and performance test results are documented in this file in chronological order.
 
+## [Latest-First Transactions + Enriched Order, Booking & Job Application Cards] - 2026-10-30
+
+### Scope
+Enforce strict descending chronological sorting (latest transaction first) across Orders, Bookings, and Job Applications, and enrich list cards and tables with vital transaction metadata (customer phone numbers, quantities, product thumbnails, payment status badges, and property names) directly on the listing views without requiring modal clicks.
+
+### Implementations
+
+1. **Backend Chronological Sorting with ObjectId Tie-Breakers (`backend/controllers/vendorController.js`):**
+   - **`getOrders`:** Added deterministic secondary sort `Order.find(baseQuery).sort({ createdAt: -1, _id: -1 })`. Added explicit `totalQuantity` calculation summing `item.quantity` across `order.items`, and ensured `customerPhone` is consistently exposed.
+   - **`getBookings`:** Added deterministic secondary sort `Order.find(baseQuery).sort({ createdAt: -1, _id: -1 })`.
+   - **`getApplications`:** Added ObjectId tie-breaker to the aggregation pipeline `{ $sort: { createdAt: -1, applicationDate: -1, created_at: -1, _id: -1 } }`.
+
+2. **Frontend Resilient Sorting & Enriched Listing Tables (`frontend/src/pages/VendorDashboard.jsx`):**
+   - **Resilient Timestamp Resolver:** Created `getRecordTimestamp(record)` supporting `createdAt`, `orderDate`, `bookingDate`, `applicationDate`, `created_at`, ISO date strings, Unix timestamps, and MongoDB ObjectId 4-byte epoch fallback (`parseInt(id.substring(0, 8), 16) * 1000`) for complete resilience against legacy or missing timestamps.
+   - **Descending Sorting:** Enforced client-side descending chronological sort on `filteredOrders`, `filteredBookings`, and `filteredApps` before rendering pagination.
+   - **Orders Table:** Added Customer Phone (`📞 {custPhone}`), Product Thumbnail image, Total Quantity badge (`Qty: {totalQty}`), and Total Amount (`₹{finalAmount}`).
+   - **Bookings Table:** Added Customer Phone (`📞 {phone}`), Property Name for Stay bookings (`propName`), and distinct Payment Status badge (`✓ Paid` / `Payment Pending`) in the Amount column.
+
+### Verification Results
+- `npm run build --prefix frontend`: Vite v5.4.21 built cleanly in 8.17s with 0 errors (`dist/index.html` + asset bundles).
+- All existing modal actions (View Details, Accept, Reject, Update Status, Bus seat allocation) preserved.
+
+---
+
+## [Critical Bug Fix — Vendor-Wise Transaction Mapping & Aggregation Pipeline Optimization] - 2026-10-30
+
+### Scope
+Resolve customer transaction mapping across Customer Website, Customer Mobile App, and Vendor platforms. Ensure all Orders, Bookings, and Job Applications appear under the correct vendor account, optimize backend query performance, and eliminate 45-second MongoDB network timeouts.
+
+### Root Cause Analysis & Implementations
+
+1. **Resolution of 45-Second MongoDB Timeout in `getApplications` (`backend/controllers/vendorController.js`):**
+   - **Root Cause:** Raw 10MB base64 PDF resume uploads stored in MongoDB `orders.candidateResume` caused massive network payload transfers over MongoDB Atlas. Fetching application documents without field projection took >2m 45s, triggering Mongoose's 45s `socketTimeoutMS` (`MongoNetworkTimeoutError`).
+   - **Fix:** Implemented an aggregation pipeline with `$cond` projection: if `candidateResume` string length exceeds 500 characters, it safely projects to `'Resume.pdf'` for listing requests. Full resume downloads are served on-demand via `GET /api/vendor/orders/:id/resume`.
+   - **Result:** Endpoint execution time dropped from >2m 45s to **519ms**.
+
+2. **Full-Collection `Customer.find({})` Atlas Scan Elimination:**
+   - **Root Cause:** `buildCustomerLookupForOrders` executed `Customer.find({})` with an empty filter `{}` on every call to `getOrders`, `getBookings`, `getApplications`, and `getSalesPayments`, scanning the entire unindexed customer collection across MongoDB Atlas.
+   - **Fix:** Replaced empty filter with targeted `$or: orCustConditions` strictly querying the IDs, emails, and phone numbers referenced by the retrieved records. Made the related payments lookup strictly conditional.
+
+3. **Vendor Business ID Matching Enhancement:**
+   - Updated `getVendorMatchingIds` and `getApplications` to match `b.businessId` and `b.vendorId` alongside `b._id` and `b.id`, guaranteeing multi-business vendors correctly receive all corresponding transactions.
+
+### Files Modified
+- `backend/controllers/vendorController.js`
+- `CHANGELOG.md`
+- `AGENT.md`
+
+### Verification Results
+- `GET http://localhost:8002/api/vendor/applications` returns 21 applications in <3s (519ms DB execution time).
+- Dedicated resume endpoint `GET http://localhost:8002/api/vendor/orders/JOB527732/resume` serves HTTP 200 `application/pdf`.
+- All orders, bookings, and applications display under the correct authenticated vendor account.
+
+---
+
 ## [Critical Performance Optimization — Vendor Website & Backend] - 2026-10-29
 
 ### Scope

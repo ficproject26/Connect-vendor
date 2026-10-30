@@ -1939,6 +1939,21 @@ const VendorDashboard = () => {
     return addrStr;
   };
 
+  const getRecordTimestamp = (record) => {
+    if (!record) return 0;
+    const rawDate = record.createdAt || record.created_at || record.orderDate || record.applicationDate || record.date || record.bookingDate;
+    if (rawDate) {
+      const t = new Date(rawDate).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    const idStr = String(record._id || record.id || record.order_number || '');
+    if (/^[0-9a-fA-F]{24}$/.test(idStr)) {
+      const ts = parseInt(idStr.substring(0, 8), 16) * 1000;
+      if (!isNaN(ts) && ts > 0) return ts;
+    }
+    return 0;
+  };
+
   const deduplicateAddressSegments = (addrStr) => {
     if (!addrStr || typeof addrStr !== 'string') return addrStr;
     const tokens = [];
@@ -6628,6 +6643,8 @@ const VendorDashboard = () => {
                   return true;
                 });
 
+                filteredOrders.sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a));
+
                 if (filteredOrders.length === 0) {
                   return (
                     <div className="glass-card p-12 text-center rounded-3xl">
@@ -6639,7 +6656,7 @@ const VendorDashboard = () => {
 
                 return (
                   <div className="glass-card rounded-3xl overflow-x-auto border border-slate-200/60 dark:border-slate-800/80 shadow-sm">
-                    <table className="w-full text-left border-collapse min-w-[950px]">
+                    <table className="w-full text-left border-collapse min-w-[1000px]">
                       <thead>
                         <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">
                           <th className="px-4 py-4 text-center w-12">S.No</th>
@@ -6647,7 +6664,8 @@ const VendorDashboard = () => {
                           <th className="px-5 py-4">Order Details</th>
                           <th className="px-5 py-4">Product / Item</th>
                           <th className="px-5 py-4">Order Date & Time</th>
-                          <th className="px-5 py-4">Payment Method</th>
+                          <th className="px-5 py-4">Amount</th>
+                          <th className="px-5 py-4">Payment Status</th>
                           <th className="px-5 py-4">Status</th>
                           <th className="px-5 py-4 text-right">Actions / View</th>
                         </tr>
@@ -6656,6 +6674,9 @@ const VendorDashboard = () => {
                         {filteredOrders.map((order, index) => {
                           const orderIdStr = String(order._id || order.id || order.order_number);
                           const isUpdating = updatingStatusIds.has(orderIdStr);
+                          const custPhone = order.customerPhone || order.customer_phone || order.phone || order.memberPhone;
+                          const totalQty = order.totalQuantity || (order.items && order.items.length > 0 ? order.items.reduce((s, it) => s + (Number(it.quantity) || 1), 0) : (order.quantity || 1));
+                          const prodImg = order.image || (order.items && order.items[0]?.image);
 
                           return (
                             <tr
@@ -6672,6 +6693,12 @@ const VendorDashboard = () => {
                                 <div className="font-semibold text-slate-900 dark:text-white text-sm">
                                   {order.customer_name || order.memberName || 'N/A'}
                                 </div>
+                                {custPhone && (
+                                  <div className="text-xs text-slate-600 dark:text-slate-300 font-medium flex items-center gap-1 mt-0.5">
+                                    <span>📞</span>
+                                    <span>{custPhone}</span>
+                                  </div>
+                                )}
                                 {(order.customer_email || order.customerEmail || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || order.candidateEmail) && (
                                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                     {order.customer_email || order.customerEmail || (order.memberId && order.memberId.includes('@') ? order.memberId : '') || order.candidateEmail}
@@ -6697,23 +6724,38 @@ const VendorDashboard = () => {
 
                               {/* 4. Product / Item */}
                               <td className="px-5 py-4">
-                                {order.items && order.items.length > 0 ? (
-                                  <div className="space-y-1">
-                                    {order.items.map((item, i) => (
-                                      <div key={i} className="text-xs font-bold text-slate-900 dark:text-white">
-                                        {item.name || item.productName || 'Item'} <span className="text-slate-500 font-normal">× {item.quantity || 1}</span>
+                                <div className="flex items-start gap-2.5">
+                                  {prodImg && (
+                                    <img
+                                      src={formatImageUrl(prodImg)}
+                                      alt=""
+                                      className="w-10 h-10 rounded-xl object-cover border border-slate-200 dark:border-slate-800 shrink-0 bg-slate-100 dark:bg-slate-900"
+                                      loading="lazy"
+                                    />
+                                  )}
+                                  <div>
+                                    {order.items && order.items.length > 0 ? (
+                                      <div className="space-y-1">
+                                        {order.items.map((item, i) => (
+                                          <div key={i} className="text-xs font-bold text-slate-900 dark:text-white">
+                                            {item.name || item.productName || 'Item'} <span className="text-slate-500 font-normal">× {item.quantity || 1}</span>
+                                          </div>
+                                        ))}
                                       </div>
-                                    ))}
+                                    ) : (
+                                      <div className="text-xs font-bold text-slate-900 dark:text-white">
+                                        {order.product_details || 'N/A'} <span className="text-slate-500 font-normal">× {order.quantity || 1}</span>
+                                      </div>
+                                    )}
+                                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                      <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                        Category: {order.type || order.category || 'Product'}
+                                      </span>
+                                      <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300">
+                                        Qty: {totalQty}
+                                      </span>
+                                    </div>
                                   </div>
-                                ) : (
-                                  <div className="text-xs font-bold text-slate-900 dark:text-white">
-                                    {order.product_details || 'N/A'} <span className="text-slate-500 font-normal">× 1</span>
-                                  </div>
-                                )}
-                                <div className="mt-1">
-                                  <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                                    Category: {order.type || order.category || 'Product'}
-                                  </span>
                                 </div>
                               </td>
 
@@ -6733,7 +6775,14 @@ const VendorDashboard = () => {
                                 })()}
                               </td>
 
-                              {/* 6. Payment Method */}
+                              {/* 6. Amount */}
+                              <td className="px-5 py-4 whitespace-nowrap">
+                                <div className="text-sm font-extrabold text-slate-900 dark:text-white">
+                                  ₹{Number(order.finalAmount ?? order.totalAmount ?? order.amount ?? 0).toLocaleString('en-IN')}
+                                </div>
+                              </td>
+
+                              {/* 7. Payment Status & Method */}
                               <td className="px-5 py-4 whitespace-nowrap">
                                 {(() => {
                                   const rawMethod = order.paymentMethod || order.payment_method || order.paymentMode || order.paymentType || (order.walletTxnId ? 'Connect Wallet' : order.razorpayPaymentId ? 'Online (Razorpay)' : 'Connect Wallet');
@@ -6770,7 +6819,8 @@ const VendorDashboard = () => {
                                     label = "Online (Razorpay)";
                                   }
 
-                                  const txnId = order.transactionId || order.razorpayPaymentId || order.walletTxnId;
+                                  const isDelivered = ['Delivered', 'Completed'].includes(order.status);
+                                  const isPaid = order.paymentStatus === 'Paid' || order.payment_status === 'Paid' || isDelivered || (!isCod && order.paymentStatus !== 'Failed' && order.paymentStatus !== 'Pending');
 
                                   return (
                                     <div className="space-y-1">
@@ -6778,37 +6828,23 @@ const VendorDashboard = () => {
                                         <span>{icon}</span>
                                         <span>{label}</span>
                                       </span>
-                                      {(() => {
-                                        const isPaid = order.paymentStatus === 'Paid' || ['Delivered', 'Completed'].includes(order.status);
-                                        if (isCod && !isPaid) {
-                                          return (
-                                            <div className="text-[10px] text-amber-600 dark:text-amber-400 font-sans italic">
-                                              Pending collection
-                                            </div>
-                                          );
-                                        }
-                                        if (txnId && (!isCod || (!String(txnId).startsWith('TXN_') && isPaid))) {
-                                          return (
-                                            <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 truncate max-w-[150px]" title={txnId}>
-                                              ID: {txnId}
-                                            </div>
-                                          );
-                                        }
-                                        if (isCod) {
-                                          return (
-                                            <div className="text-[10px] text-slate-400 italic">
-                                              {isPaid ? 'Cash collected' : 'Pending collection'}
-                                            </div>
-                                          );
-                                        }
-                                        return null;
-                                      })()}
+                                      <div>
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                          isPaid
+                                            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                                            : isCod
+                                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                                            : 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
+                                        }`}>
+                                          {isPaid ? '✓ Paid' : isCod ? 'COD Pending' : (order.paymentStatus || 'Payment Pending')}
+                                        </span>
+                                      </div>
                                     </div>
                                   );
                                 })()}
                               </td>
 
-                              {/* 7. Status */}
+                              {/* 8. Status */}
                               <td className="px-5 py-4">
                                 <div className="space-y-1">
                                   {(() => {
@@ -7118,6 +7154,8 @@ const VendorDashboard = () => {
                           return matchesBusiness && matchesStatus && matchesSearch && matchesTime;
                         });
 
+                        filteredBookings.sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a));
+
                         if (filteredBookings.length === 0) {
                           return (
                             <div className="glass-card p-12 text-center rounded-3xl">
@@ -7145,6 +7183,12 @@ const VendorDashboard = () => {
                                     {/* Customer Name & ID */}
                                     <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                       <div>{b.bookingHolder?.name || b.memberName || b.customer_name || 'Customer'}</div>
+                                      {(b.bookingHolder?.phone || b.customerPhone || b.customer_phone || b.phone || b.memberPhone) && (
+                                        <div className="text-[11px] text-slate-600 dark:text-slate-300 font-medium flex items-center gap-1 mt-0.5">
+                                          <span>📞</span>
+                                          <span>{b.bookingHolder?.phone || b.customerPhone || b.customer_phone || b.phone || b.memberPhone}</span>
+                                        </div>
+                                      )}
                                       <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {(b.bookingHolder?.customerId && b.bookingHolder.customerId !== 'FIC-CUST-100001') ? b.bookingHolder.customerId : getCustomerDisplayId(b)}</div>
                                     </td>
 
@@ -7173,10 +7217,10 @@ const VendorDashboard = () => {
                                         } else if (isStay) {
                                           badgeLabel = 'STAY';
                                           badgeColor = 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300';
-                                          detailTitle = b.roomName || (b.roomDetails && b.roomDetails.name) || (b.roomNumber ? `Room #${b.roomNumber}` : null) || (b.items && b.items[0]?.name) || b.product_details || 'Deluxe Room';
-                                          if (b.roomNumber && !detailTitle.includes(`Room #${b.roomNumber}`)) {
-                                            subInfo = `Room: ${b.roomNumber}`;
-                                          }
+                                          const propName = b.propertyDetails?.propertyName || b.propertyName || b.hotelName || 'Stay Property';
+                                          const roomName = b.roomName || (b.roomDetails && b.roomDetails.name) || (b.roomNumber ? `Room #${b.roomNumber}` : null) || (b.items && b.items[0]?.name) || b.product_details || 'Deluxe Room';
+                                          detailTitle = propName;
+                                          subInfo = `${roomName}${b.roomNumber && !roomName.includes(`Room #${b.roomNumber}`) ? ` • Room #${b.roomNumber}` : ''}`;
                                         } else if (isTravel) {
                                           badgeLabel = 'TRAVEL';
                                           badgeColor = 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300';
@@ -7378,8 +7422,20 @@ const VendorDashboard = () => {
 
                                     {/* Amount & Status */}
                                     <td className="px-6 py-4 text-xs whitespace-nowrap min-w-[130px]">
-                                      <div className="font-extrabold text-sm text-slate-900 dark:text-white">₹{(b.finalAmount || b.amount || 0).toLocaleString()}</div>
-                                      <div className="mt-1.5 flex items-center">
+                                      <div className="font-extrabold text-sm text-slate-900 dark:text-white">₹{Number(b.finalAmount ?? b.amount ?? 0).toLocaleString('en-IN')}</div>
+                                      <div className="mt-1 flex flex-col gap-1 items-start">
+                                        {(() => {
+                                          const isPaid = (b.paymentStatus === 'Completed' || b.paymentStatus === 'Paid' || ['Completed', 'Delivered', 'Checked Out'].includes(b.status));
+                                          return (
+                                            <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                              isPaid
+                                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                                                : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                                            }`}>
+                                              {isPaid ? '✓ Paid' : (b.paymentStatus || 'Payment Pending')}
+                                            </span>
+                                          );
+                                        })()}
                                         {(() => {
                                           let displayStatus = b.status || 'Pending';
                                           if ((isStayBooking(b) || isServicesBooking(b) || isTravelBooking(b)) && (displayStatus === 'Order Received' || displayStatus === 'Accepted' || displayStatus === 'BOOKING RECEIVED')) {
@@ -8039,6 +8095,8 @@ const VendorDashboard = () => {
 
                   return true;
                 });
+
+                filteredApps.sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a));
 
                 if (filteredApps.length === 0) {
                   return (

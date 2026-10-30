@@ -209,6 +209,7 @@ const getVendorMatchingIds = (user, parentUserId) => {
       if (b._id) businessIds.push(b._id.toString());
       if (b.id) businessIds.push(b.id.toString());
       if (b.vendorId) businessIds.push(String(b.vendorId));
+      if (b.businessId) businessIds.push(String(b.businessId));
     });
   }
   const uniqueBusinessIds = [...new Set(businessIds.filter(Boolean))];
@@ -1297,18 +1298,18 @@ const buildCustomerLookupForOrders = async (orders) => {
   const orderStrIds = orders.map(o => String(o._id));
   const orderNumbers = orders.map(o => o.order_number || o.id).filter(Boolean);
 
-  // Fetch all Customer documents plus matching Users and related Payments in parallel
+  // Fetch matching Customer documents, Users and related Payments in parallel (targeted lookup only)
   const [dbCustomers, memberUsers, relatedPayments] = await Promise.all([
-    Customer.find({}).select('name email phone mobileNumber customerId registrationId _id address street city state pincode aadhaar pan role status addresses memberId gender age').lean(),
+    orCustConditions.length > 0
+      ? Customer.find({ $or: orCustConditions }).select('name email phone mobileNumber customerId registrationId _id address street city state pincode aadhaar pan role status addresses memberId gender age').lean()
+      : Promise.resolve([]),
     orCustConditions.length > 0
       ? User.find({ $or: orCustConditions }).select('name email phone customerId registrationId _id aadhaar pan role memberId gender age').lean()
       : Promise.resolve([]),
-    mongoose.connection.db
+    (mongoose.connection.db && (orderObjIds.length > 0 || orderStrIds.length > 0 || orderNumbers.length > 0))
       ? mongoose.connection.db.collection('payments').find({
           sourceModel: 'Order',
-          $or: [
-            { sourceId: { $in: [...orderObjIds, ...orderStrIds, ...orderNumbers] } }
-          ]
+          sourceId: { $in: [...orderObjIds, ...orderStrIds, ...orderNumbers] }
         }).toArray()
       : Promise.resolve([])
   ]);
@@ -1457,12 +1458,7 @@ const getOrders = async (req, res) => {
       });
     }
 
-    const businessIds = [parentUserId.toString()];
-    if (user.businesses && user.businesses.length > 0) {
-      user.businesses.forEach(b => {
-        if (b._id) businessIds.push(b._id.toString());
-      });
-    }
+    const businessIds = getVendorMatchingIds(user, parentUserId);
 
     // Query strictly for transactional product/food/daily needs orders
     const ORDER_CATEGORY_TYPES = [
@@ -1560,7 +1556,7 @@ const getOrders = async (req, res) => {
     const page = parseInt(req.query.page, 10);
     const limit = parseInt(req.query.limit, 10);
 
-    let query = Order.find(baseQuery).sort({ createdAt: -1 }).lean();
+    let query = Order.find(baseQuery).sort({ createdAt: -1, _id: -1 }).lean();
 
     let total = 0;
     if (!isNaN(page) && !isNaN(limit) && limit > 0) {
@@ -1727,6 +1723,18 @@ const getOrders = async (req, res) => {
         obj.paidAt = obj.paymentDate || obj.created_at || obj.createdAt || new Date();
       }
 
+      // Compute total items quantity for order card display
+      const totalQty = (obj.items && Array.isArray(obj.items) && obj.items.length > 0)
+        ? obj.items.reduce((sum, it) => sum + (Number(it.quantity) || 1), 0)
+        : (Number(obj.quantity) || 1);
+      obj.totalQuantity = totalQty;
+      if (!obj.quantity) obj.quantity = totalQty;
+
+      // Ensure customerPhone is consistently accessible
+      if (!obj.customerPhone && (obj.customer_phone || obj.phone || obj.memberPhone)) {
+        obj.customerPhone = obj.customer_phone || obj.phone || obj.memberPhone;
+      }
+
       return obj;
     });
 
@@ -1870,7 +1878,7 @@ const getBookings = async (req, res) => {
     const page = parseInt(req.query.page, 10);
     const limit = parseInt(req.query.limit, 10);
 
-    let query = Order.find(baseQuery).sort({ createdAt: -1 }).lean();
+    let query = Order.find(baseQuery).sort({ createdAt: -1, _id: -1 }).lean();
 
     let total = 0;
     if (!isNaN(page) && !isNaN(limit) && limit > 0) {
@@ -2547,6 +2555,9 @@ const getApplications = async (req, res) => {
         const bCat = (b?.vendorType || b?.category || b?.subcategory || b?.name || '').toLowerCase();
         if (bCat.startsWith('job')) {
           if (b._id) jobBusinessIds.push(b._id.toString());
+          if (b.id) jobBusinessIds.push(b.id.toString());
+          if (b.vendorId) jobBusinessIds.push(String(b.vendorId));
+          if (b.businessId) jobBusinessIds.push(String(b.businessId));
         }
       });
     }
@@ -2578,16 +2589,7 @@ const getApplications = async (req, res) => {
     const baseQuery = {
       $and: [
         {
-          type: { $in: APPLICATION_BASED_TYPES, $nin: [...ORDER_BASED_TYPES, ...BOOKING_BASED_TYPES] }
-        },
-        {
-          category: { $nin: ['Travel', 'travel', 'Food', 'food', 'Stay', 'stay', 'Products', 'products', 'Daily Needs', 'daily needs', 'Services', 'services'] }
-        },
-        {
-          $or: [
-            { order_number: { $not: /^BKG|^ORD/i } },
-            { type: { $in: ['Job', 'Jobs', 'Job Application', 'application', 'Application'] } }
-          ]
+          type: { $in: APPLICATION_BASED_TYPES }
         },
         {
           $or: [
@@ -2624,15 +2626,29 @@ const getApplications = async (req, res) => {
     const page = parseInt(req.query.page, 10);
     const limit = parseInt(req.query.limit, 10);
 
-    let query = Order.find(baseQuery).sort({ applicationDate: -1, createdAt: -1, created_at: -1 }).lean();
+    const pipeline = [
+      { $match: baseQuery },
+      { $sort: { createdAt: -1, applicationDate: -1, created_at: -1, _id: -1 } },
+      {
+        $addFields: {
+          candidateResume: {
+            $cond: [
+              { $gt: [{ $strLenCP: { $ifNull: ['$candidateResume', ''] } }, 500] },
+              'Resume.pdf',
+              '$candidateResume'
+            ]
+          }
+        }
+      }
+    ];
 
     let total = 0;
     if (!isNaN(page) && !isNaN(limit) && limit > 0) {
       total = await Order.countDocuments(baseQuery);
-      query = query.skip((page - 1) * limit).limit(limit);
+      pipeline.push({ $skip: (page - 1) * limit }, { $limit: limit });
     }
 
-    const applications = await query;
+    const applications = await Order.aggregate(pipeline);
     const customerLookup = await buildCustomerLookupForOrders(applications);
 
     // Build map of vendor job vacancies and fetch any extra referenced jobs
