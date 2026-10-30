@@ -23,6 +23,15 @@ This document serves as the persistent source of project memory, architecture bo
    - Never introduce infinite retry loops or unbounded waiting periods.
 7. **Read-Only Audit First:** Always audit in read-only mode, establish baselines, and wait for explicit user approval before editing files.
 8. **Document All Changes:** Update `CHANGELOG.md` and `AGENT.md` after every approved implementation and report verified before/after measurements.
+9. **PERMANENT & IMMUTABLE WORKFLOW — Latest-First Transactions + Enriched Listing Cards:**
+   - **Strict Descending Sorting:** All transactions across Orders, Bookings, and Job Applications MUST appear in strictly descending chronological order (newest first). Older transactions must always follow below newer transactions. The backend must enforce `{ createdAt: -1, _id: -1 }` (and aggregation pipeline equivalents), and the frontend must enforce descending sorting using `getRecordTimestamp(record)` with the 4-byte MongoDB ObjectId timestamp fallback. NEVER alter or revert this sorting behavior.
+   - **Enriched Card Presentation:** Transaction cards and listing tables MUST directly display complete key transaction details without requiring the vendor to open the detail modal:
+     - **Orders:** Order ID, Customer Name, authorized Customer Phone (`📞`), Product/Item Name, Product Thumbnail, Quantity badge, Total Amount, Payment Status badge (`✓ Paid` / `COD Pending` / `Pending`), and Order Status badge.
+     - **Stay Bookings:** Booking ID, Customer Name, authorized Phone, Property Name, Room Name, distinct and separate Check-in and Check-out Date & Time boxes, Guest count, Total Amount, Payment Status badge, and Booking Status badge.
+     - **Travel Bookings:** Booking ID, Customer Name, authorized Phone, Travel Option / Vehicle Name, Route Strip (Origin ➔ Destination), Date & Departure Time, Passenger count, Total Amount, Payment Status badge, and Booking Status badge.
+     - **Service Bookings:** Booking ID, Customer Name, authorized Phone, Service Name, Schedule Box (Service Date & Time Slot), Total Amount, Payment Status badge, and Booking Status badge.
+     - **Job Applications:** Application ID, Candidate Name, authorized Phone & Email, Job Title, Job ID reference, Education badge, Experience badge, CV indicator, and Application Submission Date.
+   - **Preserve All Workflows:** NEVER remove or break the detail modal openers, status transition actions (Accept, Reject, Update Status), or bus seat allocation flows. NEVER reduce cards back to sparse single-line summaries or Order ID-only views.
 
 ---
 
