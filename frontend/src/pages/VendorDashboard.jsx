@@ -14,6 +14,7 @@ import { logout, toggleSidebar, updateCard, updateUser, switchBusinessSuccess } 
 import Modal from '../components/common/Modal';
 import NotificationDropdown from '../components/common/NotificationDropdown';
 import { getBackendUrl, getAdminBackendUrl, getVendorBackendUrl, formatImageUrl, cachedGet, clearApiCache } from '../services/apiSetup';
+import wsClient from '../realtime/wsClient';
 import { getBaseVendorType, vendorTaxonomy } from '../data/servicesData';
 import { COMPLETE_CAT_TAXONOMY } from '../data/completeTaxonomy';
 import { compressImage } from '../utils/imageCompressor';
@@ -3246,58 +3247,123 @@ const VendorDashboard = () => {
     }
   };
 
-  // Poll for real-time notifications for Vendor role
+  // Real-Time WebSocket Synchronization for Orders, Bookings & Applications
   useEffect(() => {
     if (!token || user?.role !== 'Vendor') {
       return;
     }
 
-    const fetchOrders = async () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      try {
-        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders?limit=10&page=1`, getAxiosConfig());
-        if (res.data.success && Array.isArray(res.data.data)) {
-          const newOrders = res.data.data;
+    // Connect WebSocket client
+    wsClient.connect(token);
 
-          // On first load, initialize the ref with existing orders
-          if (prevOrdersRef.current.length === 0) {
-            prevOrdersRef.current = newOrders;
-            return;
-          }
+    const myVendorIds = new Set([
+      user?._id?.toString(),
+      user?.id?.toString(),
+      user?.vendorId?.toString(),
+      user?.primaryBusinessId?.toString(),
+      ...(user?.businesses || []).map(b => (b?._id || b?.id || b?.vendorId || '').toString())
+    ].filter(Boolean).map(s => s.toLowerCase()));
 
-          // Detect new orders
-          const existingIds = new Set(prevOrdersRef.current.map(o => o._id));
-          const actualNewOrders = newOrders.filter(o => !existingIds.has(o._id));
-
-          if (actualNewOrders.length > 0) {
-            const newNotifications = actualNewOrders.map(order => ({
-              id: Date.now() + Math.random(),
-              text: `New ${order.doctorName ? 'Appointment' : 'Order'} from ${order.memberName} (₹${order.finalAmount})`
-            }));
-            setNotifications(prev => [...newNotifications, ...prev]);
-          }
-
-          prevOrdersRef.current = newOrders;
-        }
-      } catch (err) {
-        console.error('Error fetching orders for notifications:', err);
-      }
+    const isRelevantToVendor = (event) => {
+      const targetVid = String(event?.target?.vendorId || event?.data?.vendorId || event?.data?.vendor_id || '').toLowerCase();
+      const targetBiz = String(event?.target?.businessId || event?.data?.businessId || '').toLowerCase();
+      if (!targetVid && !targetBiz) return true; // Global / untargeted
+      return myVendorIds.has(targetVid) || myVendorIds.has(targetBiz);
     };
 
-    fetchOrders();
-    const syncInterval = Number(import.meta.env.VITE_SYNC_INTERVAL) || 30000;
-    const interval = setInterval(fetchOrders, syncInterval);
-    const handleVis = () => {
-      if (document.visibilityState === 'visible') {
-        fetchOrders();
+    const handleIncomingTransaction = (event) => {
+      if (!isRelevantToVendor(event) || !event.data) return;
+      const item = event.data;
+      const itemId = String(item._id || item.id || item.order_number || '');
+
+      const catStr = String(item.category || item.type || '').trim().toLowerCase();
+      const isJob = ['job', 'jobs', 'application', 'job application'].includes(catStr) ||
+                    Boolean(item.applicationId || item.jobTitle || item.candidateName || item.candidateResume);
+      const isBooking = !isJob && (
+        isBookingCategory(item.category || item.type) ||
+        ['stay', 'services', 'travel', 'appointment', 'hotel', 'hospital', 'booking'].includes(catStr) ||
+        Boolean(item.appointmentDate || item.checkInDate || item.roomNumber || item.boardingPoint || item.vehicleType)
+      );
+
+      if (isJob) {
+        setApplications(prev => {
+          if (!Array.isArray(prev)) return [item];
+          const exists = prev.some(a => String(a._id || a.id || a.applicationId || a.order_number) === itemId);
+          if (exists) return prev;
+          return [item, ...prev];
+        });
+        clearApiCache('/applications');
+      } else if (isBooking) {
+        setBookings(prev => {
+          if (!Array.isArray(prev)) return [item];
+          const exists = prev.some(b => String(b._id || b.id || b.order_number) === itemId);
+          if (exists) return prev;
+          return [item, ...prev];
+        });
+        clearApiCache('/bookings');
+      } else {
+        setOrders(prev => {
+          if (!Array.isArray(prev)) return [item];
+          const exists = prev.some(o => String(o._id || o.id || o.order_number) === itemId);
+          if (exists) return prev;
+          return [item, ...prev];
+        });
+        clearApiCache('/orders');
       }
+
+      clearApiCache('/analytics');
+
+      // Update KPI counters
+      setAnalytics(prev => ({
+        ...prev,
+        ordersCount: (prev?.ordersCount || 0) + 1,
+        pendingOrdersCount: (prev?.pendingOrdersCount || 0) + 1,
+        totalRevenue: (prev?.totalRevenue || 0) + Number(item.finalAmount || item.totalAmount || item.amount || 0)
+      }));
+
+      // Add toast notification
+      const label = isJob ? 'Job Application' : (isBooking ? 'Booking' : 'Order');
+      const custName = item.memberName || item.customer_name || item.candidateName || 'Customer';
+      const amountStr = item.finalAmount ? ` (₹${item.finalAmount})` : '';
+      setNotifications(prev => [
+        { id: Date.now() + Math.random(), text: `New ${label} from ${custName}${amountStr}` },
+        ...prev.slice(0, 49)
+      ]);
     };
-    document.addEventListener('visibilitychange', handleVis);
+
+    const handleStatusUpdate = (event) => {
+      if (!isRelevantToVendor(event) || !event.data) return;
+      const updatedItem = event.data;
+      const updatedId = String(updatedItem._id || updatedItem.id || updatedItem.order_number || '');
+      const newStatus = updatedItem.status || 'Updated';
+
+      setOrders(prev => (prev || []).map(o => String(o._id || o.id || o.order_number) === updatedId ? { ...o, ...updatedItem, status: newStatus } : o));
+      setBookings(prev => (prev || []).map(b => String(b._id || b.id || b.order_number) === updatedId ? { ...b, ...updatedItem, status: newStatus } : b));
+      setApplications(prev => (prev || []).map(a => String(a._id || a.id || a.applicationId || a.order_number) === updatedId ? { ...a, ...updatedItem, status: newStatus } : a));
+
+      clearApiCache('/orders');
+      clearApiCache('/bookings');
+      clearApiCache('/applications');
+      clearApiCache('/analytics');
+    };
+
+    const unsubs = [
+      wsClient.on('ORDER_CREATED', handleIncomingTransaction),
+      wsClient.on('BOOKING_CREATED', handleIncomingTransaction),
+      wsClient.on('APPOINTMENT_CREATED', handleIncomingTransaction),
+      wsClient.on('APPLICATION_CREATED', handleIncomingTransaction),
+      wsClient.on('ORDER_UPDATED', handleStatusUpdate),
+      wsClient.on('ORDER_STATUS_CHANGED', handleStatusUpdate),
+      wsClient.on('BOOKING_UPDATED', handleStatusUpdate),
+      wsClient.on('APPLICATION_UPDATED', handleStatusUpdate)
+    ];
+
     return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVis);
+      unsubs.forEach(unsub => {
+        if (typeof unsub === 'function') unsub();
+      });
     };
-  }, [token, user?._id, user?.role]);
+  }, [token, user?._id, user?.role, user?.businesses]);
 
   const DEFAULT_TIME_SLOTS = [
     '09:00 AM - 09:30 AM',

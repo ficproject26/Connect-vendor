@@ -2,6 +2,29 @@
 
 All notable changes, task-by-task implementations, audits, and performance test results are documented in this file in chronological order.
 
+## [Real-Time WebSocket Synchronization for Orders, Bookings & Applications] - 2026-10-30
+
+### Scope
+Replace 30-second interval HTTP polling in the Vendor Website with instant real-time WebSocket event listeners. Synchronize newly received orders, stay/travel/service bookings, and job applications instantly with live toast notifications, KPI badge updates, and automatic cache invalidation.
+
+### Implementations
+1. **Redis Ecosystem Channel & Event Deduplication (`backend/eventSubscriber/subscriber.js`):**
+   - Subscribed to `connect:realtime:events` cross-platform ecosystem channel alongside `REDIS_CHANNELS.GLOBAL`.
+   - Added canonical dedup key resolution (`dedupId`) tracking processed events to prevent duplicate broadcasts.
+2. **Event Type Declarations (`backend/events/eventTypes.js` & `frontend/src/realtime/eventTypes.js`):**
+   - Added `BOOKING_CREATED`, `BOOKING_UPDATED`, `APPLICATION_CREATED`, `APPLICATION_UPDATED` event constants.
+3. **Public Order Route Event Broadcasting (`backend/routes/publicRoutes.js`):**
+   - Dispatches `publishRealtimeEvent` on order/booking/job creation with vendor, user, and business targeting.
+4. **Frontend Real-Time Listener (`frontend/src/pages/VendorDashboard.jsx`):**
+   - Subscribes via `wsClient` to `ORDER_CREATED`, `BOOKING_CREATED`, `APPOINTMENT_CREATED`, `APPLICATION_CREATED`, `ORDER_UPDATED`, `ORDER_STATUS_CHANGED`, `BOOKING_UPDATED`, `APPLICATION_UPDATED`.
+   - Filters events for relevance against authenticated vendor and associated outlet business IDs.
+   - Prepends new transactions directly to React state with automatic API cache invalidation (`clearApiCache`), real-time toast alert banners, and live KPI metric increments.
+
+### Verification Results
+- `npm run build --prefix frontend`: Vite v5.4.21 built cleanly in 9.98s with 0 errors.
+
+---
+
 ## [Latest-First Transactions + Enriched Order, Booking & Job Application Cards] - 2026-10-30
 
 ### Scope

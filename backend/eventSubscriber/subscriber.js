@@ -18,12 +18,17 @@ class EventSubscriber {
     if (this.isSubscribed) return;
     this.isSubscribed = true;
 
-    // Subscribe to global and entity-specific channels
+    // Subscribe to global and ecosystem real-time channels
     redisManager.subscribe(REDIS_CHANNELS.GLOBAL, (channel, rawMessage) => {
       this.handleIncomingMessage(channel, rawMessage);
     });
 
-    console.log(`📡 [EventSubscriber] Subscribed to Redis channel: ${REDIS_CHANNELS.GLOBAL}`);
+    // Also subscribe to cross-platform connect ecosystem channel
+    redisManager.subscribe('connect:realtime:events', (channel, rawMessage) => {
+      this.handleIncomingMessage(channel, rawMessage);
+    });
+
+    console.log(`📡 [EventSubscriber] Subscribed to Redis channels: ${REDIS_CHANNELS.GLOBAL}, connect:realtime:events`);
   }
 
   /**
@@ -34,16 +39,22 @@ class EventSubscriber {
       this.totalReceived++;
       const event = typeof rawMessage === 'string' ? JSON.parse(rawMessage) : rawMessage;
 
-      if (!event || !event.eventId) {
+      if (!event || (!event.eventId && !event.entityId && !event.event)) {
         return;
       }
 
+      // Ensure canonical eventId exists for deduplication & tracking
+      const dedupId = event.eventId || `${event.event}_${event.entityId || event.data?._id || event.data?.id}_${event.version || event.timestamp || Date.now()}`;
+      if (!event.eventId) {
+        event.eventId = dedupId;
+      }
+
       // Deduplication check
-      if (this.processedEventIds.has(event.eventId)) {
+      if (this.processedEventIds.has(dedupId)) {
         return; // Already processed
       }
 
-      this.processedEventIds.add(event.eventId);
+      this.processedEventIds.add(dedupId);
 
       // Memory cleanup for processed IDs set
       if (this.processedEventIds.size > 5000) {

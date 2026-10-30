@@ -898,22 +898,48 @@ router.post('/orders', async (req, res) => {
         updateOp
       );
       await reduceStockForOrder(existing, vendorId);
-      return res.status(200).json({ success: true, message: 'Order updated in vendor dashboard successfully', data: existing });
+
+      // Fetch fresh merged document to broadcast to WebSocket clients
+      const freshOrder = await Order.findById(existing._id).lean();
+      const broadcastEvent = isJob
+        ? (EVENT_TYPES.APPLICATION_CREATED || 'APPLICATION_CREATED')
+        : (isBooking ? (EVENT_TYPES.BOOKING_CREATED || 'BOOKING_CREATED') : EVENT_TYPES.ORDER_CREATED);
+
+      publishRealtimeEvent({
+        event: broadcastEvent,
+        entity: isJob ? 'job' : (isBooking ? 'booking' : ENTITY_NAMES.ORDER),
+        entityId: (freshOrder?._id || existing._id).toString(),
+        action: 'created',
+        target: {
+          vendorId: (freshOrder?.vendorId || freshOrder?.vendor_id || vendorId || '').toString(),
+          userId: (freshOrder?.memberId || freshOrder?.userId || freshOrder?.customerId || '').toString(),
+          businessId: (freshOrder?.businessId || freshOrder?.primaryBusinessId || req.body.businessId || '').toString(),
+          role: 'Vendor'
+        },
+        data: freshOrder || existing
+      }).catch(err => console.warn('[Realtime] Public order sync publish warning:', err.message));
+
+      return res.status(200).json({ success: true, message: 'Order updated in vendor dashboard successfully', data: freshOrder || existing });
     }
 
     const order = await Order.create(orderData);
     await reduceStockForOrder(order, vendorId);
 
     // Broadcast Real-time Order Created Event
+    const broadcastEventNew = isJob
+      ? (EVENT_TYPES.APPLICATION_CREATED || 'APPLICATION_CREATED')
+      : (isBooking ? (EVENT_TYPES.BOOKING_CREATED || 'BOOKING_CREATED') : EVENT_TYPES.ORDER_CREATED);
+
     publishRealtimeEvent({
-      event: EVENT_TYPES.ORDER_CREATED,
-      entity: ENTITY_NAMES.ORDER,
+      event: broadcastEventNew,
+      entity: isJob ? 'job' : (isBooking ? 'booking' : ENTITY_NAMES.ORDER),
       entityId: order._id ? order._id.toString() : order.id,
       action: 'created',
       target: {
-        vendorId: (order.vendorId || order.vendor_id || '').toString(),
+        vendorId: (order.vendorId || order.vendor_id || vendorId || '').toString(),
         userId: (order.memberId || order.userId || order.user_id || '').toString(),
-        businessId: (order.businessId || order.primaryBusinessId || '').toString()
+        businessId: (order.businessId || order.primaryBusinessId || req.body.businessId || '').toString(),
+        role: 'Vendor'
       },
       data: order
     }).catch(err => console.warn('[Realtime] Public order create publish warning:', err.message));
