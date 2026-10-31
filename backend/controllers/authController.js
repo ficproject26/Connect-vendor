@@ -262,7 +262,7 @@ const registerVendor = async (req, res) => {
     }
 
     // Get files if uploaded and upload to AWS S3 with original filenames preserved
-    let businessLicense = '';
+    let businessLicense = req.body.businessLicense || req.body.licenseFile || '';
     if (req.files && req.files['businessLicense'] && req.files['businessLicense'][0]) {
       const f = req.files['businessLicense'][0];
       try {
@@ -273,7 +273,7 @@ const registerVendor = async (req, res) => {
       }
     }
 
-    let logo = '';
+    let logo = req.body.logo || req.body.shopLogo || '';
     if (req.files && req.files['logo'] && req.files['logo'][0]) {
       const f = req.files['logo'][0];
       try {
@@ -284,7 +284,7 @@ const registerVendor = async (req, res) => {
       }
     }
 
-    let businessImages = [];
+    let businessImages = Array.isArray(req.body.businessImages) ? [...req.body.businessImages] : (req.body.businessImages ? [req.body.businessImages] : []);
     if (req.files && req.files['businessImages'] && req.files['businessImages'].length > 0) {
       try {
         businessImages = await Promise.all(

@@ -2,6 +2,33 @@
 
 All notable changes, task-by-task implementations, audits, and performance test results are documented in this file in chronological order.
 
+## [Fix Customer Orders & Bookings Synchronization & Mobile Auth Pipeline] - 2026-10-31
+
+### Scope
+1. **Issue 1 - Orders & Bookings Visibility:** Fix customer orders and bookings placed via Customer Website and Mobile App not appearing in Vendor applications. Ensure strict separation across Orders (Products, Food, Daily Needs), Bookings (Services, Stay, Travel), and Jobs (Candidate applications) with latest-first sorting and complete card details.
+2. **Issue 2 - Vendor Mobile Network Security:** Fix `Network request failed` connection error on Android release and emulator by updating network security config and manifest for cleartext/production domains.
+3. **Issue 3 - Vendor Mobile Registration Payload:** Fix registration failures by handling pre-uploaded S3 URLs for licenses and logos alongside multipart uploads, and validating password complexity.
+
+### Implementations
+1. **Connect Backend Multi-Vendor & Category Persistence (`D:\Connect App\backend\src\routes\orders.ts`):**
+   - In `resolveProductOwnerVendor`: Added `itemVendor` check (`item.vendorId || item.vendor_id`) before catalog lookups; added parentheses stripping fallback (e.g., `"LINEMAN (Standard Service & Jet Wash)"` -> `"LINEMAN"`) to prevent vendor resolution failure falling back to orphaned `'v1'`.
+   - In multi-vendor `db.createOrder` and single-vendor `db.createOrder`: Added explicit `category` persistence (`req.body.category || vItems[0]?.category || vItems[0]?.mainCategory || ...`).
+   - In `forwardOrderToVendorBackend`: Included `category` in `syncPayload`.
+2. **Vendor Backend Public Sync Route (`backend/routes/publicRoutes.js`):**
+   - In `POST /api/public/orders`: Set `category: req.body.category || (items && items[0]?.category) || (items && items[0]?.mainCategory) || (orderType === 'Stay' ? 'Stay' : (orderType === 'Appointment' ? 'Services' : 'Products'))`.
+3. **Vendor Backend Query Controller (`backend/controllers/vendorController.js`):**
+   - In `getOrders`: Updated `baseQuery` to match `{ type: { $in: ['Order', 'order'] } }` when without booking/job fields, as well as `items.mainCategory` in Products/Food/Daily Needs. Added explicit exclusion for `jobId` and `candidateResume`.
+   - In `getBookings`: Refined exclusion to exclude `APPLICATION_BASED_TYPES`, `jobId`, `candidateResume`, while permitting orders with booking indicators (`serviceName`, `doctorName`, `checkInDate`, `appointmentDate`, `boardingPoint`, `items.mainCategory in ['Services', 'Stay', 'Travel']`).
+   - In `getApplications`: Expanded type match to include `{ jobId: { $exists: true, $ne: null } }` and `{ candidateResume: { $exists: true, $ne: null, $ne: '' } }`.
+4. **Vendor Auth Controller (`backend/controllers/authController.js`):**
+   - In `registerVendor`: Added fallback reading of string URLs for `businessLicense: req.body.businessLicense || req.body.licenseFile`, `logo: req.body.logo || req.body.shopLogo`, and `businessImages: req.body.businessImages`, enabling pre-uploaded S3 URLs from mobile to be cleanly processed.
+5. **Customer Mobile Checkout (`D:\Integration\Integration\Connect-Mobile\src\screens\customer\CheckoutScreen.tsx`):**
+   - Added `vendorId: primaryCartVendor` alongside `vendor_id` in both the COD and Razorpay background persistence calls.
+6. **Healed Real Database Records in MongoDB Atlas `connect_db`:**
+   - Repaired 7 real orphaned orders (`ORD3243`, `ORD8849`, `BKG8388`, `ORD1466`, `BKG2031`, `ORD2196`, `ORD9876`) by resolving product names to true vendor IDs and categories.
+
+---
+
 ## [Fix WebSocket Handshake 200/400 & Vercel CORS Incompatibility] - 2026-10-30
 
 ### Scope

@@ -1475,11 +1475,25 @@ const getOrders = async (req, res) => {
             { vendor_id: { $in: businessIds } }
           ]
         },
-        // Must be in allowed order categories
+        // Must be in allowed order categories OR transactional Order type with matching items
         {
           $or: [
             { type: { $in: ORDER_CATEGORY_TYPES } },
-            { category: { $in: ORDER_CATEGORY_TYPES } }
+            { category: { $in: ORDER_CATEGORY_TYPES } },
+            { 'items.category': { $in: ORDER_CATEGORY_TYPES } },
+            { 'items.mainCategory': { $in: ['Products', 'Product', 'Food', 'food', 'Daily Needs', 'daily needs', 'Grocery', 'grocery'] } },
+            {
+              $and: [
+                { type: { $in: ['Order', 'order'] } },
+                { serviceName: { $exists: false } },
+                { doctorName: { $exists: false } },
+                { checkInDate: { $exists: false } },
+                { appointmentDate: { $exists: false } },
+                { boardingPoint: { $exists: false } },
+                { jobId: { $exists: false } },
+                { candidateResume: { $exists: false } }
+              ]
+            }
           ]
         },
         // Never allow Job applications or Bookings
@@ -1488,7 +1502,9 @@ const getOrders = async (req, res) => {
         },
         {
           category: { $nin: ['Job', 'Jobs', 'job', 'jobs', 'Application', 'application', 'Booking', 'booking', 'Services', 'Service', 'service', 'services', 'Stay', 'stay', 'Hotel', 'hotel', 'Travel', 'travel', 'Travels'] }
-        }
+        },
+        { jobId: { $exists: false } },
+        { candidateResume: { $exists: false } }
       ]
     };
 
@@ -1809,12 +1825,16 @@ const getBookings = async (req, res) => {
             { serviceName: { $exists: true, $ne: null } },
             { checkInDate: { $exists: true, $ne: null } },
             { roomNumber: { $exists: true, $ne: null } },
-            { vehicleType: { $exists: true, $ne: null } }
+            { vehicleType: { $exists: true, $ne: null } },
+            { boardingPoint: { $exists: true, $ne: null } },
+            { appointmentDate: { $exists: true, $ne: null } }
           ]
         },
-        {
-          type: { $nin: [...ORDER_BASED_TYPES.filter(t => !BOOKING_BASED_TYPES.includes(t)), ...APPLICATION_BASED_TYPES] }
-        }
+        // Never allow Job applications in Bookings
+        { type: { $nin: APPLICATION_BASED_TYPES } },
+        { category: { $nin: APPLICATION_BASED_TYPES } },
+        { jobId: { $exists: false } },
+        { candidateResume: { $exists: false } }
       ]
     };
 
@@ -2589,7 +2609,12 @@ const getApplications = async (req, res) => {
     const baseQuery = {
       $and: [
         {
-          type: { $in: APPLICATION_BASED_TYPES }
+          $or: [
+            { type: { $in: APPLICATION_BASED_TYPES } },
+            { category: { $in: APPLICATION_BASED_TYPES } },
+            { jobId: { $exists: true, $ne: null } },
+            { candidateResume: { $exists: true, $ne: null, $ne: '' } }
+          ]
         },
         {
           $or: [

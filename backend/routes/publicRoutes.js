@@ -674,7 +674,7 @@ router.post('/orders', async (req, res) => {
       memberId: memberId || 'cust_dhanush',
       memberName: req.body.candidateName || memberName || req.body.customer_name || 'Customer',
       type: orderType,
-      category: req.body.category || (orderType === 'Stay' ? 'Stay' : (orderType === 'Appointment' ? 'Services' : undefined)),
+      category: req.body.category || (items && items[0]?.category) || (items && items[0]?.mainCategory) || (orderType === 'Stay' ? 'Stay' : (orderType === 'Appointment' ? 'Services' : 'Products')),
       items: items || [],
       totalAmount: totalAmount ?? finalAmount,
       discountApplied: discountApplied || 0,

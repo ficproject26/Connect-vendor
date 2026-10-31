@@ -110,3 +110,28 @@ This document serves as the persistent source of project memory, architecture bo
 - **Verification Results:**
   - Automated E2E verification test suite (`verify_realtime_e2e.js`) confirmed 100% real-time packet delivery across orders, bookings, job applications, and status updates with 0 manual refresh.
   - Production build compiled cleanly with 0 errors.
+
+---
+
+### 5. Multi-Vendor Transaction Ownership & Mobile Auth Pipeline Harmonization
+- **Status:** Completed & Verified (2026-10-31)
+- **Exact Files Modified:**
+  - `backend/controllers/vendorController.js`
+  - `backend/controllers/authController.js`
+  - `backend/routes/publicRoutes.js`
+  - `CHANGELOG.md`
+  - `AGENT.md`
+  - Partner App Files: `D:\Connect App\backend\src\routes\orders.ts`, `D:\Integration\Integration\Connect-Mobile\src\screens\customer\CheckoutScreen.tsx`, `D:\Integration\Integration\Vendor- Mobile\android\src\services\apiService.ts`, `D:\Integration\Integration\Vendor- Mobile\android\src\screens\SignupScreen.tsx`, `D:\Integration\Integration\Vendor- Mobile\android\app\src\main\res\xml\network_security_config.xml`.
+- **Key Enhancements Implemented:**
+  1. **Strict Tab Boundary Separation & Ownership Querying (`vendorController.js`):**
+     - Updated `getOrders` to resolve `type: 'Order'` records by inspecting item categories for Products, Food, and Daily Needs, while strictly excluding service/stay/travel and job-application records.
+     - Updated `getBookings` to retrieve service bookings created with `type: 'Order'` when serviceName, doctorName, checkInDate, or appointmentDate are present, while strictly excluding jobs.
+     - Updated `getApplications` to capture job applications matching `jobId` or `candidateResume`.
+  2. **Multi-Vendor Resolution & Parentheses Normalization (`Connect App` orders.ts):**
+     - Preserves `item.vendorId` during order creation.
+     - Strips parentheses in catalog name lookups (e.g. `"LINEMAN (Standard Service & Jet Wash)"` -> `"LINEMAN"`), preventing fallback to dummy vendor ID `'v1'`.
+     - Explicitly persists `category` across both single-vendor and multi-vendor order persistence.
+  3. **Mobile Multipart & JSON S3 Media Normalization (`authController.js`):**
+     - Accommodates pre-uploaded S3 URLs for `shopLogo`, `businessLicense`, and `businessImages` when registering via mobile JSON payloads alongside multipart form uploads from the web.
+  4. **Database Record Healing:**
+     - Repaired orphaned orders in MongoDB Atlas, linking them to their correct vendor IDs.
