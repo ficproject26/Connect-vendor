@@ -8,16 +8,29 @@ import './index.css';
 
 // Suppress Chrome extension message channel disconnect warnings
 if (typeof window !== 'undefined') {
+  const isExtensionChannelError = (err) => {
+    if (!err) return false;
+    const msg = (err.message || err.reason || err.stack || String(err)).toLowerCase();
+    return (
+      msg.includes('message channel closed') ||
+      msg.includes('listener indicated an asynchronous response') ||
+      msg.includes('runtime.lasterror')
+    );
+  };
+
   window.addEventListener('unhandledrejection', (event) => {
-    if (
-      event.reason &&
-      typeof event.reason.message === 'string' &&
-      (event.reason.message.includes('message channel closed') ||
-       event.reason.message.includes('listener indicated an asynchronous response'))
-    ) {
+    if (isExtensionChannelError(event.reason) || isExtensionChannelError(event)) {
       event.preventDefault();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
     }
-  });
+  }, true);
+
+  window.addEventListener('error', (event) => {
+    if (isExtensionChannelError(event.message) || isExtensionChannelError(event.error)) {
+      event.preventDefault();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    }
+  }, true);
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

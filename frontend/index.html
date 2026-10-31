@@ -3,6 +3,86 @@
 
 <head>
   <meta charset="UTF-8" />
+  <script>
+    // Suppress Chrome extension asynchronous message channel disconnect warnings
+    (function () {
+      if (typeof window === 'undefined') return;
+
+      function isExtensionChannelError(err) {
+        if (!err) return false;
+        var msg = '';
+        if (typeof err === 'string') {
+          msg = err;
+        } else if (err.message) {
+          msg = err.message;
+        } else if (err.reason) {
+          msg = typeof err.reason === 'string' ? err.reason : (err.reason.message || String(err.reason));
+        } else {
+          msg = String(err);
+        }
+        msg = msg.toLowerCase();
+        return (
+          msg.indexOf('message channel closed') !== -1 ||
+          msg.indexOf('listener indicated an asynchronous response') !== -1 ||
+          msg.indexOf('runtime.lasterror') !== -1
+        );
+      }
+
+      // 1. Capture unhandled promise rejections at the window level immediately
+      window.addEventListener(
+        'unhandledrejection',
+        function (event) {
+          if (isExtensionChannelError(event.reason) || isExtensionChannelError(event)) {
+            event.preventDefault();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+            return true;
+          }
+        },
+        true
+      );
+
+      // 2. Capture global window error events
+      window.addEventListener(
+        'error',
+        function (event) {
+          if (isExtensionChannelError(event.message) || isExtensionChannelError(event.error)) {
+            event.preventDefault();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+            return true;
+          }
+        },
+        true
+      );
+
+      // 3. Filter console.error and console.warn for extension channel disconnect errors
+      var origError = console.error;
+      console.error = function () {
+        for (var i = 0; i < arguments.length; i++) {
+          if (isExtensionChannelError(arguments[i])) {
+            return;
+          }
+        }
+        return origError.apply(console, arguments);
+      };
+
+      var origWarn = console.warn;
+      console.warn = function () {
+        for (var i = 0; i < arguments.length; i++) {
+          if (isExtensionChannelError(arguments[i])) {
+            return;
+          }
+        }
+        return origWarn.apply(console, arguments);
+      };
+
+      // 4. Safely check chrome.runtime.lastError if present to mark it as checked
+      try {
+        if (window.chrome && window.chrome.runtime) {
+          var _ = window.chrome.runtime.lastError;
+        }
+      } catch (e) {}
+    })();
+  </script>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
