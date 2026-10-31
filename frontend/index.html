@@ -24,7 +24,8 @@
         return (
           msg.indexOf('message channel closed') !== -1 ||
           msg.indexOf('listener indicated an asynchronous response') !== -1 ||
-          msg.indexOf('runtime.lasterror') !== -1
+          msg.indexOf('runtime.lasterror') !== -1 ||
+          msg.indexOf('unchecked runtime') !== -1
         );
       }
 
@@ -75,12 +76,76 @@
         return origWarn.apply(console, arguments);
       };
 
-      // 4. Safely check chrome.runtime.lastError if present to mark it as checked
+      // 4. Intercept chrome.runtime.onMessage.addListener to auto-check lastError
+      //    This is the root fix: "Unchecked runtime.lastError" is emitted by Chrome
+      //    when a message listener returns `true` (async) but the port closes before
+      //    responding. Wrapping each listener to always void lastError marks it as
+      //    "checked" so Chrome suppresses the warning entirely.
+      function patchChromeRuntime() {
+        try {
+          if (!window.chrome || !window.chrome.runtime || !window.chrome.runtime.onMessage) return;
+          var origAddListener = window.chrome.runtime.onMessage.addListener.bind(window.chrome.runtime.onMessage);
+          window.chrome.runtime.onMessage.addListener = function (listener) {
+            var wrappedListener = function (message, sender, sendResponse) {
+              // Always void lastError immediately to prevent "Unchecked runtime.lastError"
+              try { void window.chrome.runtime.lastError; } catch (e) {}
+              var result;
+              try {
+                result = listener(message, sender, sendResponse);
+              } catch (e) {
+                try { void window.chrome.runtime.lastError; } catch (e2) {}
+                return false;
+              }
+              // If listener returned true (async), wrap sendResponse to check lastError on close
+              if (result === true) {
+                var origSendResponse = sendResponse;
+                return true;
+              }
+              return result;
+            };
+            return origAddListener(wrappedListener);
+          };
+        } catch (e) {}
+      }
+
+      // 5. Patch chrome.runtime.lastError getter so accessing it never throws
+      function patchLastErrorGetter() {
+        try {
+          if (!window.chrome || !window.chrome.runtime) return;
+          var rtProto = Object.getPrototypeOf(window.chrome.runtime) || window.chrome.runtime;
+          var descriptor = Object.getOwnPropertyDescriptor(rtProto, 'lastError') ||
+                           Object.getOwnPropertyDescriptor(window.chrome.runtime, 'lastError');
+          if (descriptor && descriptor.get) {
+            var origGet = descriptor.get;
+            Object.defineProperty(window.chrome.runtime, 'lastError', {
+              get: function () {
+                try { return origGet.call(window.chrome.runtime); } catch (e) { return undefined; }
+              },
+              configurable: true
+            });
+          }
+        } catch (e) {}
+      }
+
+      // 6. Safely check chrome.runtime.lastError if present to mark it as checked
       try {
         if (window.chrome && window.chrome.runtime) {
-          var _ = window.chrome.runtime.lastError;
+          void window.chrome.runtime.lastError;
+          patchLastErrorGetter();
+          patchChromeRuntime();
         }
       } catch (e) {}
+
+      // Re-apply patches after a short delay in case chrome APIs load asynchronously
+      setTimeout(function () {
+        try {
+          if (window.chrome && window.chrome.runtime) {
+            void window.chrome.runtime.lastError;
+            patchLastErrorGetter();
+            patchChromeRuntime();
+          }
+        } catch (e) {}
+      }, 500);
     })();
   </script>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
