@@ -806,13 +806,15 @@ const isBookingOrServiceCatalogItem = (product, vendorUser = null) => {
 const getProducts = async (req, res) => {
   try {
     const parentId = (req.user.parentUserId || req.user._id).toString();
+    const user = (await getVendorUserCached(parentId)) || req.user;
     const activeBusinessId = req.user._id.toString();
     const activeVendorType = req.user.vendorType || req.user.category || '';
 
     const reqType = (req.query.type || req.query.mainCategory || req.query.subNavbarCategory || req.query.category || '').trim();
     const targetType = reqType ? normalizeCategoryType(reqType) : normalizeCategoryType(activeVendorType);
 
-    const vendorIds = [activeBusinessId, parentId];
+    const vendorIds = getVendorMatchingIds(user, parentId);
+    if (!vendorIds.includes(activeBusinessId)) vendorIds.push(activeBusinessId);
     const queryConditions = [
       {
         $or: [
@@ -1445,17 +1447,6 @@ const getOrders = async (req, res) => {
     const user = await getVendorUserCached(parentUserId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
-    }
-
-    // Category guard: Only vendors with Product, Daily Needs, or Food can retrieve orders
-    if (!vendorHasOrderCategories(user)) {
-      return res.status(200).json({
-        success: true,
-        data: [],
-        total: 0,
-        page: 1,
-        totalPages: 1
-      });
     }
 
     const businessIds = getVendorMatchingIds(user, parentUserId);
@@ -2373,32 +2364,7 @@ const getBookings = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
 
-    // Category guard: Only vendors with Services, Stay, or Travel can retrieve bookings
-    if (!vendorHasBookingCategories(user)) {
-      return res.status(200).json({
-        success: true,
-        data: [],
-        total: 0,
-        page: 1,
-        totalPages: 1
-      });
-    }
-
-    const businessIds = [
-      parentUserId.toString(),
-      ...(user._id ? [user._id.toString()] : []),
-      ...(user.vendorId ? [user.vendorId.toString()] : []),
-      ...(user.registrationId ? [user.registrationId.toString()] : [])
-    ];
-    if (user.businesses && user.businesses.length > 0) {
-      user.businesses.forEach(b => {
-        if (b._id) businessIds.push(b._id.toString());
-        if (b.id) businessIds.push(b.id.toString());
-        if (b.vendorId) businessIds.push(b.vendorId.toString());
-        if (b.businessId) businessIds.push(b.businessId.toString());
-      });
-    }
-    const uniqueBusinessIds = [...new Set(businessIds.filter(Boolean))];
+    const uniqueBusinessIds = getVendorMatchingIds(user, parentUserId);
 
     // Query strictly for bookings and reservation types, excluding orders and jobs
     const baseQuery = {

@@ -144,7 +144,8 @@ const protect = async (req, res, next) => {
           if (activeBusiness) {
             const bStatus = (activeBusiness.status || '').toLowerCase().trim();
             const isApprovedOrActive = ['active', 'approved'].includes(bStatus) || activeBusiness.isActive === true;
-            if (!isApprovedOrActive && (['pending', 'pending approval', 'pending_approval', 'under_verification', 'suspended', 'rejected'].includes(bStatus) || activeBusiness.isActive === false)) {
+            // Only block non-GET modification requests if pending approval; allow vendor to view their own business data
+            if (req.method !== 'GET' && !isApprovedOrActive && (['pending', 'pending approval', 'pending_approval', 'under_verification', 'suspended', 'rejected'].includes(bStatus) || activeBusiness.isActive === false)) {
               return res.status(403).json({
                 success: false,
                 isPendingApproval: true,

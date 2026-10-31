@@ -6743,7 +6743,7 @@ const VendorDashboard = () => {
                 const filteredOrders = orders.filter(order => {
                   // Strict category guard: NEVER show job applications or bookings in Orders
                   const recCat = getRecordCategory(order);
-                  if (!ORDER_CATEGORIES.includes(recCat)) return false;
+                  if (!ORDER_CATEGORIES.includes(recCat) && recCat !== 'Order' && recCat !== 'order') return false;
 
                   // Category filter
                   if (orderCategoryFilter && orderCategoryFilter !== 'All') {
@@ -6897,7 +6897,7 @@ const VendorDashboard = () => {
                           const isUpdating = updatingStatusIds.has(orderIdStr);
                           const custPhone = order.customerPhone || order.customer_phone || order.phone || order.memberPhone;
                           const totalQty = order.totalQuantity || (order.items && order.items.length > 0 ? order.items.reduce((s, it) => s + (Number(it.quantity) || 1), 0) : (order.quantity || 1));
-                          const prodImg = order.image || (order.items && order.items[0]?.image);
+                          const prodImg = order.imageUrl || order.image || (order.items && (order.items[0]?.image || order.items[0]?.imageUrl || order.items[0]?.img || order.items[0]?.product_image));
 
                           return (
                             <tr
@@ -7283,7 +7283,8 @@ const VendorDashboard = () => {
                         const filteredBookings = bookings.filter(b => {
                           // Strict transaction group isolation: NEVER display orders or jobs in Bookings
                           const recCat = getRecordCategory(b);
-                          if (!BOOKING_CATEGORIES.includes(recCat)) return false;
+                          if (['Jobs', 'Job'].includes(recCat) || Boolean(b.candidateResume)) return false;
+                          if (!BOOKING_CATEGORIES.includes(recCat) && !['Booking', 'booking'].includes(recCat)) return false;
 
                           // Category filter
                           if (bookingCategoryFilter && bookingCategoryFilter !== 'All') {

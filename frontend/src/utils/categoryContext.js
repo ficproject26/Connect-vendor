@@ -30,7 +30,7 @@ export const BOOKING_CATEGORIES = [
 export const normalizeCategory = (cat) => {
   if (!cat) return '';
   const clean = String(cat).trim().toLowerCase().replace(/[-_]/g, ' ');
-  if (clean === 'product' || clean === 'products') return CATEGORY_PRODUCTS;
+  if (clean === 'product' || clean === 'products' || clean === 'order' || clean === 'orders') return CATEGORY_PRODUCTS;
   if (
     clean === 'daily need' || 
     clean === 'daily needs' || 
@@ -52,6 +52,8 @@ export const normalizeCategory = (cat) => {
   if (
     clean === 'service' || 
     clean === 'services' || 
+    clean === 'home services' ||
+    clean === 'home service' ||
     clean === 'hospital' || 
     clean === 'technician'
   ) {
@@ -62,6 +64,8 @@ export const normalizeCategory = (cat) => {
     clean === 'stays' || 
     clean === 'hotel' || 
     clean === 'hotels' || 
+    clean === 'resort' ||
+    clean === 'resorts' ||
     clean === 'room' || 
     clean === 'rooms'
   ) {
@@ -70,6 +74,9 @@ export const normalizeCategory = (cat) => {
   if (
     clean === 'travel' || 
     clean === 'travels' || 
+    clean === 'cab' ||
+    clean === 'taxi' ||
+    clean === 'bus' ||
     clean === 'package' || 
     clean === 'packages'
   ) {
@@ -250,7 +257,15 @@ export const getRecordCategory = (record) => {
   // 6. Safe canonical fallback
   const raw = rawType || rawCategory || itemCat || itemMainCat || '';
   const normalized = normalizeCategory(raw);
-  if (normalized && normalized !== 'All') return normalized;
+  if (normalized && normalized !== 'All') {
+    if (['order', 'orders'].includes(normalized.toLowerCase())) return CATEGORY_PRODUCTS;
+    return normalized;
+  }
+
+  // If the record has order identifiers or items without specific service/stay/travel markers, default to Products
+  if (record.order_number || record.orderId || (record.items && record.items.length > 0)) {
+    return CATEGORY_PRODUCTS;
+  }
 
   return CATEGORY_UNKNOWN;
 };
