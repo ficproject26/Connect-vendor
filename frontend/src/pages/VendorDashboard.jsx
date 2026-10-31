@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import axios from 'axios';
 import { useSelector, useDispatch } from 'react-redux';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
@@ -1157,20 +1157,85 @@ const VendorDashboard = () => {
   });
   const [loadingEditBusiness, setLoadingEditBusiness] = useState(false);
 
-  // New Incoming Order / Booking Real-time Popup Alert States
+  // New Incoming Order / Booking / Job Real-time Popup Alert & 15s Auto-Dismiss States
   const [newIncomingOrder, setNewIncomingOrder] = useState(null);
   const [isNewOrderPopupOpen, setIsNewOrderPopupOpen] = useState(false);
+  const [popupSecondsLeft, setPopupSecondsLeft] = useState(15);
+  const popupTimerRef = useRef(null);
+  const popupIntervalRef = useRef(null);
+  const popupQueueRef = useRef([]);
+
+  const clearPopupTimers = useCallback(() => {
+    if (popupTimerRef.current) {
+      clearTimeout(popupTimerRef.current);
+      popupTimerRef.current = null;
+    }
+    if (popupIntervalRef.current) {
+      clearInterval(popupIntervalRef.current);
+      popupIntervalRef.current = null;
+    }
+  }, []);
+
+  const dismissCurrentPopup = useCallback(() => {
+    clearPopupTimers();
+    if (popupQueueRef.current && popupQueueRef.current.length > 0) {
+      const nextTx = popupQueueRef.current.shift();
+      displayPopup(nextTx);
+    } else {
+      setIsNewOrderPopupOpen(false);
+      setNewIncomingOrder(null);
+      setPopupSecondsLeft(15);
+    }
+  }, [clearPopupTimers]);
+
+  const displayPopup = useCallback((transaction) => {
+    if (!transaction) return;
+    clearPopupTimers();
+    setNewIncomingOrder(transaction);
+    setIsNewOrderPopupOpen(true);
+    setPopupSecondsLeft(15);
+
+    // Exact 15-second auto-dismiss timer
+    popupTimerRef.current = setTimeout(() => {
+      dismissCurrentPopup();
+    }, 15000);
+
+    // 1-second countdown interval for real-time visual progress
+    popupIntervalRef.current = setInterval(() => {
+      setPopupSecondsLeft((prev) => (prev > 1 ? prev - 1 : 1));
+    }, 1000);
+  }, [clearPopupTimers, dismissCurrentPopup]);
+
+  const enqueueOrDisplayPopup = useCallback((transaction) => {
+    if (!transaction) return;
+    const txId = String(transaction._id || transaction.id || transaction.order_number || transaction.applicationId || '');
+    if (isNewOrderPopupOpen && newIncomingOrder) {
+      const isAlreadyInQueue = popupQueueRef.current.some(it => {
+        const itId = String(it._id || it.id || it.order_number || it.applicationId || '');
+        return itId && itId === txId;
+      });
+      const isCurrentActive = String(newIncomingOrder._id || newIncomingOrder.id || newIncomingOrder.order_number || newIncomingOrder.applicationId || '') === txId;
+      if (!isAlreadyInQueue && !isCurrentActive) {
+        popupQueueRef.current.push(transaction);
+      }
+    } else {
+      displayPopup(transaction);
+    }
+  }, [isNewOrderPopupOpen, newIncomingOrder, displayPopup]);
 
   useEffect(() => {
     const handleNewOrderAlert = (e) => {
       if (e.detail) {
-        setNewIncomingOrder(e.detail);
-        setIsNewOrderPopupOpen(true);
+        enqueueOrDisplayPopup(e.detail);
       }
     };
     window.addEventListener('new_incoming_order', handleNewOrderAlert);
-    return () => window.removeEventListener('new_incoming_order', handleNewOrderAlert);
-  }, []);
+    return () => {
+      window.removeEventListener('new_incoming_order', handleNewOrderAlert);
+      clearPopupTimers();
+      popupQueueRef.current = [];
+    };
+  }, [enqueueOrDisplayPopup, clearPopupTimers]);
 
   // Real-time fetch for Stay module categories directly from database
   const isFetchingStayRef = useRef(false);
@@ -3334,9 +3399,8 @@ const VendorDashboard = () => {
         }, ...(prev || []).slice(0, 49)]);
       }
 
-      // Display instant popup for authorized transaction
-      setNewIncomingOrder(raw);
-      setIsNewOrderPopupOpen(true);
+      // Display instant popup for authorized transaction (15s auto-dismiss & queue management)
+      enqueueOrDisplayPopup(raw);
 
       // Non-blocking refresh of dashboard KPI counts
       cachedGet(`${getVendorBackendUrl()}/api/vendor/analytics`, getAxiosConfig())
@@ -7337,7 +7401,7 @@ const VendorDashboard = () => {
                               <tbody>
                                 {filteredBookings.map(b => (
                                   <tr key={b._id || b.id || b.order_number} className="border-b border-slate-150/70 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                                    {/* Customer Name & ID */}
+                                    {/* Customer Name, Phone & Execution Address */}
                                     <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
                                       <div>{b.bookingHolder?.name || b.memberName || b.customer_name || 'Customer'}</div>
                                       {(b.bookingHolder?.phone || b.customerPhone || b.customer_phone || b.phone || b.memberPhone) && (
@@ -7346,6 +7410,17 @@ const VendorDashboard = () => {
                                           <span>{b.bookingHolder?.phone || b.customerPhone || b.customer_phone || b.phone || b.memberPhone}</span>
                                         </div>
                                       )}
+                                      {/* Service Execution Location / Address */}
+                                      {(() => {
+                                        const addr = b.serviceLocation || b.bookingHolder?.address || b.customerAddress || b.customer_address || b.address;
+                                        if (!addr || addr === 'Not provided' || addr.includes('N/A (')) return null;
+                                        return (
+                                          <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium flex items-start gap-1 mt-1 max-w-[240px] leading-tight">
+                                            <span className="shrink-0 mt-0.5">📍</span>
+                                            <span className="truncate">{addr}</span>
+                                          </div>
+                                        );
+                                      })()}
                                       <div className="text-[10px] text-slate-500 font-normal mt-0.5">ID: {(b.bookingHolder?.customerId && b.bookingHolder.customerId !== 'FIC-CUST-100001') ? b.bookingHolder.customerId : getCustomerDisplayId(b)}</div>
                                     </td>
 
@@ -7365,9 +7440,32 @@ const VendorDashboard = () => {
                                         if (isServices) {
                                           badgeLabel = 'SERVICES';
                                           badgeColor = 'bg-teal-100 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300';
-                                          detailTitle = b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` : (b.serviceName || (b.items && b.items[0]?.name) || b.product_details || b.name || b.title || 'General Service');
+                                          const GENERIC_CATS = ['electrical & solar services', 'electrical & solar', 'electrical services', 'plumbing services', 'services', 'service', 'general service', 'daily needs', 'products'];
+                                          let sName = b.serviceName;
+                                          let pkgName = b.packageName || (b.items && b.items[0]?.variant);
+
+                                          if (!sName || GENERIC_CATS.includes(String(sName).trim().toLowerCase())) {
+                                            const candidate = (b.items && b.items[0]?.name) || b.product_details || b.name || '';
+                                            const m = candidate.match(/^([^(•·\n\r]+)(?:\(([^)]+)\))?/);
+                                            if (m) {
+                                              sName = m[1].trim();
+                                              if (!pkgName && m[2]) pkgName = m[2].split(/[•·]/)[0].trim();
+                                            } else {
+                                              sName = candidate || 'General Service';
+                                            }
+                                          } else if (String(sName).includes('(')) {
+                                            const m = String(sName).match(/^([^(]+)(?:\(([^)]+)\))?/);
+                                            if (m) {
+                                              sName = m[1].trim();
+                                              if (!pkgName && m[2]) pkgName = m[2].trim();
+                                            }
+                                          }
+
+                                          detailTitle = b.doctorName ? `👨‍⚕️ Dr. ${b.doctorName}` : (sName || 'General Service');
                                           if (b.doctorSpecialization) {
                                             subInfo = b.doctorSpecialization;
+                                          } else if (pkgName) {
+                                            subInfo = `📦 ${pkgName}`;
                                           } else if (b.subcategory || (b.items && b.items[0]?.subcategory)) {
                                             subInfo = b.subcategory || b.items[0]?.subcategory;
                                           }
@@ -7487,15 +7585,41 @@ const VendorDashboard = () => {
                                           </div>
                                         );
                                       })() : isServicesBooking(b) ? (() => {
-                                        const rawServiceDate = b.appointmentDate || b.bookingDate || b.date || (b.createdAt ? b.createdAt.substring(0, 10) : 'Not provided');
-                                        let formattedServiceDate = 'Not provided';
-                                        if (rawServiceDate) {
-                                          const d = new Date(rawServiceDate);
+                                        const rawServiceDate = b.serviceDate || b.appointmentDate || b.bookingDate || b.date;
+                                        let resolvedDate = rawServiceDate;
+                                        let resolvedSlot = b.serviceTime || b.appointmentTimeSlot || b.time;
+
+                                        // Fallback regex parsing if missing or default
+                                        if ((!resolvedDate || resolvedDate === 'Not provided' || !resolvedSlot || resolvedSlot === 'Standard Slot') && b.appointment_slot) {
+                                          if (b.appointment_slot.includes(' at ')) {
+                                            const [dp, tp] = b.appointment_slot.split(' at ');
+                                            if (!resolvedDate || resolvedDate === 'Not provided') resolvedDate = dp.trim();
+                                            if (!resolvedSlot || resolvedSlot === 'Standard Slot') resolvedSlot = tp.trim();
+                                          } else if (!resolvedDate || resolvedDate === 'Not provided') {
+                                            resolvedDate = b.appointment_slot;
+                                          }
+                                        }
+
+                                        if ((!resolvedDate || resolvedDate === 'Not provided' || !resolvedSlot || resolvedSlot === 'Standard Slot') && b.product_details) {
+                                          const m = String(b.product_details).match(/[•·]\s*([A-Za-z0-9,\s]+?)\s+at\s+([0-9:AMPMapm\s]+)/);
+                                          if (m) {
+                                            if (!resolvedDate || resolvedDate === 'Not provided') resolvedDate = m[1].trim();
+                                            if (!resolvedSlot || resolvedSlot === 'Standard Slot') resolvedSlot = m[2].trim();
+                                          }
+                                        }
+
+                                        let formattedServiceDate = 'On-Demand Service';
+                                        if (resolvedDate && resolvedDate !== 'Not provided') {
+                                          const d = new Date(resolvedDate);
                                           formattedServiceDate = !isNaN(d.getTime())
                                             ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-                                            : String(rawServiceDate);
+                                            : String(resolvedDate);
+                                        } else if (b.createdAt) {
+                                          const cd = new Date(b.createdAt);
+                                          formattedServiceDate = !isNaN(cd.getTime()) ? cd.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'On-Demand Service';
                                         }
-                                        const slotTime = b.appointmentTimeSlot || b.time || 'Standard Slot';
+
+                                        const slotTime = (resolvedSlot && resolvedSlot !== 'Standard Slot') ? resolvedSlot : 'On-Demand / Flexible';
                                         return (
                                           <div className="space-y-1 py-0.5">
                                             <div className="leading-tight">
@@ -12462,7 +12586,7 @@ required
         const instructions = newIncomingOrder.deliveryInstructions || newIncomingOrder.notes || newIncomingOrder.customerNotes || newIncomingOrder.specialInstructions || '';
 
         const handleViewFullDetails = () => {
-          setIsNewOrderPopupOpen(false);
+          dismissCurrentPopup();
           if (isJob) {
             setActiveTab('applications');
           } else if (isBooking) {
@@ -12475,18 +12599,26 @@ required
         };
 
         const handleAcknowledge = () => {
-          setIsNewOrderPopupOpen(false);
+          dismissCurrentPopup();
           setMessage(`Transaction #${txId} acknowledged and marked as seen.`);
         };
 
         return (
           <Modal
             isOpen={isNewOrderPopupOpen}
-            onClose={() => setIsNewOrderPopupOpen(false)}
+            onClose={dismissCurrentPopup}
             title={`${txIcon} ${txTypeLabel}`}
             maxWidth="max-w-2xl"
           >
             <div className="space-y-4 animate-fadeIn text-slate-800 dark:text-slate-100 text-left">
+              {/* 15s Auto-Dismiss Progress Bar */}
+              <div className="w-full bg-slate-200/60 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className="bg-primary-500 h-full rounded-full transition-all duration-1000 ease-linear"
+                  style={{ width: `${Math.max(0, Math.min(100, (popupSecondsLeft / 15) * 100))}%` }}
+                />
+              </div>
+
               {/* Alert Header Banner */}
               <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${badgeStyle}`}>
                 <div className="flex items-center gap-3">
@@ -12502,6 +12634,15 @@ required
                   </div>
                 </div>
                 <div className="flex items-center gap-2 self-end sm:self-center">
+                  <span className="text-[11px] font-black px-2.5 py-1 bg-white/95 dark:bg-black/60 rounded-full font-mono shadow-sm border border-current/20 flex items-center gap-1">
+                    <span>⏱️</span>
+                    <span>Auto-dismiss in {popupSecondsLeft}s</span>
+                  </span>
+                  {popupQueueRef.current && popupQueueRef.current.length > 0 && (
+                    <span className="text-[10px] font-extrabold px-2 py-1 bg-amber-500 text-white rounded-full">
+                      +{popupQueueRef.current.length} queued
+                    </span>
+                  )}
                   <span className="text-xs font-black px-3 py-1 bg-white/95 dark:bg-black/60 rounded-full font-mono shadow-sm border border-current/10">
                     {newIncomingOrder.status || 'Received'}
                   </span>
@@ -12605,7 +12746,37 @@ required
                   <div className="space-y-2">
                     <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
                       <span className="text-slate-500 font-semibold">Service / Booking:</span>
-                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400">{newIncomingOrder.serviceName || newIncomingOrder.product_details || newIncomingOrder.items?.[0]?.name || 'Scheduled Service'}</span>
+                      {(() => {
+                        const GENERIC_CATS = ['electrical & solar services', 'electrical & solar', 'electrical services', 'plumbing services', 'services', 'service', 'general service', 'daily needs', 'products'];
+                        let sName = newIncomingOrder.serviceName;
+                        let pkgName = newIncomingOrder.packageName || (newIncomingOrder.items && newIncomingOrder.items[0]?.variant);
+                        if (!sName || GENERIC_CATS.includes(String(sName).trim().toLowerCase())) {
+                          const candidate = (newIncomingOrder.items && newIncomingOrder.items[0]?.name) || newIncomingOrder.product_details || newIncomingOrder.name || '';
+                          const m = candidate.match(/^([^(•·\n\r]+)(?:\(([^)]+)\))?/);
+                          if (m) {
+                            sName = m[1].trim();
+                            if (!pkgName && m[2]) pkgName = m[2].split(/[•·]/)[0].trim();
+                          } else {
+                            sName = candidate || 'Service Booking';
+                          }
+                        } else if (String(sName).includes('(')) {
+                          const m = String(sName).match(/^([^(]+)(?:\(([^)]+)\))?/);
+                          if (m) {
+                            sName = m[1].trim();
+                            if (!pkgName && m[2]) pkgName = m[2].trim();
+                          }
+                        }
+                        return (
+                          <div className="text-right">
+                            <span className="font-extrabold text-indigo-600 dark:text-indigo-400 text-sm block">{sName}</span>
+                            {pkgName && (
+                              <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
+                                📦 {pkgName}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     {isStay && (
                       <>
@@ -12640,9 +12811,31 @@ required
                     {!isStay && !isTravel && (
                       <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
                         <span className="text-slate-500 font-semibold">Appointment / Schedule:</span>
-                        <span className="font-bold text-slate-800 dark:text-slate-200">
-                          {newIncomingOrder.appointmentDate || newIncomingOrder.bookingDate || 'Today'} ({newIncomingOrder.appointmentTimeSlot || getBookingTimeSlot(newIncomingOrder)})
-                        </span>
+                        {(() => {
+                          let rDate = newIncomingOrder.serviceDate || newIncomingOrder.appointmentDate || newIncomingOrder.bookingDate;
+                          let rSlot = newIncomingOrder.serviceTime || newIncomingOrder.appointmentTimeSlot || newIncomingOrder.time;
+                          if ((!rDate || !rSlot) && newIncomingOrder.appointment_slot) {
+                            if (newIncomingOrder.appointment_slot.includes(' at ')) {
+                              const [d, t] = newIncomingOrder.appointment_slot.split(' at ');
+                              if (!rDate) rDate = d.trim();
+                              if (!rSlot) rSlot = t.trim();
+                            } else if (!rDate) {
+                              rDate = newIncomingOrder.appointment_slot;
+                            }
+                          }
+                          if ((!rDate || !rSlot) && newIncomingOrder.product_details) {
+                            const m = String(newIncomingOrder.product_details).match(/[•·]\s*([A-Za-z0-9,\s]+?)\s+at\s+([0-9:AMPMapm\s]+)/);
+                            if (m) {
+                              if (!rDate) rDate = m[1].trim();
+                              if (!rSlot) rSlot = m[2].trim();
+                            }
+                          }
+                          return (
+                            <span className="font-bold text-slate-800 dark:text-slate-200">
+                              {rDate || 'On-Demand Service'} {rSlot ? `(${rSlot})` : ''}
+                            </span>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -12792,7 +12985,7 @@ required
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsNewOrderPopupOpen(false)}
+                  onClick={dismissCurrentPopup}
                   className="px-4 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-700 dark:text-slate-300 font-semibold py-3 rounded-xl transition-all text-xs"
                 >
                   Close

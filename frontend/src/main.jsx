@@ -10,12 +10,28 @@ import './index.css';
 if (typeof window !== 'undefined') {
   const isExtensionChannelError = (err) => {
     if (!err) return false;
-    const msg = (err.message || err.reason || err.stack || String(err)).toLowerCase();
+    const msg = (
+      typeof err === 'string'
+        ? err
+        : (err.message || err.reason || err.stack || (typeof err.toString === 'function' ? err.toString() : ''))
+    ).toLowerCase();
     return (
       msg.includes('message channel closed') ||
       msg.includes('listener indicated an asynchronous response') ||
       msg.includes('runtime.lasterror')
     );
+  };
+
+  const origError = console.error;
+  console.error = (...args) => {
+    if (args.some(isExtensionChannelError)) return;
+    origError.apply(console, args);
+  };
+
+  const origWarn = console.warn;
+  console.warn = (...args) => {
+    if (args.some(isExtensionChannelError)) return;
+    origWarn.apply(console, args);
   };
 
   window.addEventListener('unhandledrejection', (event) => {

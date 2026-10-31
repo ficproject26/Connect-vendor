@@ -1767,164 +1767,6 @@ const getOrders = async (req, res) => {
   }
 };
 
-// --- BOOKINGS (Stay / Services / Appointments / Travel) ---
-// @desc    Get all bookings and reservations of the vendor
-// @route   GET /api/vendor/bookings
-// @access  Private (Vendor)
-const getBookings = async (req, res) => {
-  try {
-    const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await getVendorUserCached(parentUserId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Vendor user not found' });
-    }
-
-    // Category guard: Only vendors with Services, Stay, or Travel can retrieve bookings
-    if (!vendorHasBookingCategories(user)) {
-      return res.status(200).json({
-        success: true,
-        data: [],
-        total: 0,
-        page: 1,
-        totalPages: 1
-      });
-    }
-
-    const businessIds = [
-      parentUserId.toString(),
-      ...(user._id ? [user._id.toString()] : []),
-      ...(user.vendorId ? [user.vendorId.toString()] : []),
-      ...(user.registrationId ? [user.registrationId.toString()] : [])
-    ];
-    if (user.businesses && user.businesses.length > 0) {
-      user.businesses.forEach(b => {
-        if (b._id) businessIds.push(b._id.toString());
-        if (b.id) businessIds.push(b.id.toString());
-        if (b.vendorId) businessIds.push(b.vendorId.toString());
-        if (b.businessId) businessIds.push(b.businessId.toString());
-      });
-    }
-    const uniqueBusinessIds = [...new Set(businessIds.filter(Boolean))];
-
-    // Query strictly for bookings and reservation types, excluding orders and jobs
-    const baseQuery = {
-      $and: [
-        {
-          $or: [
-            { vendorId: { $in: uniqueBusinessIds } },
-            { vendor_id: { $in: uniqueBusinessIds } }
-          ]
-        },
-        {
-          $or: [
-            { type: { $in: BOOKING_BASED_TYPES } },
-            { category: { $in: BOOKING_BASED_TYPES } },
-            { 'items.category': { $in: BOOKING_BASED_TYPES } },
-            { 'items.mainCategory': { $in: ['Services', 'services', 'Stay', 'stay', 'Travel', 'travel'] } },
-            { doctorName: { $exists: true, $ne: null } },
-            { serviceName: { $exists: true, $ne: null } },
-            { checkInDate: { $exists: true, $ne: null } },
-            { roomNumber: { $exists: true, $ne: null } },
-            { vehicleType: { $exists: true, $ne: null } },
-            { boardingPoint: { $exists: true, $ne: null } },
-            { appointmentDate: { $exists: true, $ne: null } }
-          ]
-        },
-        // Never allow Job applications in Bookings
-        { type: { $nin: APPLICATION_BASED_TYPES } },
-        { category: { $nin: APPLICATION_BASED_TYPES } },
-        {
-          $or: [
-            { jobId: { $exists: false } },
-            { jobId: null },
-            { jobId: '' }
-          ]
-        },
-        {
-          $or: [
-            { candidateResume: { $exists: false } },
-            { candidateResume: null },
-            { candidateResume: '' }
-          ]
-        }
-      ]
-    };
-
-    // Support category filter for bookings
-    if (req.query.category && !['All', 'all'].includes(String(req.query.category).trim())) {
-      const allowedTypes = mapCategoryToTypes(req.query.category);
-      const catRegex = new RegExp(allowedTypes.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
-      const isStayFilter = ['stay', 'hotel', 'hotels', 'room', 'rooms'].includes(String(req.query.category).trim().toLowerCase());
-      const isServicesFilter = ['services', 'service', 'appointment', 'hospital', 'technician'].includes(String(req.query.category).trim().toLowerCase());
-      const isTravelFilter = ['travel', 'travels', 'package', 'transport'].includes(String(req.query.category).trim().toLowerCase());
-
-      baseQuery.$and.push({
-        $or: [
-          { type: { $in: allowedTypes } },
-          { category: { $in: allowedTypes } },
-          { type: catRegex },
-          { category: catRegex },
-          { 'items.mainCategory': catRegex },
-          ...(isStayFilter ? [
-            { checkInDate: { $exists: true, $ne: null } },
-            { roomNumber: { $exists: true, $ne: null } },
-            { 'items.category': { $in: ['Stay', 'Hotels', 'Resorts', 'Hotel', 'Resort', 'Rooms'] } }
-          ] : []),
-          ...(isServicesFilter ? [
-            { type: { $in: ['Services', 'services', 'Service', 'service', 'Appointment', 'appointment', 'Booking', 'booking'] } },
-            { category: { $in: ['Services', 'services', 'Service', 'service'] } },
-            { doctorName: { $exists: true, $ne: null } },
-            { serviceName: { $exists: true, $ne: null } },
-            { appointmentDate: { $exists: true, $ne: null } },
-            { appointmentTimeSlot: { $exists: true, $ne: null } },
-            { 'items.category': { $in: ['Services', 'IT & Device Support', 'Ac Service', 'Hospital', 'Technician', 'Service', 'services', 'service'] } },
-            { 'items.mainCategory': { $in: ['Services', 'services', 'Service', 'service'] } },
-            { 'items.name': new RegExp('service|consultation|repair|appointment|support', 'i') },
-            { product_details: new RegExp('service|consultation|repair|appointment|support', 'i') }
-          ] : []),
-          ...(isTravelFilter ? [
-            { vehicleType: { $exists: true, $ne: null } },
-            { vehicleNumber: { $exists: true, $ne: null } },
-            { boardingPoint: { $exists: true, $ne: null } },
-            { droppingPoint: { $exists: true, $ne: null } },
-            { 'items.category': { $in: ['Travel', 'Travels', 'Bus', 'Car', 'Bike'] } }
-          ] : [])
-        ]
-      });
-    }
-
-    // Support search
-    if (req.query.search) {
-      const sRegex = new RegExp(String(req.query.search).trim(), 'i');
-      baseQuery.$and.push({
-        $or: [
-          { order_number: sRegex },
-          { memberName: sRegex },
-          { customer_name: sRegex },
-          { doctorName: sRegex },
-          { serviceName: sRegex }
-        ]
-      });
-    }
-
-    // Support status filter
-    if (req.query.status && req.query.status !== 'All') {
-      baseQuery.$and.push({ status: req.query.status });
-    }
-
-    const page = parseInt(req.query.page, 10);
-    const limit = parseInt(req.query.limit, 10);
-
-    let query = Order.find(baseQuery).sort({ createdAt: -1, _id: -1 }).lean();
-
-    let total = 0;
-    if (!isNaN(page) && !isNaN(limit) && limit > 0) {
-      total = await Order.countDocuments(baseQuery);
-      query = query.skip((page - 1) * limit).limit(limit);
-    }
-
-    const bookings = await query;
-
 // Robust Date Formatter preserving exact calendar date as DD MMM YYYY (e.g. 15 Oct 2026)
 const formatDisplayDate = (val) => {
   if (!val || val === 'Not provided' || val === 'N/A') return 'Not provided';
@@ -2037,8 +1879,8 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
   }
 
   // Booking Holder / Primary Customer Details
-  let customerAddress = obj.customer_address || obj.deliveryAddress || obj.shippingAddress;
-  if (!customerAddress || customerAddress === 'N/A' || customerAddress === 'Bangalore Center') {
+  let customerAddress = obj.customer_address || obj.deliveryAddress || obj.shippingAddress || obj.customerAddress || obj.address;
+  if (!customerAddress || customerAddress === 'N/A' || customerAddress === 'Bangalore Center' || customerAddress === 'N/A (Booking Service)' || customerAddress.includes('N/A (')) {
     if (matchedCustomer?.address) {
       customerAddress = matchedCustomer.address;
     } else {
@@ -2046,6 +1888,9 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     }
   }
   customerAddress = deduplicateAddressSegments(customerAddress);
+  obj.customer_address = customerAddress;
+  obj.customerAddress = customerAddress;
+  obj.serviceLocation = customerAddress;
 
   obj.bookingHolder = {
     name: matchedCustomer?.name || obj.memberName || obj.customer_name || 'Customer',
@@ -2351,9 +2196,83 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
 
   // Services specific details
   if (isServices) {
-    obj.appointmentDate = obj.appointmentDate || obj.date || obj.bookingDate || 'Not provided';
-    obj.appointmentTimeSlot = obj.appointmentTimeSlot || obj.time || 'Standard Slot';
-    obj.serviceName = obj.serviceName || (obj.doctorName ? `Dr. ${obj.doctorName} Consultation` : null) || obj.product_details || firstItem.name || obj.name || obj.title || 'General Service';
+    // 1. Resolve Genuine Service Name and Package Name
+    const CATEGORY_NAMES = [
+      'electrical & solar services', 'electrical & solar', 'electrical services',
+      'plumbing services', 'plumbing', 'home services', 'services', 'service',
+      'cleaning services', 'repair services', 'general service', 'daily needs',
+      'food', 'products', 'stay', 'travel'
+    ];
+
+    let extractedServiceName = '';
+    let extractedPackageName = '';
+
+    // If firstItem has a name (e.g. "LINEMAN (Standard Service & Jet Wash)"), parse it
+    const candidateName = firstItem.name || matchedProd?.name || obj.product_details || '';
+    if (candidateName) {
+      const parenMatch = candidateName.match(/^([^(•·\n\r]+)(?:\(([^)]+)\))?/);
+      if (parenMatch) {
+        extractedServiceName = parenMatch[1].trim();
+        if (parenMatch[2]) {
+          // If the package contains " • Date at Time", split it
+          const innerPkg = parenMatch[2].split(/[•·]/)[0].trim();
+          extractedPackageName = innerPkg;
+        }
+      } else {
+        extractedServiceName = candidateName.trim();
+      }
+    }
+
+    let finalServiceName = obj.serviceName;
+    // If current serviceName is missing or matches a generic category name, override with extracted
+    if (!finalServiceName || CATEGORY_NAMES.includes(String(finalServiceName).trim().toLowerCase())) {
+      finalServiceName = extractedServiceName || (obj.doctorName ? `Dr. ${obj.doctorName} Consultation` : null) || obj.name || obj.title || 'Service Booking';
+    } else if (finalServiceName.includes('(')) {
+      // e.g. "LINEMAN (Standard Service...)"
+      const m = finalServiceName.match(/^([^(]+)(?:\(([^)]+)\))?/);
+      if (m) {
+        finalServiceName = m[1].trim();
+        if (!extractedPackageName && m[2]) extractedPackageName = m[2].trim();
+      }
+    }
+
+    obj.serviceName = finalServiceName;
+    obj.packageName = obj.packageName || extractedPackageName || (firstItem.variant ? String(firstItem.variant) : null);
+    obj.serviceWithPackage = obj.packageName ? `${obj.serviceName} (${obj.packageName})` : obj.serviceName;
+
+    // 2. Resolve Genuine Date and Time Slot
+    let apptDate = obj.appointmentDate || obj.serviceDate || obj.bookingDate || obj.date;
+    let apptSlot = obj.appointmentTimeSlot || obj.serviceTime || obj.timeSlot || obj.time;
+
+    if (apptDate === 'Not provided') apptDate = null;
+    if (apptSlot === 'Standard Slot') apptSlot = null;
+
+    // If missing or defaulted, parse from appointment_slot or product_details
+    const rawApptSlot = String(obj.appointment_slot || obj.appointmentSlot || '').trim();
+    if (rawApptSlot && (!apptDate || !apptSlot)) {
+      if (rawApptSlot.includes(' at ')) {
+        const [dPart, tPart] = rawApptSlot.split(' at ');
+        if (!apptDate && dPart) apptDate = dPart.trim();
+        if (!apptSlot && tPart) apptSlot = tPart.trim();
+      } else if (!apptDate) {
+        apptDate = rawApptSlot;
+      }
+    }
+
+    if ((!apptDate || !apptSlot) && obj.product_details) {
+      const match = String(obj.product_details).match(/[•·]\s*([A-Za-z0-9,\s]+?)\s+at\s+([0-9:AMPMapm\s]+)/);
+      if (match) {
+        if (!apptDate && match[1]) apptDate = match[1].trim();
+        if (!apptSlot && match[2]) apptSlot = match[2].trim();
+      }
+    }
+
+    obj.appointmentDate = apptDate ? formatDisplayDate(apptDate) : (obj.createdAt ? `On-Demand (${formatDisplayDate(obj.createdAt)})` : 'On-Demand Service');
+    obj.appointmentTimeSlot = apptSlot || 'On-Demand / Flexible';
+    obj.serviceDate = obj.appointmentDate;
+    obj.serviceTime = obj.appointmentTimeSlot;
+    obj.appointment_slot = `${obj.appointmentDate} at ${obj.appointmentTimeSlot}`;
+    obj.serviceLocation = customerAddress;
   }
 
   // Guest details & list (already resolved above)
@@ -2442,6 +2361,165 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
   return obj;
 };
 
+// --- BOOKINGS (Stay / Services / Appointments / Travel) ---
+// @desc    Get all bookings and reservations of the vendor
+// @route   GET /api/vendor/bookings
+// @access  Private (Vendor)
+const getBookings = async (req, res) => {
+  try {
+    const parentUserId = req.user.parentUserId || req.user._id;
+    const user = await getVendorUserCached(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    // Category guard: Only vendors with Services, Stay, or Travel can retrieve bookings
+    if (!vendorHasBookingCategories(user)) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        total: 0,
+        page: 1,
+        totalPages: 1
+      });
+    }
+
+    const businessIds = [
+      parentUserId.toString(),
+      ...(user._id ? [user._id.toString()] : []),
+      ...(user.vendorId ? [user.vendorId.toString()] : []),
+      ...(user.registrationId ? [user.registrationId.toString()] : [])
+    ];
+    if (user.businesses && user.businesses.length > 0) {
+      user.businesses.forEach(b => {
+        if (b._id) businessIds.push(b._id.toString());
+        if (b.id) businessIds.push(b.id.toString());
+        if (b.vendorId) businessIds.push(b.vendorId.toString());
+        if (b.businessId) businessIds.push(b.businessId.toString());
+      });
+    }
+    const uniqueBusinessIds = [...new Set(businessIds.filter(Boolean))];
+
+    // Query strictly for bookings and reservation types, excluding orders and jobs
+    const baseQuery = {
+      $and: [
+        {
+          $or: [
+            { vendorId: { $in: uniqueBusinessIds } },
+            { vendor_id: { $in: uniqueBusinessIds } }
+          ]
+        },
+        {
+          $or: [
+            { type: { $in: BOOKING_BASED_TYPES } },
+            { category: { $in: BOOKING_BASED_TYPES } },
+            { 'items.category': { $in: BOOKING_BASED_TYPES } },
+            { 'items.mainCategory': { $in: ['Services', 'services', 'Stay', 'stay', 'Travel', 'travel'] } },
+            { doctorName: { $exists: true, $ne: null } },
+            { serviceName: { $exists: true, $ne: null } },
+            { checkInDate: { $exists: true, $ne: null } },
+            { roomNumber: { $exists: true, $ne: null } },
+            { vehicleType: { $exists: true, $ne: null } },
+            { boardingPoint: { $exists: true, $ne: null } },
+            { appointmentDate: { $exists: true, $ne: null } }
+          ]
+        },
+        // Never allow Job applications in Bookings
+        { type: { $nin: APPLICATION_BASED_TYPES } },
+        { category: { $nin: APPLICATION_BASED_TYPES } },
+        {
+          $or: [
+            { jobId: { $exists: false } },
+            { jobId: null },
+            { jobId: '' }
+          ]
+        },
+        {
+          $or: [
+            { candidateResume: { $exists: false } },
+            { candidateResume: null },
+            { candidateResume: '' }
+          ]
+        }
+      ]
+    };
+
+    // Support category filter for bookings
+    if (req.query.category && !['All', 'all'].includes(String(req.query.category).trim())) {
+      const allowedTypes = mapCategoryToTypes(req.query.category);
+      const catRegex = new RegExp(allowedTypes.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
+      const isStayFilter = ['stay', 'hotel', 'hotels', 'room', 'rooms'].includes(String(req.query.category).trim().toLowerCase());
+      const isServicesFilter = ['services', 'service', 'appointment', 'hospital', 'technician'].includes(String(req.query.category).trim().toLowerCase());
+      const isTravelFilter = ['travel', 'travels', 'package', 'transport'].includes(String(req.query.category).trim().toLowerCase());
+
+      baseQuery.$and.push({
+        $or: [
+          { type: { $in: allowedTypes } },
+          { category: { $in: allowedTypes } },
+          { type: catRegex },
+          { category: catRegex },
+          { 'items.mainCategory': catRegex },
+          ...(isStayFilter ? [
+            { checkInDate: { $exists: true, $ne: null } },
+            { roomNumber: { $exists: true, $ne: null } },
+            { 'items.category': { $in: ['Stay', 'Hotels', 'Resorts', 'Hotel', 'Resort', 'Rooms'] } }
+          ] : []),
+          ...(isServicesFilter ? [
+            { type: { $in: ['Services', 'services', 'Service', 'service', 'Appointment', 'appointment', 'Booking', 'booking'] } },
+            { category: { $in: ['Services', 'services', 'Service', 'service'] } },
+            { doctorName: { $exists: true, $ne: null } },
+            { serviceName: { $exists: true, $ne: null } },
+            { appointmentDate: { $exists: true, $ne: null } },
+            { appointmentTimeSlot: { $exists: true, $ne: null } },
+            { 'items.category': { $in: ['Services', 'IT & Device Support', 'Ac Service', 'Hospital', 'Technician', 'Service', 'services', 'service'] } },
+            { 'items.mainCategory': { $in: ['Services', 'services', 'Service', 'service'] } },
+            { 'items.name': new RegExp('service|consultation|repair|appointment|support', 'i') },
+            { product_details: new RegExp('service|consultation|repair|appointment|support', 'i') }
+          ] : []),
+          ...(isTravelFilter ? [
+            { vehicleType: { $exists: true, $ne: null } },
+            { vehicleNumber: { $exists: true, $ne: null } },
+            { boardingPoint: { $exists: true, $ne: null } },
+            { droppingPoint: { $exists: true, $ne: null } },
+            { 'items.category': { $in: ['Travel', 'Travels', 'Bus', 'Car', 'Bike'] } }
+          ] : [])
+        ]
+      });
+    }
+
+    // Support search
+    if (req.query.search) {
+      const sRegex = new RegExp(String(req.query.search).trim(), 'i');
+      baseQuery.$and.push({
+        $or: [
+          { order_number: sRegex },
+          { memberName: sRegex },
+          { customer_name: sRegex },
+          { doctorName: sRegex },
+          { serviceName: sRegex }
+        ]
+      });
+    }
+
+    // Support status filter
+    if (req.query.status && req.query.status !== 'All') {
+      baseQuery.$and.push({ status: req.query.status });
+    }
+
+    const page = parseInt(req.query.page, 10);
+    const limit = parseInt(req.query.limit, 10);
+
+    let query = Order.find(baseQuery).sort({ createdAt: -1, _id: -1 }).lean();
+
+    let total = 0;
+    if (!isNaN(page) && !isNaN(limit) && limit > 0) {
+      total = await Order.countDocuments(baseQuery);
+      query = query.skip((page - 1) * limit).limit(limit);
+    }
+
+    const bookings = await query;
+
+
     // Fast targeted lookups for only the retrieved bookings
     const memberIds = [...new Set(bookings.map(o => o.memberId || o.customer_id).filter(Boolean))];
     const prodIds = [...new Set(bookings.map(o => (o.items && o.items[0]?.productId) || o.productId).filter(Boolean))];
@@ -2484,7 +2562,7 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
 const getOrderById = async (req, res) => {
   try {
     const parentUserId = req.user.parentUserId || req.user._id;
-    const user = await User.findById(parentUserId);
+    const user = (await getVendorUserCached(parentUserId)) || (await User.findById(parentUserId));
     if (!user) {
       return res.status(404).json({ success: false, message: 'Vendor user not found' });
     }
@@ -2497,10 +2575,39 @@ const getOrderById = async (req, res) => {
     const isValidObjectId = mongoose.Types.ObjectId.isValid(targetId);
     let order = null;
     if (isValidObjectId) {
-      order = await Order.findById(targetId).lean();
+      try {
+        order = await Order.findById(new mongoose.Types.ObjectId(targetId)).lean() || await Order.findById(targetId).lean();
+      } catch (e) {
+        order = null;
+      }
     }
     if (!order) {
-      order = await Order.findOne({ $or: [{ id: targetId }, { order_number: targetId }, { applicationId: targetId }] }).lean();
+      const orConditions = [
+        { id: targetId },
+        { order_number: targetId },
+        { applicationId: targetId }
+      ];
+      if (isValidObjectId) {
+        orConditions.push({ _id: new mongoose.Types.ObjectId(targetId) });
+        orConditions.push({ _id: targetId });
+      }
+      try {
+        order = await Order.findOne({ $or: orConditions }).lean();
+      } catch (e) {
+        order = null;
+      }
+    }
+    if (!order) {
+      try {
+        const rawDoc = await mongoose.connection.db.collection('orders').findOne(
+          isValidObjectId
+            ? { $or: [{ _id: new mongoose.Types.ObjectId(targetId) }, { _id: targetId }, { id: targetId }, { order_number: targetId }, { applicationId: targetId }] }
+            : { $or: [{ id: targetId }, { order_number: targetId }, { applicationId: targetId }, { _id: targetId }] }
+        );
+        if (rawDoc) order = rawDoc;
+      } catch (e) {
+        order = null;
+      }
     }
     if (!order) {
       return res.status(404).json({ success: false, message: 'Booking / Order not found' });
@@ -2518,6 +2625,8 @@ const getOrderById = async (req, res) => {
       user.businesses.forEach(b => {
         if (b && b._id) businessIds.add(b._id.toString());
         if (b && b.id) businessIds.add(b.id.toString());
+        if (b && b.vendorId) businessIds.add(b.vendorId.toString());
+        if (b && b.businessId) businessIds.add(b.businessId.toString());
       });
     }
 
@@ -2548,11 +2657,24 @@ const getOrderById = async (req, res) => {
       }
     }
 
-    const enriched = enrichBookingWithDetails(order, user, customerLookup, productMap);
+    let membershipMap = {};
+    const memberId = order.memberId || order.customer_id;
+    if (memberId) {
+      try {
+        const membershipCard = await MembershipCard.findOne({ userId: memberId }).select('userId planName').lean();
+        if (membershipCard && membershipCard.userId && membershipCard.planName) {
+          membershipMap[membershipCard.userId.toString()] = membershipCard.planName;
+        }
+      } catch (mErr) {}
+    }
+
+    const enriched = enrichBookingWithDetails(order, user, customerLookup, productMap, membershipMap);
 
     res.status(200).json({
       success: true,
-      data: enriched
+      data: enriched,
+      order: enriched,
+      booking: enriched
     });
   } catch (error) {
     console.error('Get Order By ID Error:', error);
@@ -6381,7 +6503,169 @@ const getOnboardingStatus = async (req, res) => {
   }
 };
 
+// @desc    Update Vendor Accepting Orders Status (ON / OFF)
+// @route   PUT /api/vendor/accepting-orders
+// @access  Private (Vendor)
+const updateAcceptingOrders = async (req, res) => {
+  try {
+    const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
+    const isAccepting = req.body.isAcceptingOrders !== undefined
+      ? Boolean(req.body.isAcceptingOrders)
+      : (req.body.acceptingOrders !== undefined ? Boolean(req.body.acceptingOrders) : true);
+
+    const user = await User.findById(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    user.isAcceptingOrders = isAccepting;
+    user.acceptingOrders = isAccepting;
+
+    if (user.businesses && Array.isArray(user.businesses)) {
+      user.businesses.forEach(b => {
+        if (b) {
+          b.isAcceptingOrders = isAccepting;
+          b.acceptingOrders = isAccepting;
+        }
+      });
+    }
+
+    await user.save();
+    vendorUserCache.delete(parentUserId.toString());
+
+    res.status(200).json({
+      success: true,
+      message: `Order acceptance status updated to ${isAccepting ? 'ON' : 'OFF'}`,
+      isAcceptingOrders: isAccepting,
+      acceptingOrders: isAccepting,
+      user: {
+        _id: user._id,
+        isAcceptingOrders: user.isAcceptingOrders,
+        acceptingOrders: user.acceptingOrders
+      }
+    });
+  } catch (error) {
+    console.error('Update Accepting Orders Error:', error);
+    res.status(500).json({ success: false, message: 'Server error updating order acceptance status' });
+  }
+};
+
+// @desc    Get Authenticated Vendor Customer Ratings & Reviews
+// @route   GET /api/vendor/ratings
+// @access  Private (Vendor)
+const getVendorRatings = async (req, res) => {
+  try {
+    const parentUserId = req.user.parentUserId || req.user._id || req.user.id;
+    const user = await getVendorUserCached(parentUserId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Vendor user not found' });
+    }
+
+    const vendorIds = [
+      parentUserId.toString(),
+      ...(user.vendorId ? [String(user.vendorId)] : []),
+      ...(user.registrationId ? [String(user.registrationId)] : []),
+      ...(user._id ? [String(user._id)] : [])
+    ];
+    if (user.businesses && Array.isArray(user.businesses)) {
+      user.businesses.forEach(b => {
+        if (b && b._id) vendorIds.push(b._id.toString());
+        if (b && b.id) vendorIds.push(b.id.toString());
+        if (b && b.vendorId) vendorIds.push(String(b.vendorId));
+      });
+    }
+    const uniqueVendorIds = [...new Set(vendorIds.filter(Boolean))];
+    const objectIds = uniqueVendorIds.filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
+    const allMatchIds = [...uniqueVendorIds, ...objectIds];
+
+    // 1. Fetch ratings stored directly on orders
+    const ordersWithRatings = await Order.find({
+      $or: [
+        { vendorId: { $in: allMatchIds } },
+        { vendor_id: { $in: allMatchIds } }
+      ],
+      rating: { $exists: true, $ne: null }
+    }).sort({ ratedAt: -1, createdAt: -1 }).lean();
+
+    // 2. Fetch delivery ratings referencing this vendor's orders
+    let deliveryRatings = [];
+    try {
+      const db = mongoose.connection.db;
+      if (db) {
+        const allOrders = await Order.find({
+          $or: [
+            { vendorId: { $in: allMatchIds } },
+            { vendor_id: { $in: allMatchIds } }
+          ]
+        }).select('order_number id').lean();
+        const orderNums = allOrders.map(o => o.order_number || o.id).filter(Boolean);
+        if (orderNums.length > 0) {
+          deliveryRatings = await db.collection('delivery_ratings').find({
+            order_id: { $in: orderNums }
+          }).sort({ timestamp: -1 }).toArray();
+        }
+      }
+    } catch (err) {}
+
+    const reviewsList = [];
+    const seenOrderIds = new Set();
+
+    ordersWithRatings.forEach(o => {
+      const orderIdStr = o.order_number || o.id || (o._id ? o._id.toString() : '');
+      seenOrderIds.add(orderIdStr);
+      reviewsList.push({
+        id: o._id ? o._id.toString() : orderIdStr,
+        orderId: orderIdStr,
+        rating: Number(o.rating || 5),
+        reviewText: o.ratingComment || o.comment || '',
+        customerName: o.customer_name || o.memberName || 'Customer',
+        date: o.ratedAt || o.updatedAt || o.createdAt,
+        productName: o.product_details || (o.items && o.items[0]?.name) || 'Store Purchase',
+        category: o.type || o.category || 'Products'
+      });
+    });
+
+    deliveryRatings.forEach(dr => {
+      if (!seenOrderIds.has(dr.order_id)) {
+        reviewsList.push({
+          id: dr._id ? dr._id.toString() : dr.id,
+          orderId: dr.order_id,
+          rating: Number(dr.rating_value || 5),
+          reviewText: dr.comment || '',
+          customerName: 'Customer',
+          date: dr.timestamp || new Date(),
+          productName: 'Delivery Service',
+          category: 'Delivery'
+        });
+      }
+    });
+
+    const totalReviews = reviewsList.length;
+    const sumRatings = reviewsList.reduce((acc, r) => acc + r.rating, 0);
+    const avgRating = totalReviews > 0 ? parseFloat((sumRatings / totalReviews).toFixed(1)) : (user.rating || 5.0);
+
+    res.status(200).json({
+      success: true,
+      overallRating: avgRating,
+      totalReviews,
+      ratingBreakdown: {
+        5: reviewsList.filter(r => r.rating === 5).length,
+        4: reviewsList.filter(r => r.rating === 4).length,
+        3: reviewsList.filter(r => r.rating === 3).length,
+        2: reviewsList.filter(r => r.rating === 2).length,
+        1: reviewsList.filter(r => r.rating === 1).length,
+      },
+      reviews: reviewsList
+    });
+  } catch (error) {
+    console.error('Get Vendor Ratings Error:', error);
+    res.status(500).json({ success: false, message: 'Server error retrieving ratings' });
+  }
+};
+
 module.exports = {
+  updateAcceptingOrders,
+  getVendorRatings,
   getOnboardingStatus,
   getVendorAnalytics,
   createProduct,

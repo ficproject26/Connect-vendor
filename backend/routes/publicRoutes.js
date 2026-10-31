@@ -496,6 +496,12 @@ router.post('/orders', async (req, res) => {
       if (isSuspended) {
         return res.status(403).json({ success: false, message: 'This vendor is currently suspended and cannot receive new orders or bookings.' });
       }
+
+      // Check order acceptance status
+      const isNotAccepting = targetVendor.isAcceptingOrders === false || targetVendor.acceptingOrders === false;
+      if (isNotAccepting) {
+        return res.status(403).json({ success: false, message: 'This vendor is temporarily not accepting new orders or bookings.' });
+      }
     }
 
     let orderType = type || 'Order';

@@ -41,7 +41,9 @@ const {
   getVendorTickets,
   createVendorTicket,
   replyVendorTicket,
-  updateTicketStatusForbidden
+  updateTicketStatusForbidden,
+  updateAcceptingOrders,
+  getVendorRatings
 } = require('../controllers/vendorController');
 
 const { uploadToS3 } = require('../config/s3');
@@ -155,6 +157,10 @@ router.get('/commission-config', getPlatformConfigReadOnly);
 
 // Sales Payments Route (All categories)
 router.get('/payments/sales', getSalesPayments);
+
+// Vendor Accepting Orders & Ratings Routes
+router.put('/accepting-orders', updateAcceptingOrders);
+router.get('/ratings', getVendorRatings);
 
 // Settlement routes (Vendor Admin Payments)
 const { getVendorSettlements } = require('../controllers/settlementController');
