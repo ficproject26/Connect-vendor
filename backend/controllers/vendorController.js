@@ -1833,8 +1833,20 @@ const getBookings = async (req, res) => {
         // Never allow Job applications in Bookings
         { type: { $nin: APPLICATION_BASED_TYPES } },
         { category: { $nin: APPLICATION_BASED_TYPES } },
-        { jobId: { $exists: false } },
-        { candidateResume: { $exists: false } }
+        {
+          $or: [
+            { jobId: { $exists: false } },
+            { jobId: null },
+            { jobId: '' }
+          ]
+        },
+        {
+          $or: [
+            { candidateResume: { $exists: false } },
+            { candidateResume: null },
+            { candidateResume: '' }
+          ]
+        }
       ]
     };
 
@@ -1863,6 +1875,8 @@ const getBookings = async (req, res) => {
             { category: { $in: ['Services', 'services', 'Service', 'service'] } },
             { doctorName: { $exists: true, $ne: null } },
             { serviceName: { $exists: true, $ne: null } },
+            { appointmentDate: { $exists: true, $ne: null } },
+            { appointmentTimeSlot: { $exists: true, $ne: null } },
             { 'items.category': { $in: ['Services', 'IT & Device Support', 'Ac Service', 'Hospital', 'Technician', 'Service', 'services', 'service'] } },
             { 'items.mainCategory': { $in: ['Services', 'services', 'Service', 'service'] } },
             { 'items.name': new RegExp('service|consultation|repair|appointment|support', 'i') },
@@ -1870,6 +1884,9 @@ const getBookings = async (req, res) => {
           ] : []),
           ...(isTravelFilter ? [
             { vehicleType: { $exists: true, $ne: null } },
+            { vehicleNumber: { $exists: true, $ne: null } },
+            { boardingPoint: { $exists: true, $ne: null } },
+            { droppingPoint: { $exists: true, $ne: null } },
             { 'items.category': { $in: ['Travel', 'Travels', 'Bus', 'Car', 'Bike'] } }
           ] : [])
         ]
