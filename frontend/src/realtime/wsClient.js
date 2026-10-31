@@ -118,6 +118,42 @@ class WebSocketClient {
       this.handleIncomingEvent(event);
     });
 
+    // Direct named event listeners for seamless interoperability
+    const directEvents = [
+      'ORDER_CREATED',
+      'BOOKING_CREATED',
+      'APPLICATION_CREATED',
+      'new_order_received',
+      'new_order_placed',
+      'ORDER_UPDATED',
+      'ORDER_STATUS_CHANGED',
+      'BOOKING_STATUS_CHANGED',
+      'APPLICATION_STATUS_CHANGED',
+      'order:status_changed'
+    ];
+
+    directEvents.forEach((evtName) => {
+      this.socket.on(evtName, (payload) => {
+        if (!payload) return;
+        if (payload.event && payload.eventId) {
+          this.handleIncomingEvent(payload);
+        } else {
+          const rawData = payload.data || payload;
+          const entityId = String(rawData.id || rawData._id || rawData.order_number || rawData.orderId || rawData.applicationId || Date.now());
+          const synthesizedEvent = {
+            eventId: payload.eventId || `${evtName}_${entityId}_${Date.now()}`,
+            event: evtName,
+            entity: evtName.toLowerCase().includes('booking') ? 'booking' : evtName.toLowerCase().includes('application') ? 'application' : 'order',
+            entityId,
+            action: evtName.toLowerCase().includes('status') ? 'status_changed' : 'created',
+            timestamp: rawData.createdAt || rawData.created_at || new Date().toISOString(),
+            data: rawData
+          };
+          this.handleIncomingEvent(synthesizedEvent);
+        }
+      });
+    });
+
     // Heartbeat pong response
     this.socket.on('server_pong', (data) => {
       const latency = data?.clientTimestamp ? Date.now() - data.clientTimestamp : null;
@@ -134,7 +170,13 @@ class WebSocketClient {
   }
 
   handleIncomingEvent(event) {
-    if (!event || !event.eventId) return;
+    if (!event) return;
+
+    // Ensure event has an eventId for tracking & deduplication
+    if (!event.eventId) {
+      const eid = event.entityId || event.data?.id || event.data?._id || event.data?.order_number || Date.now();
+      event.eventId = `${event.event || 'EVT'}_${eid}_${Date.now()}`;
+    }
 
     this.stats.totalEventsReceived++;
 

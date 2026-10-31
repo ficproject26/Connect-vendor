@@ -2,6 +2,37 @@
 
 All notable changes, task-by-task implementations, audits, and performance test results are documented in this file in chronological order.
 
+## [Vendor Real-Time Transaction Alerts, Instant 6-Section Popups & E2E Synchronization] - 2026-10-31
+
+### Scope
+1. **Real-time Event Delivery & Deduplication (`wsClient.js`):**
+   - Added named event listeners (`ORDER_CREATED`, `BOOKING_CREATED`, `APPLICATION_CREATED`, `new_order_received`, `new_order_placed`) in addition to `realtime_event`.
+   - Prevented event dropping when `eventId` is omitted by synthesizing standard event envelopes.
+   - Preserved deduplication cache to drop duplicate packets across direct socket emits and Redis Pub/Sub envelopes.
+2. **Dashboard Real-Time Popup Trigger & Fallback Polling (`VendorDashboard.jsx`):**
+   - In `handleIncomingTransaction`: Added immediate popup invocation (`setNewIncomingOrder(raw); setIsNewOrderPopupOpen(true);`).
+   - In `fetchOrdersFallback`: Expanded polling across orders, bookings, and applications during WebSocket disconnection or visibility state resumption.
+3. **Professional 6-Section Instant Alert Modal (`VendorDashboard.jsx`):**
+   - Redesigned the alert modal into 6 clear sections:
+     1. Customer Information (Name, Phone `📞`, Email `✉️`, Customer ID / Ref)
+     2. Transaction Information (Transaction ID, Category, Received Date & Time, Status)
+     3. Ordered Items / Booking / Candidate Breakdown (Product items with thumbnails, unit prices, quantities, or Stay schedule/guests, Travel route, or Candidate qualifications)
+     4. Location & Address (Distinct delivery destination, stay property, or service visit location)
+     5. Payment Summary (Subtotal, Discount, Delivery Fee, Taxes, Total Amount, Payment Method, Payment Status)
+     6. Additional Instructions / Notes
+   - Actions: "View Full Details" (switches to active tab and opens existing `selectedBillOrder` invoice modal), "Acknowledge / Mark as Seen", and "Close".
+   - Responsive, centered layout with backdrop blur and touch interactions.
+
+### Verification Results
+- **Frontend Build:** `npm run build` completed via Vite with 0 errors.
+- **E2E Latency:** Tested over Redis Pub/Sub:
+  - Product Order: 131ms
+  - Stay Booking: 196ms
+  - Job Application: 260ms.
+- **Vendor Isolation & Deduplication:** Confirmed unrelated vendor filtering and duplicate event dropping.
+
+---
+
 ## [Fix Customer Orders & Bookings Synchronization & Mobile Auth Pipeline] - 2026-10-31
 
 ### Scope

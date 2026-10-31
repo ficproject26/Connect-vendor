@@ -1771,6 +1771,8 @@ const VendorDashboard = () => {
   const desktopBellRef = useRef(null);
   const [activeBellRef, setActiveBellRef] = useState(null);
   const prevOrdersRef = useRef([]);
+  const prevBookingsRef = useRef([]);
+  const prevAppsRef = useRef([]);
 
   // Notifications and statuses
   const [loading, setLoading] = useState(false);
@@ -3332,6 +3334,10 @@ const VendorDashboard = () => {
         }, ...(prev || []).slice(0, 49)]);
       }
 
+      // Display instant popup for authorized transaction
+      setNewIncomingOrder(raw);
+      setIsNewOrderPopupOpen(true);
+
       // Non-blocking refresh of dashboard KPI counts
       cachedGet(`${getVendorBackendUrl()}/api/vendor/analytics`, getAxiosConfig())
         .then(res => {
@@ -3380,19 +3386,52 @@ const VendorDashboard = () => {
     const fetchOrdersFallback = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
-        const res = await axios.get(`${getVendorBackendUrl()}/api/vendor/orders?limit=10&page=1`, getAxiosConfig());
-        if (res.data.success && Array.isArray(res.data.data)) {
-          const newOrders = res.data.data;
+        const [ordersRes, bookingsRes, appsRes] = await Promise.allSettled([
+          axios.get(`${getVendorBackendUrl()}/api/vendor/orders?limit=10&page=1`, getAxiosConfig()),
+          axios.get(`${getVendorBackendUrl()}/api/vendor/bookings?limit=10&page=1`, getAxiosConfig()),
+          axios.get(`${getVendorBackendUrl()}/api/vendor/applications?limit=10&page=1`, getAxiosConfig())
+        ]);
+
+        if (ordersRes.status === 'fulfilled' && ordersRes.value?.data?.success && Array.isArray(ordersRes.value.data.data)) {
+          const newOrders = ordersRes.value.data.data;
           if (prevOrdersRef.current.length === 0) {
             prevOrdersRef.current = newOrders;
-            return;
+          } else {
+            const existingIds = new Set(prevOrdersRef.current.map(o => String(o._id || o.id || o.order_number)));
+            const actualNew = newOrders.filter(o => !existingIds.has(String(o._id || o.id || o.order_number)));
+            if (actualNew.length > 0) {
+              actualNew.forEach(o => handleIncomingTransaction({ data: o }));
+            }
+            prevOrdersRef.current = newOrders;
           }
-          const existingIds = new Set(prevOrdersRef.current.map(o => o._id));
-          const actualNewOrders = newOrders.filter(o => !existingIds.has(o._id));
-          if (actualNewOrders.length > 0) {
-            actualNewOrders.forEach(o => handleIncomingTransaction({ data: o }));
+        }
+
+        if (bookingsRes.status === 'fulfilled' && bookingsRes.value?.data?.success && Array.isArray(bookingsRes.value.data.data)) {
+          const newBookings = bookingsRes.value.data.data;
+          if (prevBookingsRef.current.length === 0) {
+            prevBookingsRef.current = newBookings;
+          } else {
+            const existingIds = new Set(prevBookingsRef.current.map(b => String(b._id || b.id || b.order_number)));
+            const actualNew = newBookings.filter(b => !existingIds.has(String(b._id || b.id || b.order_number)));
+            if (actualNew.length > 0) {
+              actualNew.forEach(b => handleIncomingTransaction({ data: b }));
+            }
+            prevBookingsRef.current = newBookings;
           }
-          prevOrdersRef.current = newOrders;
+        }
+
+        if (appsRes.status === 'fulfilled' && appsRes.value?.data?.success && Array.isArray(appsRes.value.data.data)) {
+          const newApps = appsRes.value.data.data;
+          if (prevAppsRef.current.length === 0) {
+            prevAppsRef.current = newApps;
+          } else {
+            const existingIds = new Set(prevAppsRef.current.map(a => String(a._id || a.id || a.applicationId || a.order_number)));
+            const actualNew = newApps.filter(a => !existingIds.has(String(a._id || a.id || a.applicationId || a.order_number)));
+            if (actualNew.length > 0) {
+              actualNew.forEach(a => handleIncomingTransaction({ data: a }));
+            }
+            prevAppsRef.current = newApps;
+          }
         }
       } catch (err) {
         console.warn('Fallback sync check warning:', err?.message);
@@ -12349,119 +12388,414 @@ required
 
       {/* Modal: New Incoming Order / Booking / Job Real-time Alert Popup */}
       {isNewOrderPopupOpen && newIncomingOrder && (() => {
-        const isJob = Boolean(newIncomingOrder.candidateEducation || newIncomingOrder.candidateResume || newIncomingOrder.category === 'Jobs' || (newIncomingOrder.items && newIncomingOrder.items[0]?.category === 'Jobs'));
-        const isBooking = Boolean(newIncomingOrder.appointmentDate || newIncomingOrder.type === 'Appointment' || newIncomingOrder.type === 'Booking');
+        const isJob = Boolean(
+          newIncomingOrder.candidateEducation ||
+          newIncomingOrder.candidateResume ||
+          newIncomingOrder.category === 'Jobs' ||
+          newIncomingOrder.type === 'Job' ||
+          newIncomingOrder.type === 'Jobs' ||
+          (newIncomingOrder.items && newIncomingOrder.items[0]?.category === 'Jobs')
+        );
+        const isBooking = !isJob && Boolean(
+          newIncomingOrder.appointmentDate ||
+          newIncomingOrder.checkInDate ||
+          newIncomingOrder.travelDate ||
+          newIncomingOrder.type === 'Appointment' ||
+          newIncomingOrder.type === 'Booking' ||
+          newIncomingOrder.type === 'Stay' ||
+          newIncomingOrder.type === 'Travel' ||
+          newIncomingOrder.type === 'Services' ||
+          ['booking', 'stay', 'travel', 'services'].includes(String(newIncomingOrder.category || '').toLowerCase())
+        );
 
-        const popupTitle = isJob ? '🎉 New Job Application Received!' : isBooking ? '📅 New Booking / Appointment Received!' : '🛍️ New Order Received!';
-        const badgeStyle = isJob ? 'bg-purple-100 text-purple-800 border-purple-300' : isBooking ? 'bg-blue-100 text-blue-800 border-blue-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300';
-        const itemName = newIncomingOrder.product_details || (newIncomingOrder.items && newIncomingOrder.items.map(i => `${i.name} (x${i.quantity || 1})`).join(', ')) || (isJob ? 'Job Application' : 'Storefront Order');
-        const customerName = newIncomingOrder.memberName || newIncomingOrder.customer_name || 'Customer';
-        const customerPhone = newIncomingOrder.phone || newIncomingOrder.customerPhone || newIncomingOrder.candidatePhone || 'Not Specified';
-        const customerEmail = newIncomingOrder.candidateEmail || newIncomingOrder.customer_email || formatCustomerId(newIncomingOrder);
+        const isStay = isBooking && (
+          newIncomingOrder.type === 'Stay' ||
+          String(newIncomingOrder.category || '').toLowerCase().includes('stay') ||
+          Boolean(newIncomingOrder.checkInDate)
+        );
+        const isTravel = isBooking && (
+          newIncomingOrder.type === 'Travel' ||
+          String(newIncomingOrder.category || '').toLowerCase().includes('travel') ||
+          Boolean(newIncomingOrder.travelDate) ||
+          Boolean(newIncomingOrder.boardingPoint)
+        );
+
+        const txTypeLabel = isJob ? 'New Job Application' : isBooking ? (isStay ? 'New Stay Booking' : isTravel ? 'New Travel Booking' : 'New Service Booking') : 'New Customer Order';
+        const txIcon = isJob ? '💼' : isBooking ? (isStay ? '🏨' : isTravel ? '🚌' : '📅') : '🛍️';
+        const badgeStyle = isJob ? 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60' : isBooking ? 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60' : 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60';
+
+        const txId = String(newIncomingOrder.order_number || newIncomingOrder.id || newIncomingOrder._id || newIncomingOrder.applicationId || 'TXN-ALERT');
+        const customerName = newIncomingOrder.memberName || newIncomingOrder.customer_name || newIncomingOrder.candidateName || newIncomingOrder.name || 'Valued Customer';
+        const customerPhone = newIncomingOrder.customer_phone || newIncomingOrder.customerPhone || newIncomingOrder.phone || newIncomingOrder.candidatePhone || 'Not Specified';
+        const customerEmail = newIncomingOrder.candidateEmail || newIncomingOrder.customer_email || newIncomingOrder.email || 'Not Specified';
+        const customerId = formatCustomerId(newIncomingOrder, customers) || newIncomingOrder.customer_id || newIncomingOrder.customerId || newIncomingOrder.memberId || 'CUST-ID';
+
+        const rawDate = newIncomingOrder.createdAt || newIncomingOrder.created_at || newIncomingOrder.orderDate || new Date();
+        const dateObj = new Date(rawDate);
+        const formattedDate = !isNaN(dateObj.getTime())
+          ? `${dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} at ${dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`
+          : 'Just Now';
+
+        const itemsList = Array.isArray(newIncomingOrder.items) && newIncomingOrder.items.length > 0
+          ? newIncomingOrder.items
+          : (newIncomingOrder.product_details || newIncomingOrder.name)
+          ? [{
+              name: newIncomingOrder.product_details || newIncomingOrder.name || (isJob ? 'Job Application' : 'Order Item'),
+              quantity: Number(newIncomingOrder.quantity || 1),
+              price: Number(newIncomingOrder.price || newIncomingOrder.unitPrice || newIncomingOrder.amount || 0),
+              image: newIncomingOrder.image || newIncomingOrder.productImage || null,
+              variant: newIncomingOrder.variant || newIncomingOrder.selectedVariant || null
+            }]
+          : [];
+
+        const subtotal = Number(newIncomingOrder.subtotal || newIncomingOrder.itemsSubtotal || (itemsList.length > 0 ? itemsList.reduce((acc, it) => acc + (Number(it.price || 0) * Number(it.quantity || 1)), 0) : (newIncomingOrder.amount || newIncomingOrder.finalAmount || 0)));
+        const discount = Number(newIncomingOrder.discount || newIncomingOrder.discountApplied || 0);
+        const deliveryFee = Number(newIncomingOrder.deliveryCharges || newIncomingOrder.deliveryFee || 0);
+        const taxes = Number(newIncomingOrder.taxes || newIncomingOrder.taxAmount || 0);
+        const totalAmount = Number(newIncomingOrder.finalAmount ?? newIncomingOrder.totalAmount ?? newIncomingOrder.amount ?? (subtotal - discount + deliveryFee + taxes));
+
+        const rawPaymentMethod = newIncomingOrder.paymentMethod || newIncomingOrder.payment_method || (newIncomingOrder.isCOD ? 'Cash on Delivery' : 'Connect Wallet');
+        const isCodPayment = String(rawPaymentMethod).toLowerCase().includes('cod') || String(rawPaymentMethod).toLowerCase().includes('cash');
+        const paymentStatus = newIncomingOrder.paymentStatus || newIncomingOrder.payment_status || (isCodPayment ? 'Pending' : 'Paid');
+
         const deliveryAddress = getCustomerAddress(newIncomingOrder);
-        const totalAmount = newIncomingOrder.finalAmount || newIncomingOrder.totalAmount || newIncomingOrder.amount || 0;
+        const instructions = newIncomingOrder.deliveryInstructions || newIncomingOrder.notes || newIncomingOrder.customerNotes || newIncomingOrder.specialInstructions || '';
+
+        const handleViewFullDetails = () => {
+          setIsNewOrderPopupOpen(false);
+          if (isJob) {
+            setActiveTab('applications');
+          } else if (isBooking) {
+            setActiveTab('bookings');
+          } else {
+            setActiveTab('orders');
+          }
+          setSelectedBillOrder(newIncomingOrder);
+          setIsBillModalOpen(true);
+        };
+
+        const handleAcknowledge = () => {
+          setIsNewOrderPopupOpen(false);
+          setMessage(`Transaction #${txId} acknowledged and marked as seen.`);
+        };
 
         return (
           <Modal
             isOpen={isNewOrderPopupOpen}
             onClose={() => setIsNewOrderPopupOpen(false)}
-            title={popupTitle}
+            title={`${txIcon} ${txTypeLabel}`}
+            maxWidth="max-w-2xl"
           >
-            <div className="space-y-5 animate-fadeIn text-slate-800 dark:text-slate-100 text-left">
+            <div className="space-y-4 animate-fadeIn text-slate-800 dark:text-slate-100 text-left">
               {/* Alert Header Banner */}
-              <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${badgeStyle}`}>
+              <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${badgeStyle}`}>
                 <div className="flex items-center gap-3">
-                  <span className="text-3xl">{isJob ? '💼' : isBooking ? '📅' : '🛒'}</span>
+                  <span className="text-3xl">{txIcon}</span>
                   <div>
-                    <h4 className="font-extrabold text-sm uppercase tracking-wide">{isJob ? 'Candidate Applied' : isBooking ? 'New Booking Request' : 'New Customer Order'}</h4>
-                    <p className="text-xs opacity-90 font-medium">Real-time alert for your vendor dashboard</p>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-extrabold text-sm uppercase tracking-wide">{txTypeLabel}</h4>
+                      <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-white/80 dark:bg-black/40 border border-current/20">
+                        #{txId}
+                      </span>
+                    </div>
+                    <p className="text-xs opacity-80 font-medium mt-0.5">Received {formattedDate}</p>
                   </div>
                 </div>
-                <span className="text-xs font-black px-3 py-1 bg-white/90 dark:bg-black/50 rounded-full font-mono shadow-sm">
-                  {newIncomingOrder.status || 'Pending'}
-                </span>
-              </div>
-
-              {/* Customer / Candidate Info Box */}
-              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-2 text-xs">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Customer / Candidate Details</span>
-                <div className="flex justify-between py-1.5 border-b border-slate-200/40 dark:border-slate-800/40">
-                  <span className="text-slate-500 font-semibold">Name:</span>
-                  <span className="font-extrabold text-slate-900 dark:text-white text-sm">{customerName}</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-200/40 dark:border-slate-800/40">
-                  <span className="text-slate-500 font-semibold">Phone Contact:</span>
-                  <span className="font-bold font-mono text-slate-800 dark:text-slate-200">{customerPhone}</span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500 font-semibold">Email / ID:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{customerEmail}</span>
-                </div>
-              </div>
-
-              {/* Order / Booking Specifications */}
-              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-2 text-xs">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Order Item & Delivery Details</span>
-                <div className="flex justify-between py-1.5 border-b border-slate-200/40 dark:border-slate-800/40">
-                  <span className="text-slate-500 font-semibold">{isJob ? 'Applied Position' : 'Item / Service'}:</span>
-                  <span className="font-extrabold text-indigo-600 dark:text-indigo-400 text-right max-w-[65%] truncate">{itemName}</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-200/40 dark:border-slate-800/40">
-                  <span className="text-slate-500 font-semibold">Category:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{newIncomingOrder.category || newIncomingOrder.type || 'General'}</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-200/40 dark:border-slate-800/40">
-                  <span className="text-slate-500 font-semibold">{isBooking ? 'Booking Schedule' : 'Delivery Address'}:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-right max-w-[65%] truncate">
-                    {isBooking && newIncomingOrder.appointmentDate ? `${newIncomingOrder.appointmentDate} (${getBookingTimeSlot(newIncomingOrder)})` : deliveryAddress}
+                <div className="flex items-center gap-2 self-end sm:self-center">
+                  <span className="text-xs font-black px-3 py-1 bg-white/95 dark:bg-black/60 rounded-full font-mono shadow-sm border border-current/10">
+                    {newIncomingOrder.status || 'Received'}
                   </span>
                 </div>
-                {!isJob && (
-                  <div className="flex justify-between py-1.5">
-                    <span className="text-slate-500 font-semibold">Item Price / Amount:</span>
-                    <span className="font-black text-emerald-600 dark:text-emerald-400 text-base font-mono">₹{totalAmount}</span>
+              </div>
+
+              {/* 1. Customer Information */}
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  1. Customer Details
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-slate-500 font-semibold block text-[11px]">Customer / Candidate Name:</span>
+                    <span className="font-extrabold text-slate-900 dark:text-white text-sm">{customerName}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-semibold block text-[11px]">Customer ID / Reference:</span>
+                    <span className="font-bold font-mono text-slate-700 dark:text-slate-300">{customerId}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-semibold block text-[11px]">Mobile Number:</span>
+                    {customerPhone && customerPhone !== 'Not Specified' ? (
+                      <a href={`tel:${customerPhone}`} className="font-bold font-mono text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1">
+                        📞 {customerPhone}
+                      </a>
+                    ) : (
+                      <span className="font-mono text-slate-500">Not Specified</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-semibold block text-[11px]">Email Address:</span>
+                    {customerEmail && customerEmail !== 'Not Specified' && customerEmail.includes('@') ? (
+                      <a href={`mailto:${customerEmail}`} className="font-bold text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1 truncate max-w-full">
+                        ✉️ {customerEmail}
+                      </a>
+                    ) : (
+                      <span className="text-slate-500">Not Specified</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Transaction Information */}
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-2 text-xs">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  2. Transaction Information
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div>
+                    <span className="text-slate-500 font-semibold block text-[10px]">Transaction ID</span>
+                    <span className="font-extrabold font-mono text-slate-900 dark:text-white">#{txId}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-semibold block text-[10px]">Category</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{newIncomingOrder.category || newIncomingOrder.type || 'Products'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-semibold block text-[10px]">Order Date & Time</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">{formattedDate}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-semibold block text-[10px]">Current Status</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">{newIncomingOrder.status || 'Received'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Ordered Items / Booking / Candidate Breakdown */}
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-2.5 text-xs">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  {isJob ? '3. Position & Candidate Qualifications' : isBooking ? '3. Booking Specifications' : '3. Ordered Items Breakdown'}
+                </span>
+
+                {isJob ? (
+                  <div className="space-y-2">
+                    <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
+                      <span className="text-slate-500 font-semibold">Applied Position:</span>
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400">{newIncomingOrder.jobTitle || newIncomingOrder.product_details || 'Job Application'}</span>
+                    </div>
+                    {newIncomingOrder.candidateEducation && (
+                      <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
+                        <span className="text-slate-500 font-semibold">Education:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{newIncomingOrder.candidateEducation}</span>
+                      </div>
+                    )}
+                    {newIncomingOrder.candidateExperience && (
+                      <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
+                        <span className="text-slate-500 font-semibold">Experience:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{newIncomingOrder.candidateExperience}</span>
+                      </div>
+                    )}
+                    {newIncomingOrder.candidateResume && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-slate-500 font-semibold">Resume / CV:</span>
+                        <span className="font-bold text-primary-600 dark:text-primary-400">Attached (Available in Full Details)</span>
+                      </div>
+                    )}
+                  </div>
+                ) : isBooking ? (
+                  <div className="space-y-2">
+                    <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
+                      <span className="text-slate-500 font-semibold">Service / Booking:</span>
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400">{newIncomingOrder.serviceName || newIncomingOrder.product_details || newIncomingOrder.items?.[0]?.name || 'Scheduled Service'}</span>
+                    </div>
+                    {isStay && (
+                      <>
+                        <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
+                          <span className="text-slate-500 font-semibold">Check-in / Check-out:</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">
+                            {newIncomingOrder.checkInDate || 'N/A'} {newIncomingOrder.checkInTime ? `(${newIncomingOrder.checkInTime})` : ''} → {newIncomingOrder.checkOutDate || 'N/A'} {newIncomingOrder.checkOutTime ? `(${newIncomingOrder.checkOutTime})` : ''}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
+                          <span className="text-slate-500 font-semibold">Rooms & Guests:</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">
+                            {newIncomingOrder.roomsCount || newIncomingOrder.numberOfRooms || 1} Room(s) • {newIncomingOrder.numAdults || newIncomingOrder.guestsCount || 1} Adult(s){newIncomingOrder.numChildren ? `, ${newIncomingOrder.numChildren} Child(ren)` : ''}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                    {isTravel && (
+                      <>
+                        <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
+                          <span className="text-slate-500 font-semibold">Travel Schedule:</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{newIncomingOrder.travelDate || 'Scheduled Travel'}</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
+                          <span className="text-slate-500 font-semibold">Boarding → Destination:</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">
+                            {newIncomingOrder.boardingPoint?.name || newIncomingOrder.boardingPoint || 'Pickup Point'} → {newIncomingOrder.droppingPoint?.name || newIncomingOrder.droppingPoint || 'Destination'}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                    {!isStay && !isTravel && (
+                      <div className="flex justify-between py-1 border-b border-slate-200/40 dark:border-slate-800/40">
+                        <span className="text-slate-500 font-semibold">Appointment / Schedule:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                          {newIncomingOrder.appointmentDate || newIncomingOrder.bookingDate || 'Today'} ({newIncomingOrder.appointmentTimeSlot || getBookingTimeSlot(newIncomingOrder)})
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-200/50 dark:divide-slate-800/50 max-h-48 overflow-y-auto pr-1">
+                    {itemsList.map((it, idx) => {
+                      const itemImg = it.image || it.productImage || null;
+                      const itQty = Number(it.quantity || 1);
+                      const itPrice = Number(it.price || it.unitPrice || 0);
+                      const itSubtotal = itPrice * itQty;
+
+                      return (
+                        <div key={idx} className="flex items-center justify-between py-2 gap-3">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            {itemImg ? (
+                              <img src={formatImageUrl(itemImg)} alt={it.name} className="w-10 h-10 object-cover rounded-xl border border-slate-200 dark:border-slate-800 shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-base shrink-0">🛍️</div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-slate-900 dark:text-white truncate">{it.name || 'Connect Item'}</p>
+                              <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                                <span className="font-semibold">Unit: ₹{itPrice.toLocaleString('en-IN')}</span>
+                                {it.variant && <span className="px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 font-medium">{it.variant}</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="font-extrabold text-slate-900 dark:text-white">₹{itSubtotal.toLocaleString('en-IN')}</span>
+                            <span className="block text-[10px] font-bold text-slate-500">Qty: {itQty}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* Modal Action Buttons */}
-              <div className="flex flex-wrap gap-2.5 pt-2 border-t border-slate-200 dark:border-slate-800">
+              {/* 4. Location and Address */}
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-1.5 text-xs">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  {isStay ? '4. Stay Property Location' : isTravel ? '4. Travel Pickup & Destination' : isBooking ? '4. Service Execution Location' : '4. Delivery Address'}
+                </span>
+                <div className="flex items-start gap-2 pt-0.5">
+                  <span className="text-base shrink-0 mt-0.5">📍</span>
+                  <div className="flex-1">
+                    <p className="font-bold text-slate-800 dark:text-slate-200 leading-relaxed">
+                      {isStay
+                        ? (newIncomingOrder.propertyAddress || newIncomingOrder.hotelLocation || newIncomingOrder.address || 'Property On-Site Location')
+                        : isTravel
+                        ? `Pickup: ${newIncomingOrder.boardingPoint?.name || newIncomingOrder.boardingPoint || 'Pickup Point'} • Destination: ${newIncomingOrder.droppingPoint?.name || newIncomingOrder.droppingPoint || 'Drop Location'}`
+                        : deliveryAddress}
+                    </p>
+                    {newIncomingOrder.landmark && (
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                        Landmark: <span className="text-slate-700 dark:text-slate-300 font-semibold">{newIncomingOrder.landmark}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. Payment Summary */}
+              {!isJob && (
+                <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-2 text-xs">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                    5. Payment Summary
+                  </span>
+                  <div className="space-y-1">
+                    {subtotal > 0 && subtotal !== totalAmount && (
+                      <div className="flex justify-between py-1 text-slate-500 border-b border-slate-200/40 dark:border-slate-800/40">
+                        <span>Items Subtotal:</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">₹{subtotal.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                    {discount > 0 && (
+                      <div className="flex justify-between py-1 text-emerald-600 dark:text-emerald-400 border-b border-slate-200/40 dark:border-slate-800/40">
+                        <span>Discount Applied:</span>
+                        <span className="font-semibold">-₹{discount.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                    {deliveryFee > 0 && (
+                      <div className="flex justify-between py-1 text-slate-500 border-b border-slate-200/40 dark:border-slate-800/40">
+                        <span>Delivery / Convenience Fee:</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">₹{deliveryFee.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                    {taxes > 0 && (
+                      <div className="flex justify-between py-1 text-slate-500 border-b border-slate-200/40 dark:border-slate-800/40">
+                        <span>Taxes & Charges:</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">₹{taxes.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-1.5 items-center">
+                      <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">Total Amount:</span>
+                      <span className="font-black text-emerald-600 dark:text-emerald-400 text-base font-mono">
+                        ₹{totalAmount.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-200/50 dark:border-slate-800/50 flex flex-wrap justify-between items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500 font-semibold text-[11px]">Payment Method:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{rawPaymentMethod}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500 font-semibold text-[11px]">Payment Status:</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        paymentStatus.toLowerCase().includes('paid')
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                      }`}>
+                        {paymentStatus}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 6. Additional Instructions / Notes */}
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 text-xs">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  6. Instructions & Notes
+                </span>
+                <p className="text-slate-700 dark:text-slate-300 italic">
+                  {instructions || 'No special delivery or service instructions specified.'}
+                </p>
+              </div>
+
+              {/* Modal Action Buttons: View Full Details, Acknowledge, Close */}
+              <div className="flex flex-wrap gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={async () => {
-                    try {
-                      await handleUpdateOrderStatus(newIncomingOrder._id, 'Accepted');
-                      setMessage('Order / Booking accepted successfully!');
-                      setIsNewOrderPopupOpen(false);
-                    } catch (e) {
-                      setIsNewOrderPopupOpen(false);
-                    }
-                  }}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-3 px-4 rounded-xl transition-all shadow-md active:scale-95 text-xs text-center"
+                  onClick={handleViewFullDetails}
+                  className="flex-1 min-w-[150px] bg-primary-600 hover:bg-primary-500 text-white font-extrabold py-3 px-4 rounded-xl transition-all shadow-md active:scale-95 text-xs text-center flex items-center justify-center gap-1.5"
                 >
-                  ✓ Accept & Confirm
+                  <Eye size={15} />
+                  View Full Details
                 </button>
                 <button
                   type="button"
-                  onClick={async () => {
-                    try {
-                      await handleUpdateOrderStatus(newIncomingOrder._id, 'Rejected');
-                      setMessage('Order rejected.');
-                      setIsNewOrderPopupOpen(false);
-                    } catch (e) {
-                      setIsNewOrderPopupOpen(false);
-                    }
-                  }}
-                  className="px-4 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 text-rose-600 dark:text-rose-400 font-bold py-3 rounded-xl border border-rose-200 dark:border-rose-900/30 transition-all text-xs"
+                  onClick={handleAcknowledge}
+                  className="min-w-[140px] bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs text-center flex items-center justify-center gap-1.5"
                 >
-                  ✕ Decline
+                  <CheckCircle2 size={15} />
+                  Acknowledge
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsNewOrderPopupOpen(false)}
                   className="px-4 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-700 dark:text-slate-300 font-semibold py-3 rounded-xl transition-all text-xs"
                 >
-                  Dismiss
+                  Close
                 </button>
               </div>
             </div>
