@@ -302,10 +302,35 @@ const getVendorAnalytics = async (req, res) => {
       return obj;
     });
     
-    // Calculations
-    const ordersOnly = orders.filter(o => !BOOKING_BASED_TYPES.includes(o.type) && !APPLICATION_BASED_TYPES.includes(o.type));
-    const bookingsOnly = orders.filter(o => BOOKING_BASED_TYPES.includes(o.type));
-    const applicationsOnly = orders.filter(o => APPLICATION_BASED_TYPES.includes(o.type));
+    // Strict categorization for stats
+    const isJobRecord = (o) => {
+      const t = String(o.type || '').toLowerCase();
+      const c = String(o.category || '').toLowerCase();
+      return APPLICATION_BASED_TYPES.map(x => x.toLowerCase()).includes(t) ||
+             APPLICATION_BASED_TYPES.map(x => x.toLowerCase()).includes(c) ||
+             Boolean(o.jobId || o.applicationId || (o.candidateResume && String(o.candidateResume).trim() !== '' && o.candidateResume !== 'null'));
+    };
+
+    const isBookingRecord = (o) => {
+      if (isJobRecord(o)) return false;
+      const t = String(o.type || '').toLowerCase();
+      const c = String(o.category || '').toLowerCase();
+      const firstItem = (o.items && o.items[0]) || {};
+      const itemCat = String(firstItem.category || '').toLowerCase();
+      const itemMainCat = String(firstItem.mainCategory || '').toLowerCase();
+      const pd = String(o.product_details || o.name || '').toLowerCase();
+
+      return ['stay', 'travel', 'services', 'service', 'booking', 'appointment', 'hotel', 'hospital', 'technician'].includes(t) ||
+             ['stay', 'travel', 'services', 'service', 'booking', 'appointment', 'hotel', 'hospital', 'technician'].includes(c) ||
+             ['stay', 'travel', 'services', 'service', 'booking', 'appointment', 'hotel', 'hospital', 'technician', 'bus', 'car', 'bike', 'electrician', 'plumber'].includes(itemCat) ||
+             ['stay', 'travel', 'services', 'service'].includes(itemMainCat) ||
+             Boolean(o.serviceName || o.appointmentDate || o.checkInDate || o.roomNumber || o.boardingPoint || o.vehicleType) ||
+             /\b(bus|hotel|resort|villa|plumber|electrician|technician|repair|doctor)\b/i.test(pd);
+    };
+
+    const applicationsOnly = orders.filter(isJobRecord);
+    const bookingsOnly = orders.filter(o => !isJobRecord(o) && isBookingRecord(o));
+    const ordersOnly = orders.filter(o => !isJobRecord(o) && !isBookingRecord(o));
 
     const totalOrdersCount = ordersOnly.length;
     const totalBookingsCount = bookingsOnly.length;
@@ -1476,23 +1501,32 @@ const getOrders = async (req, res) => {
             {
               $and: [
                 { type: { $in: ['Order', 'order'] } },
+                { 'items.category': { $nin: ['Travel', 'Travels', 'Bus', 'Stay', 'Hotel', 'Hotels', 'Services', 'Service', 'Job', 'Jobs'] } },
+                { 'items.mainCategory': { $nin: ['Travel', 'Travels', 'Stay', 'Services'] } },
                 { serviceName: { $exists: false } },
                 { doctorName: { $exists: false } },
                 { checkInDate: { $exists: false } },
                 { appointmentDate: { $exists: false } },
                 { boardingPoint: { $exists: false } },
+                { vehicleType: { $exists: false } },
                 { jobId: { $exists: false } },
                 { candidateResume: { $exists: false } }
               ]
             }
           ]
         },
-        // Never allow Job applications or Bookings
+        // Never allow Job applications or Bookings (Services, Stay, Travel) in Orders
         {
           type: { $nin: ['Job', 'Jobs', 'job', 'jobs', 'Application', 'application', 'Booking', 'booking', 'Services', 'Service', 'service', 'services', 'Stay', 'stay', 'Hotel', 'hotel', 'Travel', 'travel', 'Travels'] }
         },
         {
           category: { $nin: ['Job', 'Jobs', 'job', 'jobs', 'Application', 'application', 'Booking', 'booking', 'Services', 'Service', 'service', 'services', 'Stay', 'stay', 'Hotel', 'hotel', 'Travel', 'travel', 'Travels'] }
+        },
+        {
+          'items.category': { $nin: ['Travel', 'Travels', 'Bus', 'Car', 'Bike', 'Stay', 'Hotels', 'Hotel', 'Resort', 'Rooms', 'Services', 'Service', 'IT & Device Support', 'Ac Service', 'Hospital', 'Technician', 'Job', 'Jobs'] }
+        },
+        {
+          'items.mainCategory': { $nin: ['Services', 'services', 'Service', 'service', 'Stay', 'stay', 'Travel', 'travel', 'Travels'] }
         },
         { jobId: { $exists: false } },
         { candidateResume: { $exists: false } }
@@ -1742,6 +1776,18 @@ const getOrders = async (req, res) => {
         obj.customerPhone = obj.customer_phone || obj.phone || obj.memberPhone;
       }
 
+      // Explicitly normalize transaction type and business category for Orders
+      obj.transactionType = 'Order';
+      obj.type = 'Order';
+      const rawCatStr = String(obj.category || (obj.items && obj.items[0]?.category) || (obj.items && obj.items[0]?.mainCategory) || '').toLowerCase();
+      if (rawCatStr.includes('food') || rawCatStr.includes('restaurant')) {
+        obj.category = 'Food';
+      } else if (rawCatStr.includes('daily') || rawCatStr.includes('grocery')) {
+        obj.category = 'Daily Needs';
+      } else {
+        obj.category = 'Products';
+      }
+
       return obj;
     });
 
@@ -1938,7 +1984,7 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawCat) ||
     ['hotels', 'resorts', 'rooms', 'luxury', 'hill station', 'cottages', 'villas', 'resort', 'hotel', 'homestay', 'pg', 'stay'].includes(prodCat) ||
     ['hotels', 'resorts', 'rooms', 'luxury', 'hill station', 'cottages', 'villas', 'resort', 'hotel', 'homestay', 'pg', 'stay'].includes(rawSubCat) ||
-    Boolean(obj.roomNumber || obj.roomName || obj.staySchedule || (obj.checkInDate && !obj.boardingPoint && !obj.vehicleType)) ||
+    Boolean(obj.roomNumber || obj.roomName || obj.staySchedule) ||
     /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(detailStr) ||
     /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(prodName)
   );
@@ -2012,22 +2058,33 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
 
   if (isServices) {
     obj.category = 'Services';
-    obj.type = 'Services';
+    obj.bookingCategory = 'Services';
+    obj.transactionType = 'Booking';
+    obj.type = 'Booking';
+    obj.bookingBadgeLabel = 'SERVICE BOOKING';
   } else if (isStay) {
     obj.category = 'Stay';
-    obj.type = 'Stay';
+    obj.bookingCategory = 'Stay';
+    obj.transactionType = 'Booking';
+    obj.type = 'Booking';
+    obj.bookingBadgeLabel = 'STAY BOOKING';
   } else if (isTravel) {
     obj.category = 'Travel';
-    obj.type = 'Travel';
+    obj.bookingCategory = 'Travel';
+    obj.transactionType = 'Booking';
+    obj.type = 'Booking';
+    obj.bookingBadgeLabel = 'TRAVEL BOOKING';
   } else if (isJob) {
     obj.category = 'Jobs';
+    obj.transactionType = 'Job Application';
     obj.type = 'Job';
-  } else if (isFood) {
-    obj.category = 'Food';
-    obj.type = 'Food';
+    obj.bookingBadgeLabel = 'JOB APPLICATION';
   } else {
-    obj.category = obj.category || obj.type || 'Unknown';
-    obj.type = obj.type || obj.category || 'Unknown';
+    obj.category = obj.category || 'Services';
+    obj.bookingCategory = obj.category;
+    obj.transactionType = 'Booking';
+    obj.type = 'Booking';
+    obj.bookingBadgeLabel = 'BOOKING';
   }
 
   // Ensure non-job records never keep stray job application fields
@@ -2387,7 +2444,8 @@ const getBookings = async (req, res) => {
             { roomNumber: { $exists: true, $ne: null } },
             { vehicleType: { $exists: true, $ne: null } },
             { boardingPoint: { $exists: true, $ne: null } },
-            { appointmentDate: { $exists: true, $ne: null } }
+            { appointmentDate: { $exists: true, $ne: null } },
+            { product_details: new RegExp('bus|hotel|resort|villa|plumber|electrician|technician|service|travel|stay', 'i') }
           ]
         },
         // Never allow Job applications in Bookings
@@ -2405,6 +2463,15 @@ const getBookings = async (req, res) => {
             { candidateResume: { $exists: false } },
             { candidateResume: null },
             { candidateResume: '' }
+          ]
+        },
+        // Never allow pure Product, Food, Daily Needs orders in Bookings
+        {
+          $or: [
+            { 'items.category': { $nin: ['Products', 'Product', 'Food', 'food', 'Daily Needs', 'daily needs', 'Grocery'] } },
+            { 'items.category': { $exists: false } },
+            { category: { $in: ['Services', 'Stay', 'Travel', 'Hotel', 'Hotels', 'Bus'] } },
+            { type: { $in: ['Services', 'Stay', 'Travel', 'Hotel', 'Hotels', 'Bus'] } }
           ]
         }
       ]

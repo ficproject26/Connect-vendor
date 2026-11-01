@@ -65,7 +65,10 @@ import {
   slugToCategory,
   isOrderCategory,
   isBookingCategory,
-  getRecordCategory
+  getRecordCategory,
+  getBookingBadgeInfo,
+  getTransactionType,
+  getTransactionBadge
 } from '../utils/categoryContext';
 
 const isValidTimeFormat = (timeStr) => {
@@ -404,41 +407,9 @@ const getCustomerAvatarUrl = (customer) => {
 
 export const getRecordClassification = (record) => {
   if (!record) return 'ORDER';
-  const rawType = String(record.type || '').trim().toUpperCase();
-  const rawCat = String(record.category || '').trim().toUpperCase();
-  const rawSubCat = String(record.subcategory || record.subCategory || '').trim().toUpperCase();
-  const sourceEntity = String(record.sourceEntity || record.recordType || '').trim().toUpperCase();
-
-  const isOrderCategory = ['ORDER', 'ORDERS', 'FOOD', 'FOODS', 'RESTAURANT', 'PRODUCTS', 'PRODUCT', 'DAILY NEEDS', 'DAILY_NEEDS', 'GROCERY'].includes(rawType) ||
-                          ['ORDER', 'ORDERS', 'FOOD', 'FOODS', 'RESTAURANT', 'PRODUCTS', 'PRODUCT', 'DAILY NEEDS', 'DAILY_NEEDS', 'GROCERY'].includes(rawCat) ||
-                          Boolean(record.items && record.items.length > 0 && !['JOB', 'JOBS'].includes(rawType));
-
-  // 1. Explicit Job Application check (never true for orders, stay, travel, or services)
-  if (!isOrderCategory) {
-    if (sourceEntity === 'APPLICATION' || sourceEntity === 'JOB_APPLICATION') return 'JOB_APPLICATION';
-    if (['JOB', 'JOBS', 'JOB_APPLICATION', 'APPLICATION'].includes(rawType)) return 'JOB_APPLICATION';
-    if (['JOB', 'JOBS'].includes(rawCat) && !rawType) return 'JOB_APPLICATION';
-  }
-
-  // 2. Booking types (Travel, Stay, Services, Appointments)
-  const isTravelTerm = (str) => {
-    if (!str) return false;
-    const s = String(str).toLowerCase().trim();
-    return ['travel', 'package', 'bus', 'vehicle', 'cab', 'car', 'bike', 'transport'].some(k => s === k || s.includes(k));
-  };
-  if (isTravelTerm(rawType) || isTravelTerm(rawCat) || isTravelTerm(rawSubCat) || record.travelDate || record.journeyDate || record.departureTime || record.vehicleType) {
-    return 'BOOKING';
-  }
-
-  const bookingTypes = ['TRAVEL', 'STAY', 'HOTEL', 'SERVICES', 'SERVICE', 'HOSPITAL', 'CLINIC', 'APPOINTMENT'];
-  if (bookingTypes.includes(rawType) || bookingTypes.includes(rawCat) || sourceEntity === 'BOOKING') {
-    return 'BOOKING';
-  }
-  if (!isOrderCategory && (record.appointmentDate || record.checkInDate || record.roomName)) {
-    return 'BOOKING';
-  }
-
-  // 3. Default to Order
+  const txType = getTransactionType(record);
+  if (txType === 'Job Application') return 'JOB_APPLICATION';
+  if (txType === 'Booking') return 'BOOKING';
   return 'ORDER';
 };
 
@@ -6741,9 +6712,9 @@ const VendorDashboard = () => {
                 const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
 
                 const filteredOrders = orders.filter(order => {
-                  // Strict category guard: NEVER show job applications or bookings in Orders
+                  // Strict category guard: ONLY Products, Food, Daily Needs in Orders (NEVER bookings or jobs)
                   const recCat = getRecordCategory(order);
-                  if (!ORDER_CATEGORIES.includes(recCat) && recCat !== 'Order' && recCat !== 'order') return false;
+                  if (getRecordClassification(order) !== 'ORDER' || !ORDER_CATEGORIES.includes(recCat)) return false;
 
                   // Category filter
                   if (orderCategoryFilter && orderCategoryFilter !== 'All') {
@@ -7281,10 +7252,9 @@ const VendorDashboard = () => {
                         const savedActiveId = activeBusinessId || user?.activeBusinessId || localStorage.getItem('active_business_id');
 
                         const filteredBookings = bookings.filter(b => {
-                          // Strict transaction group isolation: NEVER display orders or jobs in Bookings
+                          // Strict transaction group isolation: ONLY Services, Stay, Travel in Bookings (NEVER orders or jobs)
                           const recCat = getRecordCategory(b);
-                          if (['Jobs', 'Job'].includes(recCat) || Boolean(b.candidateResume)) return false;
-                          if (!BOOKING_CATEGORIES.includes(recCat) && !['Booking', 'booking'].includes(recCat)) return false;
+                          if (getRecordClassification(b) !== 'BOOKING' || !BOOKING_CATEGORIES.includes(recCat)) return false;
 
                           // Category filter
                           if (bookingCategoryFilter && bookingCategoryFilter !== 'All') {
@@ -7433,13 +7403,14 @@ const VendorDashboard = () => {
                                         const isTravel = cat === CATEGORY_TRAVEL;
                                         const isServices = cat === CATEGORY_SERVICES;
 
+                                        const badgeInfo = getBookingBadgeInfo(b);
                                         let detailTitle = 'Booking / Reservation';
                                         let subInfo = null;
-                                        let badgeLabel = 'BOOKING';
-                                        let badgeColor = 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300';
+                                        let badgeLabel = badgeInfo.badgeLabel;
+                                        let badgeColor = badgeInfo.badgeColor;
 
                                         if (isServices) {
-                                          badgeLabel = 'SERVICES';
+                                          badgeLabel = 'SERVICE BOOKING';
                                           badgeColor = 'bg-teal-100 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300';
                                           const GENERIC_CATS = ['electrical & solar services', 'electrical & solar', 'electrical services', 'plumbing services', 'services', 'service', 'general service', 'daily needs', 'products'];
                                           let sName = b.serviceName;
@@ -7471,14 +7442,14 @@ const VendorDashboard = () => {
                                             subInfo = b.subcategory || b.items[0]?.subcategory;
                                           }
                                         } else if (isStay) {
-                                          badgeLabel = 'STAY';
+                                          badgeLabel = 'STAY BOOKING';
                                           badgeColor = 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300';
                                           const propName = b.propertyDetails?.propertyName || b.propertyName || b.hotelName || 'Stay Property';
                                           const roomName = b.roomName || (b.roomDetails && b.roomDetails.name) || (b.roomNumber ? `Room #${b.roomNumber}` : null) || (b.items && b.items[0]?.name) || b.product_details || 'Deluxe Room';
                                           detailTitle = propName;
                                           subInfo = `${roomName}${b.roomNumber && !roomName.includes(`Room #${b.roomNumber}`) ? ` • Room #${b.roomNumber}` : ''}`;
                                         } else if (isTravel) {
-                                          badgeLabel = 'TRAVEL';
+                                          badgeLabel = 'TRAVEL BOOKING';
                                           badgeColor = 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300';
                                           const vehicle = b.vehicleDetails?.vehicleName || b.vehicleType || (b.items && b.items[0]?.name) || b.product_details || 'Travel Route';
                                           detailTitle = `🚌 ${vehicle}`;
@@ -7488,7 +7459,7 @@ const VendorDashboard = () => {
                                             subInfo = `${bp || 'Origin'} ➔ ${dp || 'Destination'}`;
                                           }
                                         } else if (cat === 'Jobs' || b.jobTitle || b.candidateResume) {
-                                          badgeLabel = 'JOBS';
+                                          badgeLabel = 'JOB APPLICATION';
                                           badgeColor = 'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300';
                                           detailTitle = `💼 ${b.jobTitle || b.product_details || 'Job Application'}`;
                                           if (b.department || b.jobLocation) {
@@ -7500,8 +7471,8 @@ const VendorDashboard = () => {
                                           detailTitle = `🍽️ ${(b.items && b.items.map(it => it.name).join(', ')) || b.product_details || 'Dining Reservation'}`;
                                           if (b.tableNumber) subInfo = `Table #${b.tableNumber}`;
                                         } else {
-                                          badgeLabel = (cat && cat !== CATEGORY_UNKNOWN) ? cat.toUpperCase() : 'UNKNOWN';
-                                          badgeColor = 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
+                                          badgeLabel = badgeInfo.badgeLabel || 'BOOKING';
+                                          badgeColor = badgeInfo.badgeColor || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
                                           detailTitle = (b.items && b.items[0]?.name) || b.product_details || b.type || 'Booking Record';
                                         }
 
@@ -8297,6 +8268,7 @@ const VendorDashboard = () => {
 
                 const filteredApps = applications.filter(app => {
                   // Strictly ensure record is a genuine Job Application, never a Travel booking or product order
+                  if (getRecordClassification(app) !== 'JOB_APPLICATION') return false;
                   const appType = (app.type || '').trim().toLowerCase();
                   const appCat = (app.category || '').trim().toLowerCase();
                   if (['travel', 'stay', 'food', 'products', 'daily needs', 'services'].includes(appType) || ['travel', 'stay', 'food', 'products', 'daily needs', 'services'].includes(appCat)) {
@@ -16733,15 +16705,13 @@ required
                   ) : (
                     <div className="space-y-3.5 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                       {displayTransactions.map((tx, idx) => {
-                        const isTravel = isTravelBooking(tx);
-                        const isStay = !isTravel && isStayBooking(tx);
-                        const isServices = !isTravel && !isStay && isServicesBooking(tx);
-                        const isBooking = isTravel || isStay || isServices || BOOKING_CATEGORIES.includes(getRecordCategory(tx));
-                        const rawCat = (tx.category || tx.type || '').toUpperCase();
+                        const txClassification = getRecordClassification(tx);
+                        const isBooking = txClassification === 'BOOKING';
+                        const isTravel = isBooking && getRecordCategory(tx) === CATEGORY_TRAVEL;
+                        const isStay = isBooking && getRecordCategory(tx) === CATEGORY_STAY;
+                        const isServices = isBooking && getRecordCategory(tx) === CATEGORY_SERVICES;
+                        const categoryLabel = getTransactionBadge(tx, true);
                         const firstItem = tx.items && tx.items[0];
-                        const categoryLabel = isTravel 
-                          ? 'Travel Booking' 
-                          : (isStay ? 'Stay Booking' : (isServices ? 'Service Booking' : (isBooking ? (rawCat === 'SERVICES' || rawCat === 'SERVICE' ? 'Service Booking' : 'Booking') : (firstItem?.category || tx.category || tx.type || 'Product Order'))));
                         const itemName = tx.itemName || tx.product_details || tx.serviceName || tx.roomName || firstItem?.name || (isBooking ? 'Booking Service' : 'Catalog Product');
                         const txId = tx.order_number || tx.orderNumber || tx.applicationId || tx._id || 'N/A';
                         const txAmount = tx.finalAmount || tx.amount || tx.totalAmount || 0;

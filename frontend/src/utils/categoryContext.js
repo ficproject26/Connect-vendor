@@ -151,11 +151,29 @@ export const getRecordCategory = (record) => {
   const itemSubCat = String(firstItem.subcategory || '').trim().toLowerCase();
   const itemName = String(firstItem.name || '').trim().toLowerCase();
   const detailStr = String(record.product_details || firstItem.name || '').toLowerCase();
+  const rawServiceName = String(record.serviceName || '').toLowerCase();
+
+  // Keyword markers to prevent mismatched metadata overrides
+  const isServiceKeyword = /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital)\b/i.test(detailStr) || 
+                           /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital)\b/i.test(itemName) ||
+                           /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital)\b/i.test(rawServiceName);
+
+  const isStayKeyword = /\b(hotel|hotels|resort|resorts|villa|homestay|cottage|lodge|room|rooms|pg)\b/i.test(detailStr) || 
+                        /\b(hotel|hotels|resort|resorts|villa|homestay|cottage|lodge|room|rooms|pg)\b/i.test(itemName) ||
+                        Boolean(record.hotelName || record.roomNumber || record.roomName || record.staySchedule);
+
+  const isTravelKeyword = Boolean(record.bus_name || record.busId || record.vehicleNumber || record.vehicleType || record.boardingPoint) ||
+                          isTravelTerm(detailStr) || isTravelTerm(itemName);
+
+  // If record has unmistakable service keywords and is not a genuine hotel/resort stay, prioritize Services
+  if (isServiceKeyword && !isStayKeyword) {
+    return CATEGORY_SERVICES;
+  }
 
   // 1. Check trusted explicit mainCategory (from matched listing or enriched order)
   const explicitMain = rawMainCategory || itemMainCat;
   if (['services', 'service'].includes(explicitMain)) return CATEGORY_SERVICES;
-  if (['stay', 'hotel', 'hotels', 'resort', 'resorts'].includes(explicitMain)) return CATEGORY_STAY;
+  if (['stay', 'hotel', 'hotels', 'resort', 'resorts'].includes(explicitMain) && !isServiceKeyword) return CATEGORY_STAY;
   if (['travel', 'travels'].includes(explicitMain)) return CATEGORY_TRAVEL;
   if (['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(explicitMain)) return CATEGORY_FOOD;
   if (['products', 'product'].includes(explicitMain)) return CATEGORY_PRODUCTS;
@@ -166,16 +184,6 @@ export const getRecordCategory = (record) => {
   // Services & Healthcare
   if (['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawType) || 
       ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawCategory)) {
-    return CATEGORY_SERVICES;
-  }
-  // Generic Bookings default classification
-  if (['booking', 'bookings'].includes(rawType) || ['booking', 'bookings'].includes(rawCategory)) {
-    if (Boolean(record.roomNumber || record.roomName || record.checkInDate || record.checkInTime || record.staySchedule)) {
-      return CATEGORY_STAY;
-    }
-    if (Boolean(record.vehicleNumber || record.vehicleType || record.boardingPoint || record.droppingPoint || record.travelDate)) {
-      return CATEGORY_TRAVEL;
-    }
     return CATEGORY_SERVICES;
   }
   // Stay / Hospitality
@@ -229,8 +237,25 @@ export const getRecordCategory = (record) => {
     if (['daily needs', 'daily need', 'grocery', 'pharmacy'].includes(testCat)) return CATEGORY_DAILY_NEEDS;
   }
 
-  // 4. Structural domain fields (distinguishing genuine Stay, Travel, and Services)
-  if (Boolean(record.roomNumber || record.roomName || record.staySchedule || (record.checkInDate && !record.vehicleType && !record.vehicleNumber && !record.boardingPoint))) {
+  // 4. Distinctive whole-word title / detail regex
+  if (/\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital)\b/i.test(detailStr) || 
+      /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital)\b/i.test(itemName)) {
+    return CATEGORY_SERVICES;
+  }
+  if (isTravelTerm(detailStr) || isTravelTerm(itemName) || Boolean(record.bus_name || record.busId)) {
+    return CATEGORY_TRAVEL;
+  }
+  if (/\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(detailStr) || 
+      /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(itemName) ||
+      Boolean(record.hotelName)) {
+    return CATEGORY_STAY;
+  }
+  if (/food|restaurant|biryani|chicken|pizza|burger|meal|dish/i.test(detailStr)) {
+    return CATEGORY_FOOD;
+  }
+
+  // 5. Structural domain fields (distinguishing genuine Stay, Travel, and Services; strictly NEVER inferring Stay solely from checkInDate)
+  if (Boolean(record.roomNumber || record.roomName || record.staySchedule)) {
     return CATEGORY_STAY;
   }
   if (Boolean(record.doctorName || record.patientName || record.serviceName || (record.appointmentDate && record.appointmentTimeSlot && !record.vehicleType && !record.vehicleNumber && !record.boardingPoint))) {
@@ -240,21 +265,15 @@ export const getRecordCategory = (record) => {
     return CATEGORY_TRAVEL;
   }
 
-  // 5. Distinctive whole-word title / detail regex
-  if (/\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(detailStr) || /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(itemName)) {
-    return CATEGORY_STAY;
-  }
-  if (/\b(service|services|repair|repairs|cctv|support|consultation|doctor|technician|clinic|hospital)\b/i.test(detailStr) || /\b(service|services|repair|repairs|cctv|support|consultation|doctor|technician)\b/i.test(itemName)) {
+  // 6. Generic Bookings fallback classification (when category wasn't explicit)
+  if (['booking', 'bookings'].includes(rawType) || ['booking', 'bookings'].includes(rawCategory)) {
+    if (Boolean(record.vehicleNumber || record.vehicleType || record.boardingPoint || record.droppingPoint || record.travelDate)) {
+      return CATEGORY_TRAVEL;
+    }
     return CATEGORY_SERVICES;
   }
-  if (isTravelTerm(detailStr) || isTravelTerm(itemName)) {
-    return CATEGORY_TRAVEL;
-  }
-  if (/food|restaurant|biryani|chicken|pizza|burger|meal|dish/i.test(detailStr)) {
-    return CATEGORY_FOOD;
-  }
 
-  // 6. Safe canonical fallback
+  // 7. Safe canonical fallback
   const raw = rawType || rawCategory || itemCat || itemMainCat || '';
   const normalized = normalizeCategory(raw);
   if (normalized && normalized !== 'All') {
@@ -268,4 +287,93 @@ export const getRecordCategory = (record) => {
   }
 
   return CATEGORY_UNKNOWN;
+};
+
+/**
+ * Returns dynamic category badge metadata for bookings across cards and detail screens.
+ */
+export const getBookingBadgeInfo = (record) => {
+  const cat = getRecordCategory(record);
+  if (cat === CATEGORY_SERVICES) {
+    return {
+      category: 'Services',
+      badgeLabel: 'SERVICE BOOKING',
+      colorClass: 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-950/70 dark:text-teal-300 dark:border-teal-800',
+      badgeColor: 'bg-teal-100 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300',
+    };
+  }
+  if (cat === CATEGORY_STAY) {
+    return {
+      category: 'Stay',
+      badgeLabel: 'STAY BOOKING',
+      colorClass: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800',
+      badgeColor: 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300',
+    };
+  }
+  if (cat === CATEGORY_TRAVEL) {
+    return {
+      category: 'Travel',
+      badgeLabel: 'TRAVEL BOOKING',
+      colorClass: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800',
+      badgeColor: 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300',
+    };
+  }
+  if (cat === 'Jobs' || record?.jobTitle || record?.candidateResume) {
+    return {
+      category: 'Jobs',
+      badgeLabel: 'JOB APPLICATION',
+      colorClass: 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950/70 dark:text-purple-300 dark:border-purple-800',
+      badgeColor: 'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300',
+    };
+  }
+  console.warn('[BookingCategory] Unknown category for booking:', record?.order_number || record?.id, 'category:', record?.category, 'type:', record?.type);
+  return {
+    category: 'Unknown',
+    badgeLabel: 'BOOKING',
+    colorClass: 'bg-slate-100 text-slate-800 border-slate-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700',
+    badgeColor: 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300',
+  };
+};
+
+/**
+ * Authoritative transaction type: exactly 'Order', 'Booking', or 'Job Application'.
+ * Products + Daily Needs + Food = 'Order'
+ * Services + Stay + Travel = 'Booking'
+ * Job Applications = 'Job Application'
+ */
+export const getTransactionType = (record) => {
+  if (!record) return 'Order';
+  const cat = getRecordCategory(record);
+  if (['Jobs', 'Job'].includes(cat) || record?.jobTitle || record?.candidateResume || record?.jobId || record?.applicationId) {
+    return 'Job Application';
+  }
+  if (BOOKING_CATEGORIES.includes(cat)) {
+    return 'Booking';
+  }
+  if (ORDER_CATEGORIES.includes(cat)) {
+    return 'Order';
+  }
+  return 'Order';
+};
+
+/**
+ * Returns transaction badge text based on general or category-specific mode.
+ */
+export const getTransactionBadge = (record, useCategorySpecific = true) => {
+  const txType = getTransactionType(record);
+  if (txType === 'Job Application') return 'JOB APPLICATION';
+  if (txType === 'Order') {
+    if (!useCategorySpecific) return 'ORDER';
+    const cat = getRecordCategory(record);
+    if (cat === CATEGORY_FOOD) return 'FOOD ORDER';
+    if (cat === CATEGORY_DAILY_NEEDS) return 'DAILY NEEDS ORDER';
+    return 'PRODUCT ORDER';
+  }
+  // txType === 'Booking'
+  if (!useCategorySpecific) return 'BOOKING';
+  const cat = getRecordCategory(record);
+  if (cat === CATEGORY_SERVICES) return 'SERVICE BOOKING';
+  if (cat === CATEGORY_STAY) return 'STAY BOOKING';
+  if (cat === CATEGORY_TRAVEL) return 'TRAVEL BOOKING';
+  return 'BOOKING';
 };
