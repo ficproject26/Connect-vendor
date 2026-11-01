@@ -154,15 +154,15 @@ export const getRecordCategory = (record) => {
   const rawServiceName = String(record.serviceName || '').toLowerCase();
 
   // Keyword markers to prevent mismatched metadata overrides
-  const isServiceKeyword = /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital)\b/i.test(detailStr) || 
-                           /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital)\b/i.test(itemName) ||
-                           /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital)\b/i.test(rawServiceName);
+  const isServiceKeyword = /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital|lineman|mechanic|carpenter|painter|handyman)\b/i.test(detailStr) || 
+                           /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital|lineman|mechanic|carpenter|painter|handyman)\b/i.test(itemName) ||
+                           /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital|lineman|mechanic|carpenter|painter|handyman)\b/i.test(rawServiceName);
 
   const isStayKeyword = /\b(hotel|hotels|resort|resorts|villa|homestay|cottage|lodge|room|rooms|pg)\b/i.test(detailStr) || 
                         /\b(hotel|hotels|resort|resorts|villa|homestay|cottage|lodge|room|rooms|pg)\b/i.test(itemName) ||
                         Boolean(record.hotelName || record.roomNumber || record.roomName || record.staySchedule);
 
-  const isTravelKeyword = Boolean(record.bus_name || record.busId || record.vehicleNumber || record.vehicleType || record.boardingPoint) ||
+  const isTravelKeyword = Boolean(record.bus_name || record.busId || record.vehicleNumber || record.vehicleType || record.boardingPoint || record.droppingPoint || record.travelDate || record.departureTime || record.busName || record.carName || record.bikeName) ||
                           isTravelTerm(detailStr) || isTravelTerm(itemName);
 
   // If record has unmistakable service keywords and is not a genuine hotel/resort stay, prioritize Services
@@ -170,11 +170,16 @@ export const getRecordCategory = (record) => {
     return CATEGORY_SERVICES;
   }
 
+  // If record has unmistakable travel markers and is not a genuine hotel/resort stay, prioritize Travel
+  if (isTravelKeyword && !isStayKeyword) {
+    return CATEGORY_TRAVEL;
+  }
+
   // 1. Check trusted explicit mainCategory (from matched listing or enriched order)
   const explicitMain = rawMainCategory || itemMainCat;
   if (['services', 'service'].includes(explicitMain)) return CATEGORY_SERVICES;
-  if (['stay', 'hotel', 'hotels', 'resort', 'resorts'].includes(explicitMain) && !isServiceKeyword) return CATEGORY_STAY;
   if (['travel', 'travels'].includes(explicitMain)) return CATEGORY_TRAVEL;
+  if (['stay', 'hotel', 'hotels', 'resort', 'resorts'].includes(explicitMain) && !isServiceKeyword && !isTravelKeyword) return CATEGORY_STAY;
   if (['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(explicitMain)) return CATEGORY_FOOD;
   if (['products', 'product'].includes(explicitMain)) return CATEGORY_PRODUCTS;
   if (['daily needs', 'daily need', 'grocery', 'pharmacy'].includes(explicitMain)) return CATEGORY_DAILY_NEEDS;
@@ -186,15 +191,17 @@ export const getRecordCategory = (record) => {
       ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawCategory)) {
     return CATEGORY_SERVICES;
   }
-  // Stay / Hospitality
+  // Travel / Transportation (Evaluated before Stay)
+  if (['travel', 'travels', 'package', 'packages', 'transport', 'bus', 'vehicle', 'cab', 'car', 'bike'].includes(rawType) ||
+      ['travel', 'travels', 'package', 'packages', 'transport', 'bus', 'vehicle', 'cab', 'car', 'bike'].includes(rawCategory)) {
+    return CATEGORY_TRAVEL;
+  }
+  // Stay / Hospitality (Guarded to prevent legacy type:'Stay' on service/travel records from misclassifying)
   if (['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawType) || 
       ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawCategory)) {
-    return CATEGORY_STAY;
-  }
-  // Travel / Transportation
-  if (['travel', 'travels', 'package', 'packages', 'transport'].includes(rawType) ||
-      ['travel', 'travels', 'package', 'packages', 'transport'].includes(rawCategory)) {
-    return CATEGORY_TRAVEL;
+    if (!isTravelKeyword && !isServiceKeyword) {
+      return CATEGORY_STAY;
+    }
   }
   // Food & Dining
   if (['food', 'foods', 'restaurant', 'restaurants', 'dining'].includes(rawType) || 
@@ -238,8 +245,8 @@ export const getRecordCategory = (record) => {
   }
 
   // 4. Distinctive whole-word title / detail regex
-  if (/\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital)\b/i.test(detailStr) || 
-      /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital)\b/i.test(itemName)) {
+  if (/\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital|lineman|mechanic|carpenter|painter|handyman)\b/i.test(detailStr) || 
+      /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital|lineman|mechanic|carpenter|painter|handyman)\b/i.test(itemName)) {
     return CATEGORY_SERVICES;
   }
   if (isTravelTerm(detailStr) || isTravelTerm(itemName) || Boolean(record.bus_name || record.busId)) {

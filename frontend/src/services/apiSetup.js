@@ -180,15 +180,20 @@ export const cachedGet = async (url, config = {}) => {
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1000;
 
-const sanitizeResponseUrls = (val, backendUrl) => {
-  if (!val) return val;
+const PRIMITIVE_SKIP_KEYS = /^(_id|id|status|type|category|role|phone|email|price|amount|quantity|qty|createdAt|updatedAt|orderId|order_number|bookingId|customerId|vendorId|password)$/i;
+
+const sanitizeResponseUrls = (val, backendUrl, depth = 0) => {
+  if (!val || depth > 8) return val;
   if (typeof val === 'string') {
-    if (val.includes('trycloudflare.com')) {
-      return val.replace(/^https?:\/\/[^/]+/, backendUrl || '');
-    }
-    if (val.includes('vendor.ficapp.in/uploads/')) {
-      const activeB = (backendUrl && backendUrl.startsWith('http')) ? backendUrl : 'https://vendor.ficapp.in';
-      return val.replace(/^https?:\/\/vendor\.ficapp\.in/, activeB);
+    // Fast-path: Only rewrite strings containing cloudflare tunnels or vendor uploads
+    if (val.length > 10 && val.includes('http')) {
+      if (val.includes('trycloudflare.com')) {
+        return val.replace(/^https?:\/\/[^/]+/, backendUrl || '');
+      }
+      if (val.includes('vendor.ficapp.in/uploads/')) {
+        const activeB = (backendUrl && backendUrl.startsWith('http')) ? backendUrl : 'https://vendor.ficapp.in';
+        return val.replace(/^https?:\/\/vendor\.ficapp\.in/, activeB);
+      }
     }
     return val;
   }
@@ -200,15 +205,18 @@ const sanitizeResponseUrls = (val, backendUrl) => {
   }
   if (Array.isArray(val)) {
     for (let i = 0; i < val.length; i++) {
-      val[i] = sanitizeResponseUrls(val[i], backendUrl);
+      val[i] = sanitizeResponseUrls(val[i], backendUrl, depth + 1);
     }
     return val;
   }
   if (val.$$typeof || (typeof HTMLElement !== 'undefined' && val instanceof HTMLElement)) {
     return val;
   }
-  for (const k of Object.keys(val)) {
-    val[k] = sanitizeResponseUrls(val[k], backendUrl);
+  const keys = Object.keys(val);
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    if (PRIMITIVE_SKIP_KEYS.test(k)) continue;
+    val[k] = sanitizeResponseUrls(val[k], backendUrl, depth + 1);
   }
   return val;
 };

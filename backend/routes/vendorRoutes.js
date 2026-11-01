@@ -15,6 +15,10 @@ const {
   getOrderById,
   getApplications,
   updateOrderStatus,
+  getNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  deleteNotification,
   getOrderResume,
   getCustomers,
   createDeliveryPartner,
@@ -125,6 +129,12 @@ router.get('/bookings', getBookings);
 router.get('/bookings/:id', getOrderById);
 router.get('/applications', getApplications);
 router.put('/orders/:id/status', updateOrderStatus);
+
+// Notifications
+router.get('/notifications', getNotifications);
+router.put('/notifications/read-all', markAllNotificationsRead);
+router.put('/notifications/:id/read', markNotificationRead);
+router.delete('/notifications/:id', deleteNotification);
 router.get('/orders/:id/resume', getOrderResume);
 
 // Customers

@@ -56,8 +56,22 @@ const Navbar = () => {
               setNotifications(initNotifs);
             }
           } else {
-            const existingIds = new Set(prevOrdersRef.current.map(o => o._id));
-            const actualNewOrders = newOrders.filter(o => !existingIds.has(o._id));
+            const prevMap = new Map(prevOrdersRef.current.map(o => [String(o._id || o.id), o]));
+            const actualNewOrders = [];
+            const statusUpdatedOrders = [];
+
+            newOrders.forEach(order => {
+              const id = String(order._id || order.id);
+              if (!prevMap.has(id)) {
+                actualNewOrders.push(order);
+              } else {
+                const prev = prevMap.get(id);
+                if (prev && prev.status && order.status && prev.status !== order.status) {
+                  statusUpdatedOrders.push({ order, prevStatus: prev.status });
+                }
+              }
+            });
+
             if (actualNewOrders.length > 0) {
               actualNewOrders.forEach(order => {
                 try {
@@ -70,6 +84,26 @@ const Navbar = () => {
               }));
               setNotifications(prev => [...newNotifications, ...prev]);
             }
+
+            if (statusUpdatedOrders.length > 0) {
+              statusUpdatedOrders.forEach(({ order, prevStatus }) => {
+                try {
+                  window.dispatchEvent(new CustomEvent('vendor_status_updated', {
+                    detail: { ...order, previousStatus: prevStatus, status: order.status }
+                  }));
+                } catch (e) {}
+              });
+              const statusNotifications = statusUpdatedOrders.map(({ order, prevStatus }) => {
+                const orderNum = order.order_number || order._id || order.id;
+                const itemName = order.product_details || order.serviceName || 'Order';
+                return {
+                  id: Date.now() + Math.random(),
+                  text: `Status updated: ${itemName} #${orderNum} is now ${order.status} (was ${prevStatus})`
+                };
+              });
+              setNotifications(prev => [...statusNotifications, ...prev]);
+            }
+
             prevOrdersRef.current = newOrders;
           }
         }
@@ -88,6 +122,23 @@ const Navbar = () => {
     }, syncInterval);
     return () => clearInterval(interval);
   }, [isAuthenticated, token, user, activeBusinessId]);
+
+  useEffect(() => {
+    const handleStatusUpdate = (e) => {
+      const o = e.detail;
+      if (!o) return;
+      const orderNum = o.order_number || o.id || o._id || 'ORD';
+      const itemName = o.product_details || o.itemName || (o.items && o.items[0]?.name) || o.serviceName || 'Order';
+      const status = o.newStatus || o.status || 'Updated';
+      const prev = o.previousStatus;
+      const text = prev && prev !== status
+        ? `Status updated: ${itemName} #${orderNum} is now ${status} (was ${prev})`
+        : `Status updated: ${itemName} #${orderNum} is now ${status}`;
+      setNotifications(prevNotifs => [{ id: Date.now() + Math.random(), text }, ...prevNotifs].slice(0, 30));
+    };
+    window.addEventListener('vendor_status_updated', handleStatusUpdate);
+    return () => window.removeEventListener('vendor_status_updated', handleStatusUpdate);
+  }, []);
 
   const [isUserInfoOpen, setIsUserInfoOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);

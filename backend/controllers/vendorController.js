@@ -48,7 +48,16 @@ const invalidateVendorUserCache = (userId) => {
   if (!userId) return;
   vendorUserCache.delete(userId.toString());
   cacheManager.invalidateVendorProfile(userId.toString()).catch(() => {});
+  // Also invalidate product order stats
+  for (const key of vendorProductOrderStatsCache.keys()) {
+    if (key.includes(userId.toString())) {
+      vendorProductOrderStatsCache.delete(key);
+    }
+  }
 };
+
+// Cached Vendor Product Order Statistics (30s TTL to eliminate full-collection order scans)
+const vendorProductOrderStatsCache = new Map();
 
 // Cached Platform Config lookup (60s TTL)
 let cachedPlatformConfig = null;
@@ -840,12 +849,32 @@ const getProducts = async (req, res) => {
 
     const vendorIds = getVendorMatchingIds(user, parentId);
     if (!vendorIds.includes(activeBusinessId)) vendorIds.push(activeBusinessId);
+    const allowedVendorIdStrs = [...new Set(vendorIds.map(id => id ? id.toString() : '').filter(Boolean))];
+
+    // Support specific business outlet filtering via header or query param
+    const explicitBusinessId = (
+      req.headers['x-business-id'] ||
+      req.query.businessId ||
+      req.query.business_id ||
+      ''
+    ).toString().trim();
+    const isExplicitOutlet = Boolean(
+      explicitBusinessId &&
+      explicitBusinessId.toLowerCase() !== 'all' &&
+      allowedVendorIdStrs.includes(explicitBusinessId)
+    );
+
     const queryConditions = [
       {
-        $or: [
-          { vendorId: { $in: vendorIds } },
-          { vendor_id: { $in: vendorIds } }
-        ]
+        $or: isExplicitOutlet
+          ? [
+              { vendorId: explicitBusinessId },
+              { vendor_id: explicitBusinessId }
+            ]
+          : [
+              { vendorId: { $in: vendorIds } },
+              { vendor_id: { $in: vendorIds } }
+            ]
       }
     ];
 
@@ -896,7 +925,16 @@ const getProducts = async (req, res) => {
     // Safety fallback filter to guarantee strict business ownership & category isolation
     const filtered = products.filter(p => {
       const pVendorId = (p.vendorId || p.vendor_id || '').toString();
-      const belongsToVendor = (pVendorId === activeBusinessId || pVendorId === parentId);
+      let belongsToVendor = false;
+      if (isExplicitOutlet) {
+        belongsToVendor = (pVendorId === explicitBusinessId);
+      } else if (!targetType || targetType.toLowerCase() === 'all') {
+        // Unified vendor catalog: include all items across all vendor's authorized businesses
+        belongsToVendor = allowedVendorIdStrs.includes(pVendorId);
+      } else {
+        // Scoped to active business outlet or any authorized vendor outlet matching the category
+        belongsToVendor = (pVendorId === activeBusinessId || pVendorId === parentId || allowedVendorIdStrs.includes(pVendorId));
+      }
       if (!belongsToVendor) return false;
 
       if (!targetType || targetType.toLowerCase() === 'all') return true;
@@ -922,68 +960,62 @@ const getProducts = async (req, res) => {
         });
       }
 
-      const relevantOrders = await Order.find({
-        $or: [
-          { vendorId: { $in: allVendorBusinessIds } },
-          { vendor_id: { $in: allVendorBusinessIds } },
-          ...(productIds.length > 0 ? [{ jobId: { $in: productIds } }, { productId: { $in: productIds } }] : [])
-        ],
-        status: { $nin: ['Cancelled', 'Rejected'] }
-      }).select('items productId jobId jobTitle product_details finalAmount totalAmount amount status customerId memberId customer_name memberName phone mobileNumber email candidateEmail customer_email').lean();
+      const statsCacheKey = allVendorBusinessIds.slice().sort().join('_');
+      let cachedStats = vendorProductOrderStatsCache.get(statsCacheKey);
+      let bookingCountMap = {};
+      let customersSetMap = {};
 
-      const bookingCountMap = {};
-      const customersSetMap = {};
+      if (cachedStats && cachedStats.expiresAt > Date.now()) {
+        bookingCountMap = cachedStats.bookingCountMap;
+        customersSetMap = cachedStats.customersSetMap;
+      } else {
+        const relevantOrders = await Order.find({
+          $or: [
+            { vendorId: { $in: allVendorBusinessIds } },
+            { vendor_id: { $in: allVendorBusinessIds } },
+            ...(productIds.length > 0 ? [{ jobId: { $in: productIds } }, { productId: { $in: productIds } }] : [])
+          ],
+          status: { $nin: ['Cancelled', 'Rejected'] }
+        }).select('items productId jobId jobTitle product_details status customerId memberId customer_name memberName phone mobileNumber email candidateEmail customer_email').lean();
 
-      relevantOrders.forEach(ord => {
-        const custKey = ord.customerId || ord.memberId || ord.customer_name || ord.memberName || ord.phone || ord.mobileNumber || ord.customer_email || ord.candidateEmail || ord.email || ord._id;
+        relevantOrders.forEach(ord => {
+          const custKey = ord.customerId || ord.memberId || ord.customer_name || ord.memberName || ord.phone || ord.mobileNumber || ord.customer_email || ord.candidateEmail || ord.email || ord._id;
 
-        if (ord.items && Array.isArray(ord.items) && ord.items.length > 0) {
-          ord.items.forEach(it => {
-            const itId = String(it.productId || it.jobId || it._id || it.id || '');
-            const itName = (it.name || it.jobTitle || '').trim().toLowerCase();
-            const qty = Number(it.quantity || it.qty || 1);
-            if (itId && productIds.includes(itId)) {
-              bookingCountMap[itId] = (bookingCountMap[itId] || 0) + qty;
-              if (custKey) {
-                customersSetMap[itId] = customersSetMap[itId] || new Set();
-                customersSetMap[itId].add(String(custKey));
-              }
-            } else if (itName && productNames.includes(itName)) {
-              const match = filtered.find(p => (p.name || '').trim().toLowerCase() === itName);
-              if (match) {
-                const pId = String(match._id || match.id);
-                bookingCountMap[pId] = (bookingCountMap[pId] || 0) + qty;
+          if (ord.items && Array.isArray(ord.items) && ord.items.length > 0) {
+            ord.items.forEach(it => {
+              const itId = String(it.productId || it.jobId || it._id || it.id || '');
+              const itName = (it.name || it.jobTitle || '').trim().toLowerCase();
+              const qty = Number(it.quantity || it.qty || 1);
+              if (itId) {
+                bookingCountMap[itId] = (bookingCountMap[itId] || 0) + qty;
                 if (custKey) {
-                  customersSetMap[pId] = customersSetMap[pId] || new Set();
-                  customersSetMap[pId].add(String(custKey));
+                  customersSetMap[itId] = customersSetMap[itId] || new Set();
+                  customersSetMap[itId].add(String(custKey));
                 }
               }
-            }
-          });
-        } else {
-          const ordProdId = String(ord.jobId || ord.productId || '');
-          const ordProdName = (ord.jobTitle || ord.product_details || '').trim().toLowerCase();
-          if (ordProdId && productIds.includes(ordProdId)) {
-            bookingCountMap[ordProdId] = (bookingCountMap[ordProdId] || 0) + 1;
-            if (custKey) {
-              customersSetMap[ordProdId] = customersSetMap[ordProdId] || new Set();
-              customersSetMap[ordProdId].add(String(custKey));
-            }
-          } else if (ordProdName && productNames.includes(ordProdName)) {
-            const match = filtered.find(p => (p.name || '').trim().toLowerCase() === ordProdName);
-            if (match) {
-              const pId = String(match._id || match.id);
-              bookingCountMap[pId] = (bookingCountMap[pId] || 0) + 1;
+            });
+          } else {
+            const ordProdId = String(ord.jobId || ord.productId || '');
+            if (ordProdId) {
+              bookingCountMap[ordProdId] = (bookingCountMap[ordProdId] || 0) + 1;
               if (custKey) {
-                customersSetMap[pId] = customersSetMap[pId] || new Set();
-                customersSetMap[pId].add(String(custKey));
+                customersSetMap[ordProdId] = customersSetMap[ordProdId] || new Set();
+                customersSetMap[ordProdId].add(String(custKey));
               }
             }
           }
-        }
-      });
+        });
+
+        vendorProductOrderStatsCache.set(statsCacheKey, {
+          bookingCountMap,
+          customersSetMap,
+          expiresAt: Date.now() + 30000 // 30s TTL
+        });
+      }
 
       filtered.forEach(p => {
+        p.businessId = (p.vendorId || p.vendor_id || p.businessId || '').toString();
+        p.vendorId = (p.vendorId || p.vendor_id || p.businessId || '').toString();
         const pId = String(p._id || p.id);
         const count = bookingCountMap[pId] || 0;
         const uniqueCustCount = customersSetMap[pId] ? customersSetMap[pId].size : 0;
@@ -1967,24 +1999,39 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     return /\b(ac\s*car|non\s*ac\s*car|car|ac\s*bus|non\s*ac\s*bus|bus|bike|superbike|mini\s*superbike|tempo|van|taxi|cab|flight|train|transport|travel|travels)\b/i.test(s);
   };
 
-  // 1. Explicit Services Check
+  const serviceKeywordsRegex = /\b(service|services|repair|repairs|cctv|support|consultation|doctor|technician|clinic|hospital|lineman|electrician|plumber|cleaning|mechanic|carpenter|painter|handyman|solar)\b/i;
+
+  // 1. Explicit Services Check (Prioritized to prevent misclassified service bookings like Lineman from showing as Stay)
   const isServices = ['services', 'service'].includes(prodMainCat) ||
                      ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawType) ||
                      ['service', 'services', 'appointment', 'hospital', 'technician', 'clinic'].includes(rawCat) ||
-                     ['it & device support', 'ac service', 'laptop repairs', 'cctv installation', 'pc repairs', 'full clean', 'cleaning', 'electrician', 'plumber', 'hospital', 'technician', 'healthcare'].includes(prodCat) ||
-                     ['it & device support', 'ac service', 'laptop repairs', 'cctv installation', 'pc repairs', 'full clean', 'cleaning', 'electrician', 'plumber', 'hospital', 'technician', 'healthcare'].includes(rawSubCat) ||
-                     Boolean(obj.doctorName || obj.patientName || obj.serviceName) ||
-                     /\b(service|services|repair|repairs|cctv|support|consultation|doctor|technician|clinic|hospital)\b/i.test(detailStr) ||
-                     /\b(service|services|repair|repairs|cctv|support|consultation|doctor|technician)\b/i.test(prodName);
+                     ['it & device support', 'ac service', 'laptop repairs', 'cctv installation', 'pc repairs', 'full clean', 'cleaning', 'electrician', 'plumber', 'hospital', 'technician', 'healthcare', 'lineman', 'electrical & solar services', 'electrical & solar', 'electrical services'].includes(prodCat) ||
+                     ['it & device support', 'ac service', 'laptop repairs', 'cctv installation', 'pc repairs', 'full clean', 'cleaning', 'electrician', 'plumber', 'hospital', 'technician', 'healthcare', 'lineman', 'electrical & solar services', 'electrical & solar', 'electrical services'].includes(rawSubCat) ||
+                     Boolean(obj.doctorName || obj.patientName || (obj.serviceName && !['stay', 'hotel', 'resort'].includes(String(obj.serviceName).toLowerCase()))) ||
+                     serviceKeywordsRegex.test(detailStr) ||
+                     serviceKeywordsRegex.test(prodName) ||
+                     serviceKeywordsRegex.test(String(obj.serviceName || ''));
 
-  // 2. Explicit Stay Check
-  const isStay = !isServices && (
+  // 2. Genuine Travel Check (Evaluated before Stay so bus/cab bookings with departure/check-in dates are not misclassified as Stay)
+  const isTravel = !isServices && (
+    ['travel', 'travels'].includes(prodMainCat) ||
+    ['travel', 'travels', 'package', 'packages', 'transport', 'bus', 'vehicle', 'cab', 'car', 'bike'].includes(rawType) ||
+    ['travel', 'travels', 'package', 'packages', 'transport', 'bus', 'vehicle', 'cab', 'car', 'bike'].includes(rawCat) ||
+    ['car', 'bus', 'bike', 'mini superbikes', 'ac car', 'non ac car', 'ac bus', 'non ac bus', 'superbikes', 'travel', 'travels', 'package'].includes(prodCat) ||
+    ['car', 'bus', 'bike', 'mini superbikes', 'ac car', 'non ac car', 'ac bus', 'non ac bus', 'superbikes', 'travel', 'travels', 'package'].includes(rawSubCat) ||
+    Boolean(obj.vehicleNumber || obj.vehicleType || (obj.boardingPoint && obj.droppingPoint) || obj.busName || obj.carName || obj.bikeName || obj.bus_name || obj.busId) ||
+    isTravelTerm(detailStr) ||
+    isTravelTerm(prodName)
+  );
+
+  // 3. Genuine Stay Check (Strictly Hospitality/Lodging - NEVER infer Stay solely from generic dates)
+  const isStay = !isServices && !isTravel && (
     ['stay', 'hotel', 'hotels', 'resort', 'resorts'].includes(prodMainCat) ||
     ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawType) ||
     ['stay', 'hotel', 'hotels', 'resort', 'resorts', 'room', 'rooms'].includes(rawCat) ||
     ['hotels', 'resorts', 'rooms', 'luxury', 'hill station', 'cottages', 'villas', 'resort', 'hotel', 'homestay', 'pg', 'stay'].includes(prodCat) ||
     ['hotels', 'resorts', 'rooms', 'luxury', 'hill station', 'cottages', 'villas', 'resort', 'hotel', 'homestay', 'pg', 'stay'].includes(rawSubCat) ||
-    Boolean(obj.roomNumber || obj.roomName || obj.staySchedule) ||
+    Boolean(obj.roomNumber || obj.roomName || obj.staySchedule || obj.hotelName) ||
     /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(detailStr) ||
     /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(prodName)
   );
@@ -2028,18 +2075,6 @@ const enrichBookingWithDetails = (b, user, customerLookup = {}, productMap = {},
     contactPhone: currentBiz?.phone || user?.phone || 'Not provided',
     contactEmail: user?.email || 'Not provided'
   };
-
-  // 3. Genuine Travel Check
-  const isTravel = !isServices && !isStay && (
-    ['travel', 'travels'].includes(prodMainCat) ||
-    ['travel', 'travels', 'package', 'packages', 'transport'].includes(rawType) ||
-    ['travel', 'travels', 'package', 'packages', 'transport'].includes(rawCat) ||
-    ['car', 'bus', 'bike', 'mini superbikes', 'ac car', 'non ac car', 'ac bus', 'non ac bus', 'superbikes', 'travel', 'travels', 'package'].includes(prodCat) ||
-    ['car', 'bus', 'bike', 'mini superbikes', 'ac car', 'non ac car', 'ac bus', 'non ac bus', 'superbikes', 'travel', 'travels', 'package'].includes(rawSubCat) ||
-    Boolean(obj.vehicleNumber || obj.vehicleType || (obj.boardingPoint && obj.droppingPoint) || obj.busName || obj.carName || obj.bikeName) ||
-    isTravelTerm(detailStr) ||
-    isTravelTerm(prodName)
-  );
 
   // 4. Job Applications Check
   const isJob = !isServices && !isStay && !isTravel && (
@@ -3152,17 +3187,61 @@ const updateOrderStatus = async (req, res) => {
     }
 
     // Real-Time Event Generation (AFTER DB success)
+    const resolvedCust = order.memberName || order.customer_name || 'Customer';
+    const resolvedItem = (order.items && order.items[0]?.name) || order.product_details || order.serviceName || order.bus_name || order.jobTitle || 'Order Item';
+    const isJobTx = Boolean(order.jobTitle || order.candidateResume || order.category === 'Jobs' || order.type === 'Job');
+    const isBookingTx = !isJobTx && Boolean(order.serviceName || order.appointmentDate || order.checkInDate || order.travelDate || ['services', 'stay', 'travel', 'booking', 'appointment'].includes(String(order.type || order.category || '').toLowerCase()));
+    const catLabel = isJobTx ? 'Job' : (isBookingTx ? 'Booking' : 'Order');
+
+    const enrichedOrderData = {
+      ...(order.toObject ? order.toObject() : order),
+      previousStatus: oldStatus,
+      newStatus: order.status,
+      customerName: resolvedCust,
+      itemName: resolvedItem,
+      category: catLabel,
+      description: `Status changed from "${oldStatus}" to "${order.status}"`
+    };
+
     publishRealtimeEvent({
-      event: EVENT_TYPES.ORDER_STATUS_CHANGED,
-      entity: ENTITY_NAMES.ORDER,
+      event: isBookingTx ? EVENT_TYPES.BOOKING_STATUS_CHANGED : EVENT_TYPES.ORDER_STATUS_CHANGED,
+      entity: isBookingTx ? ENTITY_NAMES.BOOKING : ENTITY_NAMES.ORDER,
       entityId: order._id ? order._id.toString() : order.id,
       action: 'status_changed',
       target: {
         vendorId: order.vendorId || order.vendor_id,
         userId: order.memberId || order.customer_id
       },
-      data: order
+      data: enrichedOrderData
     }).catch(err => console.warn('[Realtime] Order status publish warning:', err.message));
+
+    // Persist vendor notification record in MongoDB collection
+    try {
+      const vId = String(order.vendorId || order.vendor_id || parentUserId);
+      await mongoose.connection.db.collection('notifications').insertOne({
+        recipientId: vId,
+        vendorId: vId,
+        role: 'vendor',
+        category: catLabel,
+        title: `${catLabel} Status Updated`,
+        orderId: String(order._id || order.id || order.order_number),
+        orderNumber: String(order.order_number || order._id || order.id),
+        customerName: resolvedCust,
+        itemName: resolvedItem,
+        previousStatus: oldStatus,
+        newStatus: order.status,
+        status: order.status,
+        amount: order.finalAmount || order.totalAmount || order.amount || 0,
+        description: `Status changed from "${oldStatus}" to "${order.status}"`,
+        read: false,
+        isRead: false,
+        createdAt: new Date(),
+        created_at: new Date().toISOString(),
+        date: new Date().toISOString()
+      });
+    } catch (nErr) {
+      console.warn('VendorController notif persistence warning:', nErr.message);
+    }
 
     // Sync order status back to customer backend (Connect App) if configured
     if (order.status !== oldStatus && process.env.CUSTOMER_BACKEND_URL) {
@@ -6696,6 +6775,130 @@ const getVendorRatings = async (req, res) => {
   }
 };
 
+
+// ==========================================
+// Vendor Notification Controller Functions
+// ==========================================
+const getNotifications = async (req, res) => {
+  try {
+    const parentUserId = (req.user.parentUserId || req.user._id || req.user.id).toString();
+    const currentUserId = (req.user._id || req.user.id).toString();
+
+    const vendorIds = new Set([parentUserId, currentUserId]);
+    if (req.user.vendorId) vendorIds.add(String(req.user.vendorId));
+    if (req.user.primaryBusinessId) vendorIds.add(String(req.user.primaryBusinessId));
+    if (req.user.registrationId) vendorIds.add(String(req.user.registrationId));
+    if (Array.isArray(req.user.businesses)) {
+      req.user.businesses.forEach(b => {
+        const bid = (b?._id || b?.id || (typeof b === 'string' ? b : null))?.toString();
+        if (bid) vendorIds.add(bid);
+      });
+    }
+
+    const idList = Array.from(vendorIds);
+    const queryOr = [];
+    idList.forEach(id => {
+      queryOr.push({ recipientId: id }, { vendorId: id }, { vendor_id: id });
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        try {
+          queryOr.push({ recipientId: new mongoose.Types.ObjectId(id) }, { vendorId: new mongoose.Types.ObjectId(id) });
+        } catch {}
+      }
+    });
+
+    const notifs = await mongoose.connection.db.collection('notifications')
+      .find({ role: 'vendor', $or: queryOr })
+      .sort({ createdAt: -1, created_at: -1 })
+      .limit(50)
+      .toArray()
+      .catch(() => []);
+
+    const notifications = notifs.map(n => ({
+      id: String(n._id || n.id),
+      orderId: n.orderId || n.order_id || n.id,
+      orderNumber: n.orderNumber || n.order_number || n.orderId,
+      category: n.category || 'Order',
+      title: n.title || 'Notification',
+      message: n.description || n.message || n.text || '',
+      description: n.description || n.message || n.text || '',
+      customerName: n.customerName || n.customer_name || 'Customer',
+      itemName: n.itemName || n.item_name || 'Item',
+      previousStatus: n.previousStatus || '',
+      newStatus: n.newStatus || n.status || '',
+      status: n.status || n.newStatus || '',
+      amount: n.amount ? (typeof n.amount === 'number' ? `₹${n.amount}` : String(n.amount)) : undefined,
+      dateTime: n.createdAt || n.created_at ? new Date(n.createdAt || n.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Recently',
+      date: n.createdAt || n.created_at || new Date().toISOString(),
+      read: Boolean(n.read || n.isRead),
+      receivedAt: n.createdAt ? new Date(n.createdAt).getTime() : Date.now()
+    }));
+
+    const unreadCount = notifications.filter(n => !n.read).length;
+    res.json({ success: true, data: notifications, notifications, unreadCount });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message, data: [], notifications: [], unreadCount: 0 });
+  }
+};
+
+const markNotificationRead = async (req, res) => {
+  try {
+    const notifId = req.params.id;
+    if (!notifId) return res.status(400).json({ success: false, message: 'Notification ID required' });
+    const q = [{ id: notifId }, { orderId: notifId }];
+    if (mongoose.Types.ObjectId.isValid(notifId)) {
+      try { q.push({ _id: new mongoose.Types.ObjectId(notifId) }); } catch {}
+    }
+    await mongoose.connection.db.collection('notifications').updateMany(
+      { $or: q },
+      { $set: { read: true, isRead: true } }
+    ).catch(() => {});
+    res.json({ success: true, message: 'Marked as read', id: notifId });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const markAllNotificationsRead = async (req, res) => {
+  try {
+    const parentUserId = (req.user.parentUserId || req.user._id || req.user.id).toString();
+    const vendorIds = [parentUserId];
+    if (req.user.vendorId) vendorIds.push(String(req.user.vendorId));
+    if (req.user.primaryBusinessId) vendorIds.push(String(req.user.primaryBusinessId));
+
+    const q = [];
+    vendorIds.forEach(id => {
+      q.push({ recipientId: id }, { vendorId: id });
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        try { q.push({ recipientId: new mongoose.Types.ObjectId(id) }, { vendorId: new mongoose.Types.ObjectId(id) }); } catch {}
+      }
+    });
+
+    await mongoose.connection.db.collection('notifications').updateMany(
+      { role: 'vendor', $or: q },
+      { $set: { read: true, isRead: true } }
+    ).catch(() => {});
+
+    res.json({ success: true, message: 'All notifications marked as read', unreadCount: 0 });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const deleteNotification = async (req, res) => {
+  try {
+    const notifId = req.params.id;
+    if (!notifId) return res.status(400).json({ success: false, message: 'Notification ID required' });
+    const q = [{ id: notifId }];
+    if (mongoose.Types.ObjectId.isValid(notifId)) {
+      try { q.push({ _id: new mongoose.Types.ObjectId(notifId) }); } catch {}
+    }
+    await mongoose.connection.db.collection('notifications').deleteMany({ $or: q }).catch(() => {});
+    res.json({ success: true, message: 'Notification deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   updateAcceptingOrders,
   getVendorRatings,
@@ -6710,7 +6913,14 @@ module.exports = {
   getBookings,
   getOrderById,
   getApplications,
+
+
+
   updateOrderStatus,
+  getNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  deleteNotification,
   getOrderResume,
   getCustomers,
   getCustomerPurchases,
@@ -6736,5 +6946,6 @@ module.exports = {
   getVendorTickets,
   createVendorTicket,
   replyVendorTicket,
-  updateTicketStatusForbidden
+  updateTicketStatusForbidden,
+  enrichBookingWithDetails
 };

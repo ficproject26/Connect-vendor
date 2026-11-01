@@ -1200,9 +1200,25 @@ const VendorDashboard = () => {
         enqueueOrDisplayPopup(e.detail);
       }
     };
+    const handleStatusUpdateAlert = (e) => {
+      if (e.detail) {
+        const statusItem = {
+          ...e.detail,
+          isStatusUpdate: true
+        };
+        enqueueOrDisplayPopup(statusItem);
+        try {
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          audio.volume = 0.8;
+          audio.play().catch(() => {});
+        } catch (err) {}
+      }
+    };
     window.addEventListener('new_incoming_order', handleNewOrderAlert);
+    window.addEventListener('vendor_status_updated', handleStatusUpdateAlert);
     return () => {
       window.removeEventListener('new_incoming_order', handleNewOrderAlert);
+      window.removeEventListener('vendor_status_updated', handleStatusUpdateAlert);
       clearPopupTimers();
       popupQueueRef.current = [];
     };
@@ -3014,7 +3030,7 @@ const VendorDashboard = () => {
     }
   };
 
-  // Load Tab Data with intelligent short-lived cache to avoid redundant network overhead during navigation
+  // Load Tab Data with intelligent stale-while-revalidate cache to ensure immediate (<100ms) transitions
   const lastFetchedTabRef = useRef({});
   useEffect(() => {
     const fetchTabData = async () => {
@@ -3024,7 +3040,18 @@ const VendorDashboard = () => {
         return;
       }
 
-      setLoading(true);
+      // Check if existing data is already present to prevent blocking or flashing loading screens
+      const hasExistingData = 
+        (activeTab === 'orders' && orders.length > 0) ||
+        (activeTab === 'bookings' && bookings.length > 0) ||
+        (activeTab === 'catalog' && catalog.length > 0) ||
+        (activeTab === 'customers' && customers.length > 0) ||
+        (activeTab === 'applications' && applications.length > 0) ||
+        (activeTab === 'dashboard' && analytics && Object.keys(analytics).length > 0);
+
+      if (!hasExistingData) {
+        setLoading(true);
+      }
       setError('');
       setMessage('');
       try {
@@ -6351,7 +6378,7 @@ const VendorDashboard = () => {
                         sortedCatalog.sort((a, b) => b.price - a.price);
                       }
 
-                      if (loading && catalog.length === 0) {
+                      if (loading && sortedCatalog.length === 0) {
                         return (
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-4 animate-pulse">
                             {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
@@ -12505,19 +12532,69 @@ required
           ['booking', 'stay', 'travel', 'services'].includes(String(newIncomingOrder.category || '').toLowerCase())
         );
 
-        const isStay = isBooking && (
-          newIncomingOrder.type === 'Stay' ||
-          String(newIncomingOrder.category || '').toLowerCase().includes('stay') ||
-          Boolean(newIncomingOrder.checkInDate)
-        );
-        const isTravel = isBooking && (
-          newIncomingOrder.type === 'Travel' ||
-          String(newIncomingOrder.category || '').toLowerCase().includes('travel') ||
-          Boolean(newIncomingOrder.travelDate) ||
-          Boolean(newIncomingOrder.boardingPoint)
+        const rawType = String(newIncomingOrder.type || '').toLowerCase();
+        const rawCat = String(newIncomingOrder.category || newIncomingOrder.bookingCategory || '').toLowerCase();
+        const detailStr = String(newIncomingOrder.product_details || newIncomingOrder.name || '').toLowerCase();
+        const rawServiceName = String(newIncomingOrder.serviceName || '').toLowerCase();
+
+        const serviceKeywordsRegex = /\b(electrician|plumber|technician|solar|repair|repairs|cctv|cleaning|service|services|consultation|doctor|nurse|clinic|hospital|lineman|mechanic|carpenter|painter|handyman)\b/i;
+
+        const isServiceBooking = isBooking && (
+          serviceKeywordsRegex.test(detailStr) ||
+          serviceKeywordsRegex.test(rawServiceName) ||
+          Boolean(newIncomingOrder.doctorName || newIncomingOrder.patientName || newIncomingOrder.serviceName) ||
+          ['service', 'services', 'appointment'].includes(rawType) ||
+          ['service', 'services'].includes(rawCat)
         );
 
-        const txTypeLabel = isJob ? 'New Job Application' : isBooking ? (isStay ? 'New Stay Booking' : isTravel ? 'New Travel Booking' : 'New Service Booking') : 'New Customer Order';
+        const isTravelBooking = isBooking && !isServiceBooking && (
+          Boolean(newIncomingOrder.vehicleNumber || newIncomingOrder.vehicleType || newIncomingOrder.boardingPoint || newIncomingOrder.droppingPoint || newIncomingOrder.travelDate || newIncomingOrder.departureTime || newIncomingOrder.bus_name || newIncomingOrder.busName || newIncomingOrder.busId) ||
+          /\b(bus|flight|train|vehicle|travel|travels|tour|cab|taxi|superbike)\b/i.test(detailStr) ||
+          ['travel', 'travels'].includes(rawCat) ||
+          ['travel', 'travels'].includes(rawType)
+        );
+
+        const isStayBooking = isBooking && !isServiceBooking && !isTravelBooking && (
+          Boolean(newIncomingOrder.roomNumber || newIncomingOrder.roomName || newIncomingOrder.staySchedule || newIncomingOrder.hotelName) ||
+          /\b(room|rooms|hotel|hotels|resort|resorts|suite|villa|cottage|homestay|lodge|pg)\b/i.test(detailStr) ||
+          ['stay', 'hotel', 'resort'].includes(rawCat) ||
+          ['stay', 'hotel', 'resort'].includes(rawType)
+        );
+
+        const isFoodOrder = !isJob && !isBooking && (
+          ['food', 'foods', 'restaurant', 'dining'].includes(rawCat) ||
+          ['food', 'foods', 'restaurant'].includes(rawType) ||
+          /food|restaurant|biryani|chicken|pizza|burger|meal|dish/i.test(detailStr)
+        );
+
+        const isDailyNeedsOrder = !isJob && !isBooking && (
+          ['daily needs', 'daily need', 'grocery', 'pharmacy', 'snacks'].includes(rawCat) ||
+          ['daily needs', 'daily need', 'grocery'].includes(rawType)
+        );
+
+        const isStatusChange = Boolean(
+          newIncomingOrder.isStatusUpdate ||
+          (newIncomingOrder.previousStatus && (newIncomingOrder.newStatus || newIncomingOrder.status) && newIncomingOrder.previousStatus !== (newIncomingOrder.newStatus || newIncomingOrder.status))
+        );
+
+        let txTypeLabel = isStatusChange ? 'Product Order Status Updated' : 'New Product Order';
+        if (isJob) {
+          txTypeLabel = isStatusChange ? 'Job Application Status Updated' : 'New Job Application';
+        } else if (isServiceBooking) {
+          txTypeLabel = isStatusChange ? 'Service Booking Status Updated' : 'New Service Booking';
+        } else if (isStayBooking) {
+          txTypeLabel = isStatusChange ? 'Stay Booking Status Updated' : 'New Stay Booking';
+        } else if (isTravelBooking) {
+          txTypeLabel = isStatusChange ? 'Travel Booking Status Updated' : 'New Travel Booking';
+        } else if (isBooking) {
+          txTypeLabel = isStatusChange ? 'Service Booking Status Updated' : 'New Service Booking';
+        } else if (isFoodOrder) {
+          txTypeLabel = isStatusChange ? 'Food Order Status Updated' : 'New Food Order';
+        } else if (isDailyNeedsOrder) {
+          txTypeLabel = isStatusChange ? 'Daily Needs Order Status Updated' : 'New Daily Needs Order';
+        } else {
+          txTypeLabel = isStatusChange ? 'Order Status Updated' : 'New Product Order';
+        }
         const txIcon = isJob ? '💼' : isBooking ? (isStay ? '🏨' : isTravel ? '🚌' : '📅') : '🛍️';
         const badgeStyle = isJob ? 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60' : isBooking ? 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60' : 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60';
 
@@ -12616,11 +12693,23 @@ required
                       +{popupQueueRef.current.length} queued
                     </span>
                   )}
-                  <span className="text-xs font-black px-3 py-1 bg-white/95 dark:bg-black/60 rounded-full font-mono shadow-sm border border-current/10">
-                    {newIncomingOrder.status || 'Received'}
-                  </span>
+                  {newIncomingOrder.previousStatus && (newIncomingOrder.newStatus || newIncomingOrder.status) && newIncomingOrder.previousStatus !== (newIncomingOrder.newStatus || newIncomingOrder.status) ? (
+                    <span className="text-xs font-black px-3 py-1 bg-amber-500 text-white rounded-full font-mono shadow-sm">
+                      {newIncomingOrder.previousStatus} → {newIncomingOrder.newStatus || newIncomingOrder.status}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-black px-3 py-1 bg-white/95 dark:bg-black/60 rounded-full font-mono shadow-sm border border-current/10">
+                      {newIncomingOrder.status || 'Received'}
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {newIncomingOrder.description && (
+                <div className="px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs font-medium text-amber-800 dark:text-amber-300">
+                  ℹ️ {newIncomingOrder.description}
+                </div>
+              )}
 
               {/* 1. Customer Information */}
               <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-2">

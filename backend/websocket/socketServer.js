@@ -338,6 +338,13 @@ class SocketServer {
       this.io.to(room).emit('realtime_event', event);
       if (eventName) {
         this.io.to(room).emit(eventName, event);
+        if (event.data) {
+          this.io.to(room).emit(eventName, event.data);
+          if (eventName === 'ORDER_STATUS_CHANGED' || eventName === 'BOOKING_STATUS_CHANGED') {
+            this.io.to(room).emit('order_status_updated', event.data);
+            this.io.to(room).emit('order:status_changed', event.data);
+          }
+        }
       }
     }
   }

@@ -129,7 +129,10 @@ class WebSocketClient {
       'ORDER_STATUS_CHANGED',
       'BOOKING_STATUS_CHANGED',
       'APPLICATION_STATUS_CHANGED',
-      'order:status_changed'
+      'order:status_changed',
+      'order_status_updated',
+      'booking_status_updated',
+      'application_status_updated'
     ];
 
     directEvents.forEach((evtName) => {
@@ -203,6 +206,18 @@ class WebSocketClient {
     // Dispatch to registered handlers
     this._dispatch(event.event, event);
     this._dispatch('*', event); // Wildcard handlers receive all events
+
+    // Cross-component DOM event broadcast for real-time dashboard UI
+    try {
+      if (typeof window !== 'undefined') {
+        const isStatusChange = event.action === 'status_changed' || String(event.event).toLowerCase().includes('status');
+        if (isStatusChange) {
+          window.dispatchEvent(new CustomEvent('vendor_status_updated', { detail: event.data || event }));
+        } else if (event.action === 'created' || String(event.event).toLowerCase().includes('created') || String(event.event).toLowerCase().includes('new_order')) {
+          window.dispatchEvent(new CustomEvent('new_incoming_order', { detail: event.data || event }));
+        }
+      }
+    } catch (e) {}
   }
 
   /**
