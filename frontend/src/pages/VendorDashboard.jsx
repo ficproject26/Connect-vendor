@@ -12595,6 +12595,9 @@ required
         } else {
           txTypeLabel = isStatusChange ? 'Order Status Updated' : 'New Product Order';
         }
+        // Alias to isStayBooking / isTravelBooking for JSX that references isStay / isTravel
+        const isStay = isStayBooking;
+        const isTravel = isTravelBooking;
         const txIcon = isJob ? '💼' : isBooking ? (isStay ? '🏨' : isTravel ? '🚌' : '📅') : '🛍️';
         const badgeStyle = isJob ? 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60' : isBooking ? 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60' : 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60';
 
