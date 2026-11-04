@@ -81,6 +81,36 @@ class WebSocketClient {
         });
       }
 
+      // Explicitly register identity and join vendor broadcast rooms
+      try {
+        let vendorId = null;
+        if (this.token && typeof this.token === 'string') {
+          const parts = this.token.split('.');
+          if (parts.length === 3) {
+            try {
+              const decodedPayload = JSON.parse(atob(parts[1]));
+              vendorId = decodedPayload.vendorId || decodedPayload.id || decodedPayload.userId || decodedPayload._id;
+            } catch (pErr) {}
+          }
+        }
+
+        this.socket.emit('register', {
+          token: this.token,
+          role: 'vendor',
+          userId: vendorId
+        });
+
+        if (vendorId) {
+          this.socket.emit('join', `vendor:${vendorId}`);
+          this.socket.emit('join', `business:${vendorId}`);
+          this.socket.emit('join', String(vendorId));
+          this.socket.emit('subscribe_topic', `vendor:${vendorId}`);
+          this.socket.emit('subscribe_topic', `business:${vendorId}`);
+        }
+      } catch (err) {
+        console.warn('⚠️ [WebSocket] Failed to register vendor identity on connection:', err);
+      }
+
       // Emit reconnect sync request for delta updates
       if (this.lastSyncTimestamp) {
         this.socket.emit('sync_request', { since: this.lastSyncTimestamp });
