@@ -39,6 +39,16 @@ if (typeof window !== 'undefined') {
     origWarn.apply(console, args);
   };
 
+  // Handle stale chunk reload gracefully when a new deployment occurs
+  window.addEventListener('vite:preloadError', (event) => {
+    event.preventDefault();
+    const hasReloaded = sessionStorage.getItem('chunk_retry_reload');
+    if (!hasReloaded) {
+      sessionStorage.setItem('chunk_retry_reload', 'true');
+      window.location.reload();
+    }
+  });
+
   // Suppress unhandled rejections from extension message channels
   window.addEventListener('unhandledrejection', (event) => {
     if (isExtensionChannelError(event.reason) || isExtensionChannelError(event)) {

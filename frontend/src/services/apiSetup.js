@@ -78,10 +78,11 @@ axios.interceptors.request.use(
         config.url.includes(':8002') ||
         config.url.includes('trycloudflare.com') ||
         config.url.includes('43.204.141.105') ||
-        config.url.includes('13.203.197.69')
+        config.url.includes('13.203.197.69') ||
+        config.url.includes('vendor.ficapp.in')
       ) {
-        // Replaces localhost ports or stale cloud tunnels/IPs with active backendUrl
-        config.url = config.url.replace(/^https?:\/\/[^/]+/, backendUrl || 'https://vendor.ficapp.in');
+        // Replaces localhost ports, stale cloud tunnels/IPs, or legacy domains with active backendUrl
+        config.url = config.url.replace(/^https?:\/\/[^/]+/, backendUrl || 'https://connect-vendor-p1ij.onrender.com');
       } else if (config.url.startsWith('/api')) {
         config.url = backendUrl ? `${backendUrl}${config.url}` : config.url;
       }
@@ -179,7 +180,7 @@ const sanitizeResponseUrls = (val, backendUrl, depth = 0) => {
         return val.replace(/^https?:\/\/[^/]+/, backendUrl || '');
       }
       if (val.includes('vendor.ficapp.in/uploads/')) {
-        const activeB = (backendUrl && backendUrl.startsWith('http')) ? backendUrl : 'https://vendor.ficapp.in';
+        const activeB = (backendUrl && backendUrl.startsWith('http')) ? backendUrl : 'https://connect-vendor-p1ij.onrender.com';
         return val.replace(/^https?:\/\/vendor\.ficapp\.in/, activeB);
       }
     }
@@ -402,13 +403,9 @@ export const formatImageUrl = (url) => {
     ) {
       return clean.replace(/^https?:\/\/[^/]+/, backend);
     }
-    // If already pointing to vendor.ficapp.in or another secure remote host, enforce HTTPS and ensure /api/uploads/
+    // If already pointing to legacy vendor.ficapp.in, rewrite to active backend
     if (clean.includes('vendor.ficapp.in')) {
-      let httpsUrl = clean.replace(/^http:\/\//, 'https://');
-      if (httpsUrl.includes('vendor.ficapp.in/uploads/') && !httpsUrl.includes('vendor.ficapp.in/api/uploads/')) {
-        httpsUrl = httpsUrl.replace('vendor.ficapp.in/uploads/', 'vendor.ficapp.in/api/uploads/');
-      }
-      return httpsUrl;
+      return clean.replace(/^https?:\/\/vendor\.ficapp\.in/, backend);
     }
     return clean;
   }

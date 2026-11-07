@@ -4,11 +4,11 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "https://vendor.ficapp.in/api/$1"
+      "dest": "https://connect-vendor-p1ij.onrender.com/api/$1"
     },
     {
       "src": "/uploads/(.*)",
-      "dest": "https://vendor.ficapp.in/uploads/$1"
+      "dest": "https://connect-vendor-p1ij.onrender.com/uploads/$1"
     },
     {
       "handle": "filesystem"

@@ -2,9 +2,25 @@ import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 
-const Login = lazy(() => import('./pages/auth/Login'));
-const Register = lazy(() => import('./pages/Register'));
-const VendorDashboard = lazy(() => import('./pages/VendorDashboard'));
+// Resilient lazy import that automatically refreshes the window once if a stale chunk 404s after a new deploy
+const lazyRetry = (componentImport) =>
+  lazy(async () => {
+    try {
+      return await componentImport();
+    } catch (error) {
+      const hasReloaded = sessionStorage.getItem('chunk_retry_reload');
+      if (!hasReloaded) {
+        sessionStorage.setItem('chunk_retry_reload', 'true');
+        window.location.reload();
+        return new Promise(() => {});
+      }
+      throw error;
+    }
+  });
+
+const Login = lazyRetry(() => import('./pages/auth/Login'));
+const Register = lazyRetry(() => import('./pages/Register'));
+const VendorDashboard = lazyRetry(() => import('./pages/VendorDashboard'));
 
 const RouteLoading = () => (
   <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
@@ -29,6 +45,8 @@ const BookingsRedirect = () => {
 
 function App() {
   useEffect(() => {
+    sessionStorage.removeItem('chunk_retry_reload');
+
     // Initialize theme preference from localStorage, default to dark
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light') {
