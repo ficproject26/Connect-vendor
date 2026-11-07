@@ -12,7 +12,8 @@ const AWS_REGION = process.env.AWS_REGION || '';
 const AWS_S3_BUCKET = process.env.AWS_S3_BUCKET || '';
 
 if (!AWS_REGION || !AWS_S3_BUCKET) {
-  console.warn('[AWS S3 Vendor] WARNING: AWS_REGION or AWS_S3_BUCKET environment variable is not set.');
+  // S3 is optional — Cloudinary is the primary storage provider.
+  // Warning suppressed at startup; errors will surface only if an S3 upload is attempted.
 }
 
 let s3ClientInstance = null;
