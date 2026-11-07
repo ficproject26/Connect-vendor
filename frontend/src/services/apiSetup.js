@@ -32,7 +32,7 @@ export const getBackendUrl = () => {
   }
   
   // 3. Fallback to production backend URL
-  return 'https://vendor.ficapp.in';
+  return 'https://connect-vendor-p1ij.onrender.com';
 };
 
 export const getWebSocketUrl = () => {
@@ -58,21 +58,9 @@ export const getWebSocketUrl = () => {
     return `http://${hostname || 'localhost'}:8002`;
   }
 
-  // 3. Vercel deployments (e.g. connect-vendor.vercel.app):
-  // The remote api.ficapp.in WebSocket CORS policy strictly restricts origins to *.ficapp.in.
-  // Static Vercel deployments do not have CORS access to api.ficapp.in and cannot host WebSockets.
-  // Returning null allows the application to cleanly use HTTP background synchronization without console CORS errors.
-  if (hostname.endsWith('vercel.app')) {
-    return null;
-  }
-
-  // 4. Production ficapp.in domains (e.g. vendor.ficapp.in):
-  // Connect to the ecosystem Socket.IO cluster on https://api.ficapp.in (allowed by api.ficapp.in CORS policy)
-  if (hostname.endsWith('.ficapp.in') || hostname === 'ficapp.in') {
-    return 'https://api.ficapp.in';
-  }
-
-  return null;
+  // 3. Deployed and remote environments (Vercel, Render, ficapp.in):
+  // Render supports WebSockets directly on the server URL
+  return 'https://connect-vendor-p1ij.onrender.com';
 };
 
 // Set up Axios request interceptor to dynamically rewrite backend URLs and inject headers
@@ -331,11 +319,12 @@ axios.interceptors.response.use(
 
     // On network error retry, correctly rewrite failed local URL to remote production backend
     if (isNetworkError && config.url) {
+      const activeBase = getBackendUrl() || 'https://connect-vendor-p1ij.onrender.com';
       if (config.url.startsWith('/api')) {
-        config.url = `https://vendor.ficapp.in${config.url}`;
+        config.url = `${activeBase}${config.url}`;
       } else if (config.url.includes('/api/')) {
         const apiPath = config.url.substring(config.url.indexOf('/api/'));
-        config.url = `https://vendor.ficapp.in${apiPath}`;
+        config.url = `${activeBase}${apiPath}`;
       }
     }
 
@@ -397,7 +386,7 @@ export const formatImageUrl = (url) => {
 
   let backend = getBackendUrl();
   if (!backend || !backend.startsWith('http')) {
-    backend = 'https://vendor.ficapp.in';
+    backend = 'https://connect-vendor-p1ij.onrender.com';
   }
   if (backend.endsWith('/api')) {
     backend = backend.substring(0, backend.length - 4);

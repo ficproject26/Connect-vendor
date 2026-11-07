@@ -162,7 +162,7 @@ function getDurableImageUrl(objectKey) {
     const cfBase = cloudfrontDomain.startsWith('http') ? cloudfrontDomain : `https://${cloudfrontDomain}`;
     return `${cfBase.replace(/\/+$/, '')}/${cleanKey}`;
   }
-  const backendBase = process.env.BACKEND_URL || 'https://api.ficapp.in';
+  const backendBase = process.env.BACKEND_URL || 'https://connect-vendor-p1ij.onrender.com';
   return `${backendBase.replace(/\/+$/, '')}/api/media/s3/${cleanKey}`;
 }
 

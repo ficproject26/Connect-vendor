@@ -67,6 +67,10 @@ app.use(
           "https://*.ficapp.in",
           "wss://vendor.ficapp.in",
           "wss://*.ficapp.in",
+          "https://connect-vendor-p1ij.onrender.com",
+          "wss://connect-vendor-p1ij.onrender.com",
+          "https://*.onrender.com",
+          "wss://*.onrender.com",
           "https://connect-vendor.vercel.app",
           "https://*.vercel.app",
           "https://api.razorpay.com",
@@ -118,6 +122,7 @@ const allowedOrigins = [
   'https://vendor.ficapp.in',
   'http://vendor.ficapp.in',
   'https://connect-vendor.vercel.app',
+  'https://connect-vendor-p1ij.onrender.com',
   'https://connect-admin-96pc.onrender.com',
   'http://localhost:5173',
   'http://localhost:5174',
@@ -146,9 +151,10 @@ const isOriginAllowed = (origin) => {
   if (!origin) return true;
   const isExplicitlyAllowed = allowedOrigins.includes(origin);
   const isVercelDomain = /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/.test(origin);
+  const isRenderDomain = /^https:\/\/([a-z0-9-]+\.)*onrender\.com$/.test(origin);
   const isFicappDomain = /^https?:\/\/([a-z0-9-]+\.)*ficapp\.in(:[0-9]+)?$/.test(origin);
   const isLocalDev = !isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(origin);
-  return Boolean(isExplicitlyAllowed || isVercelDomain || isFicappDomain || isLocalDev);
+  return Boolean(isExplicitlyAllowed || isVercelDomain || isRenderDomain || isFicappDomain || isLocalDev);
 };
 
 const corsOptions = {
