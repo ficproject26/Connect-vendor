@@ -10,23 +10,31 @@
 
       function isExtensionChannelError(err) {
         if (!err) return false;
-        var msg = '';
-        if (typeof err === 'string') {
-          msg = err;
-        } else if (err.message) {
-          msg = err.message;
-        } else if (err.reason) {
-          msg = typeof err.reason === 'string' ? err.reason : (err.reason.message || String(err.reason));
-        } else {
-          msg = String(err);
+        try {
+          var msg = '';
+          if (typeof err === 'string') {
+            msg = err;
+          } else if (err.message) {
+            msg = err.message;
+          } else if (err.reason) {
+            msg = typeof err.reason === 'string' ? err.reason : (err.reason.message || String(err.reason));
+          } else if (err.error) {
+            msg = typeof err.error === 'string' ? err.error : (err.error.message || String(err.error));
+          } else {
+            msg = String(err);
+          }
+          if (err.stack) msg += ' ' + err.stack;
+          msg = msg.toLowerCase();
+          return (
+            msg.indexOf('message channel closed') !== -1 ||
+            msg.indexOf('listener indicated an asynchronous response') !== -1 ||
+            msg.indexOf('channel closed before a response was received') !== -1 ||
+            msg.indexOf('runtime.lasterror') !== -1 ||
+            msg.indexOf('unchecked runtime') !== -1
+          );
+        } catch (e) {
+          return false;
         }
-        msg = msg.toLowerCase();
-        return (
-          msg.indexOf('message channel closed') !== -1 ||
-          msg.indexOf('listener indicated an asynchronous response') !== -1 ||
-          msg.indexOf('runtime.lasterror') !== -1 ||
-          msg.indexOf('unchecked runtime') !== -1
-        );
       }
 
       // 1. Capture unhandled promise rejections at the window level immediately
@@ -41,6 +49,12 @@
         },
         true
       );
+      window.onunhandledrejection = function (event) {
+        if (isExtensionChannelError(event && event.reason) || isExtensionChannelError(event)) {
+          if (event && event.preventDefault) event.preventDefault();
+          return true;
+        }
+      };
 
       // 2. Capture global window error events
       window.addEventListener(
@@ -54,6 +68,11 @@
         },
         true
       );
+      window.onerror = function (msg, url, line, col, error) {
+        if (isExtensionChannelError(msg) || isExtensionChannelError(error)) {
+          return true; // suppresses error in browser console
+        }
+      };
 
       // 3. Filter console.error and console.warn for extension channel disconnect errors
       var origError = console.error;

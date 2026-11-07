@@ -13,17 +13,25 @@ import './index.css';
 if (typeof window !== 'undefined') {
   const isExtensionChannelError = (err) => {
     if (!err) return false;
-    const msg = (
-      typeof err === 'string'
-        ? err
-        : (err.message || err.reason || err.stack || (typeof err.toString === 'function' ? err.toString() : ''))
-    ).toLowerCase();
-    return (
-      msg.includes('message channel closed') ||
-      msg.includes('listener indicated an asynchronous response') ||
-      msg.includes('runtime.lasterror') ||
-      msg.includes('unchecked runtime')
-    );
+    try {
+      const msg = (
+        (typeof err === 'string' ? err : '') ||
+        (err.message ? err.message : '') ||
+        (err.reason && (typeof err.reason === 'string' ? err.reason : err.reason.message)) ||
+        (err.error && (typeof err.error === 'string' ? err.error : err.error.message)) ||
+        (err.stack ? err.stack : '') ||
+        String(err)
+      ).toLowerCase();
+      return (
+        msg.includes('message channel closed') ||
+        msg.includes('listener indicated an asynchronous response') ||
+        msg.includes('channel closed before a response was received') ||
+        msg.includes('runtime.lasterror') ||
+        msg.includes('unchecked runtime')
+      );
+    } catch (e) {
+      return false;
+    }
   };
 
   // Override console.error / console.warn to drop extension channel noise
@@ -56,6 +64,12 @@ if (typeof window !== 'undefined') {
       if (event.stopImmediatePropagation) event.stopImmediatePropagation();
     }
   }, true);
+  window.onunhandledrejection = (event) => {
+    if (isExtensionChannelError(event?.reason) || isExtensionChannelError(event)) {
+      event?.preventDefault?.();
+      return true;
+    }
+  };
 
   window.addEventListener('error', (event) => {
     if (isExtensionChannelError(event.message) || isExtensionChannelError(event.error)) {
@@ -63,6 +77,11 @@ if (typeof window !== 'undefined') {
       if (event.stopImmediatePropagation) event.stopImmediatePropagation();
     }
   }, true);
+  window.onerror = (msg, url, line, col, error) => {
+    if (isExtensionChannelError(msg) || isExtensionChannelError(error)) {
+      return true;
+    }
+  };
 
   // Patch chrome.runtime.onMessage.addListener so every listener auto-voids lastError.
   // This is the root cause fix: Chrome logs "Unchecked runtime.lastError" when any
